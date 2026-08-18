@@ -7,6 +7,7 @@ import { db } from "@/lib/firebase";
 import { doc, updateDoc, collection, query, where, getDocs, orderBy } from "firebase/firestore";
 import { User, MapPin, ShoppingBag, LogOut, Plus, Trash2, Home, Printer, CreditCard } from "lucide-react";
 import Link from "next/link";
+import { motion } from "framer-motion";
 
 export default function AccountDashboard() {
   const { user, userData, loading, logout, setUserData } = useAuth();
@@ -163,16 +164,12 @@ export default function AccountDashboard() {
         alignItems: "center",
         justifyContent: "space-between"
       }}>
-        <Link href="/" style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-          <Printer size={24} style={{ color: "hsl(var(--accent-hsl))" }} />
-          <span style={{
-            fontFamily: "var(--font-display)",
-            fontWeight: 800,
-            fontSize: "1.25rem",
-            letterSpacing: "-0.03em"
-          }}>
-            APEX<span style={{ color: "hsl(var(--accent-hsl))" }}>WORKWEAR</span>
-          </span>
+        <Link href="/" style={{ display: "flex", alignItems: "center" }}>
+          <img 
+            src="/Apex-Workwear-Logo-Horizontal.webp" 
+            alt="Apex Workwear Logo" 
+            style={{ height: "36px", width: "auto", display: "block" }} 
+          />
         </Link>
         <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
           <Link href="/" className="btn btn-outline" style={{ padding: "0.5rem 1rem", fontSize: "0.85rem" }}>
@@ -185,7 +182,12 @@ export default function AccountDashboard() {
       </header>
 
       {/* Content wrapper */}
-      <div style={{ maxWidth: "1200px", margin: "2.5rem auto", padding: "0 1.5rem" }}>
+      <motion.div 
+        initial={{ opacity: 0, y: 15 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+        style={{ maxWidth: "1200px", margin: "2.5rem auto", padding: "0 1.5rem" }}
+      >
         <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: "2rem" }}>
           {/* Welcome Card */}
           <div className="card orange-gradient-bg" style={{
@@ -448,12 +450,27 @@ export default function AccountDashboard() {
                         {/* Order Items */}
                         <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
                           {order.items.map((item, idx) => (
-                            <div key={idx} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                            <div key={idx} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", borderBottom: "1px dashed hsl(var(--border-hsl) / 0.5)", paddingBottom: "0.5rem" }}>
                               <div>
                                 <p style={{ fontWeight: 600, fontSize: "0.95rem" }}>{item.name}</p>
                                 <p style={{ fontSize: "0.8rem", color: "hsl(var(--muted-hsl))" }}>
-                                  Qty: {item.quantity} • Configured
+                                  Qty: {item.quantity} {item.optionSummary ? `• ${item.optionSummary}` : ""}
                                 </p>
+                                {item.artworkFiles && item.artworkFiles.length > 0 && (
+                                  <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem", marginTop: "0.25rem" }}>
+                                    {item.artworkFiles.map((file, fIdx) => (
+                                      <a
+                                        key={fIdx}
+                                        href={file.url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        style={{ fontSize: "0.75rem", color: "hsl(var(--accent-hsl))", textDecoration: "underline", fontWeight: 500 }}
+                                      >
+                                        📄 {file.name || `Artwork ${fIdx + 1}`}
+                                      </a>
+                                    ))}
+                                  </div>
+                                )}
                               </div>
                               <p style={{ fontWeight: 600, fontSize: "0.95rem" }}>${parseFloat(item.price).toFixed(2)}</p>
                             </div>
@@ -467,7 +484,7 @@ export default function AccountDashboard() {
             )}
           </div>
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 }

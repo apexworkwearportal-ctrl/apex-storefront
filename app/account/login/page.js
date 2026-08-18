@@ -5,6 +5,7 @@ import { useAuth } from "@/lib/auth-context";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Mail, Lock, ArrowRight, Printer } from "lucide-react";
+import { motion } from "framer-motion";
 
 export default function LoginPage() {
   const { login, user } = useAuth();
@@ -49,31 +50,27 @@ export default function LoginPage() {
       background: "radial-gradient(circle at top left, hsl(var(--primary-hsl) / 0.1), transparent), radial-gradient(circle at bottom right, hsl(var(--accent-hsl) / 0.05), transparent)",
       padding: "1.5rem"
     }}>
-      <div className="glass-panel" style={{
-        width: "100%",
-        maxWidth: "420px",
-        padding: "2.5rem 2rem",
-        boxShadow: "var(--shadow-lg)"
-      }}>
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.4 }}
+        className="glass-panel" 
+        style={{
+          width: "100%",
+          maxWidth: "420px",
+          padding: "2.5rem 2rem",
+          boxShadow: "var(--shadow-lg)",
+          border: "1px solid hsl(var(--border-hsl))"
+        }}
+      >
         {/* Logo / Branding */}
         <div style={{ textAlign: "center", marginBottom: "2rem" }}>
-          <div style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: "0.5rem",
-            color: "hsl(var(--accent-hsl))",
-            marginBottom: "0.75rem"
-          }}>
-            <Printer size={28} />
-            <span style={{
-              fontFamily: "var(--font-display)",
-              fontWeight: 800,
-              fontSize: "1.5rem",
-              letterSpacing: "-0.03em",
-              color: "hsl(var(--foreground-hsl))"
-            }}>
-              APEX<span style={{ color: "hsl(var(--accent-hsl))" }}>WORKWEAR</span>
-            </span>
+          <div style={{ display: "inline-block", marginBottom: "0.75rem" }}>
+            <img 
+              src="/Apex-Workwear-Logo-Horizontal.webp" 
+              alt="Apex Workwear Logo" 
+              style={{ height: "48px", width: "auto", display: "block", margin: "0 auto" }} 
+            />
           </div>
           <p style={{
             fontSize: "0.9rem",
@@ -182,7 +179,7 @@ export default function LoginPage() {
             Create one
           </Link>
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 }

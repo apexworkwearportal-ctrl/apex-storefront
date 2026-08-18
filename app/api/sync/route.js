@@ -93,41 +93,8 @@ async function handleSync(req) {
         continue;
       }
       
-      // Fetch details and compute starting price for enabled products
+      // Sync basic details for enabled products
       try {
-        // Fetch option groups
-        const details = await getProductDetails(product.id);
-        const options = details[0] || [];
-        
-        // Filter out hidden options and group by group name
-        const groupedOptions = {};
-        for (const opt of options) {
-          if (opt.hidden === 0) {
-            if (!groupedOptions[opt.group]) {
-              groupedOptions[opt.group] = [];
-            }
-            groupedOptions[opt.group].push({
-              id: opt.id,
-              name: opt.name,
-            });
-          }
-        }
-        
-        // Pick the first option in each group for default pricing combo
-        const defaultCombo = [];
-        for (const groupName of Object.keys(groupedOptions)) {
-          if (groupedOptions[groupName].length > 0) {
-            defaultCombo.push(groupedOptions[groupName][0].id);
-          }
-        }
-        
-        // Call pricing endpoint
-        let startingPrice = 0;
-        if (defaultCombo.length > 0) {
-          const priceRes = await getPrice(product.id, defaultCombo);
-          startingPrice = parseFloat(priceRes.price) || 0;
-        }
-        
         // Track category
         if (product.category) {
           activeCategories.add(product.category);
@@ -143,6 +110,7 @@ async function handleSync(req) {
         const isVisible = existingData.isVisible !== undefined ? existingData.isVisible : true;
         const displayOrder = existingData.displayOrder !== undefined ? existingData.displayOrder : 0;
         const categoryOverride = existingData.categoryOverride || null;
+        const startingPriceOverride = existingData.pricing?.startingPriceOverride || null;
         
         // Determine needsAttention
         const needsAttention = images.length === 0 || !description;
@@ -153,11 +121,10 @@ async function handleSync(req) {
             name: product.name,
             category: product.category,
             enabled: 1,
-            optionGroups: groupedOptions,
           },
           pricing: {
-            startingPrice,
-            defaultCombo,
+            startingPriceOverride,
+            startingPrice: startingPriceOverride || 0,
             currency: "CAD",
             priceLastSyncedAt: new Date(),
           },
