@@ -2,7 +2,7 @@
 
 import { motion } from "framer-motion";
 import Link from "next/link";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { 
@@ -16,11 +16,27 @@ import {
   Percent, 
   Search, 
   Package, 
-  Clock 
+  Clock,
+  ChevronDown,
+  ChevronUp,
+  Check
 } from "lucide-react";
 
 export default function HomeClient({ categories }) {
   const [searchVal, setSearchVal] = useState("");
+  const [activeFaq, setActiveFaq] = useState(null);
+  const [heroStyle, setHeroStyle] = useState("standard"); // "standard" or "slider"
+  const [sliderIndex, setSliderIndex] = useState(0);
+
+  const sliderImages = ["/assets/1.webp", "/assets/2.webp", "/assets/3.webp", "/assets/4.webp"];
+
+  useEffect(() => {
+    if (heroStyle !== "slider") return;
+    const timer = setInterval(() => {
+      setSliderIndex((prev) => (prev + 1) % sliderImages.length);
+    }, 4000);
+    return () => clearInterval(timer);
+  }, [heroStyle]);
 
   // Animation variants
   const containerVariants = {
@@ -84,7 +100,7 @@ export default function HomeClient({ categories }) {
       {/* 1. HERO SECTION */}
       <section style={{
         position: "relative",
-        padding: "6rem 2rem 5rem 2rem",
+        padding: heroStyle === "slider" ? "0" : "6rem 2rem 5rem 2rem",
         backgroundColor: "hsl(var(--primary-hsl))",
         color: "white",
         overflow: "hidden"
@@ -113,173 +129,339 @@ export default function HomeClient({ categories }) {
           pointerEvents: "none"
         }} />
 
+        {/* Toggle Hero Style Button */}
         <div style={{
-          maxWidth: "1200px",
-          margin: "0 auto",
-          display: "grid",
-          gridTemplateColumns: "1.1fr 0.9fr",
-          gap: "4rem",
-          alignItems: "center",
-          position: "relative",
-          zIndex: 10
-        }} className="hero-grid">
-          
-          {/* Left Column */}
-          <motion.div 
-            initial={{ opacity: 0, x: -30 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
-            style={{ display: "flex", flexDirection: "column", gap: "1.75rem" }}
+          position: "absolute",
+          top: "1.5rem",
+          right: "2rem",
+          zIndex: 40,
+          display: "flex",
+          alignItems: "center"
+        }}>
+          <button 
+            onClick={() => setHeroStyle(heroStyle === "standard" ? "slider" : "standard")}
+            style={{ 
+              padding: "0.5rem 1rem", 
+              fontSize: "0.75rem", 
+              color: "white", 
+              borderColor: "rgba(255,255,255,0.25)",
+              backgroundColor: "rgba(0,0,0,0.5)",
+              backdropFilter: "blur(4px)",
+              borderRadius: "40px",
+              fontWeight: 700,
+              display: "flex",
+              alignItems: "center",
+              gap: "0.6rem",
+              border: "1px solid rgba(255,255,255,0.25)",
+              cursor: "pointer"
+            }}
           >
-            <div>
-              <span style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "0.4rem",
-                fontSize: "0.75rem",
-                fontWeight: 800,
-                textTransform: "uppercase",
-                letterSpacing: "0.15em",
-                color: "hsl(var(--accent-hsl))",
-                backgroundColor: "hsl(var(--accent-hsl) / 0.15)",
-                padding: "0.35rem 0.85rem",
-                borderRadius: "40px",
-                marginBottom: "1rem"
-              }}>
-                <Sparkles size={12} /> Direct GTA Print Shop
-              </span>
-              <h1 style={{
-                fontSize: "clamp(2.5rem, 5vw, 3.75rem)",
-                fontWeight: 900,
-                lineHeight: 1.1,
-                color: "white",
-                letterSpacing: "-0.03em"
-              }}>
-                Configure, Preview <br />
-                & Order <span style={{ color: "hsl(var(--accent-hsl))" }}>Print Instantly</span>
-              </h1>
-            </div>
-            
-            <p style={{
-              fontSize: "1.15rem",
-              lineHeight: "1.6",
-              color: "rgba(255, 255, 255, 0.85)",
-              maxWidth: "540px"
-            }}>
-              Zero waiting for custom sales estimates. Input your specifications, upload print-ready artwork files, and calculate live courier prices directly.
-            </p>
-
-            {/* CTA Buttons */}
-            <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap", marginTop: "0.5rem" }}>
-              <Link href="/products" className="btn btn-primary" style={{ padding: "0.85rem 2rem", fontSize: "1rem" }}>
-                Shop Print Catalog <ArrowRight size={18} />
-              </Link>
-              <Link href="/about" className="btn btn-outline" style={{ color: "white", borderColor: "rgba(255,255,255,0.25)", padding: "0.85rem 2rem", fontSize: "1rem" }}>
-                GTA Turnarounds
-              </Link>
-            </div>
-
-            {/* Quick Shortcuts */}
-            <div style={{ marginTop: "1rem" }}>
-              <p style={{ fontSize: "0.8rem", fontWeight: 700, color: "rgba(255,255,255,0.5)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.75rem" }}>
-                Popular Configurations:
-              </p>
-              <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-                {categories.slice(0, 3).map(cat => (
-                  <Link 
-                    key={cat.id} 
-                    href={`/products?category=${cat.id}`}
-                    style={{
-                      fontSize: "0.8rem",
-                      padding: "0.4rem 0.85rem",
-                      backgroundColor: "rgba(255,255,255,0.08)",
-                      color: "rgba(255,255,255,0.9)",
-                      borderRadius: "var(--radius-sm)",
-                      fontWeight: 600,
-                      border: "1px solid rgba(255,255,255,0.1)",
-                      transition: "all 0.2s ease"
-                    }}
-                    className="hero-tag"
-                  >
-                    {cat.name}
-                  </Link>
-                ))}
-              </div>
-            </div>
-          </motion.div>
-
-          {/* Right Column: Hero Graphic Presentation */}
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1], delay: 0.15 }}
-            style={{ display: "flex", justifyContent: "center", position: "relative" }}
-            className="hero-graphic-col"
-          >
-            <div style={{
-              width: "100%",
-              maxWidth: "480px",
-              height: "360px",
-              backgroundColor: "rgba(255,255,255,0.03)",
-              border: "1px solid rgba(255,255,255,0.1)",
-              borderRadius: "var(--radius-lg)",
-              padding: "1.5rem",
-              backdropFilter: "blur(12px)",
+            <span>✨ Switch Hero Layout</span>
+            <span style={{
+              display: "inline-block",
+              width: "32px",
+              height: "16px",
+              backgroundColor: heroStyle === "slider" ? "hsl(var(--accent-hsl))" : "rgba(255,255,255,0.3)",
+              borderRadius: "20px",
               position: "relative",
-              boxShadow: "var(--shadow-lg)"
+              transition: "background-color 0.2s ease"
             }}>
-              {/* Stack Card Presentation */}
-              <div style={{
-                width: "80%",
-                height: "180px",
+              <span style={{
+                position: "absolute",
+                top: "2px",
+                left: heroStyle === "slider" ? "18px" : "2px",
+                width: "12px",
+                height: "12px",
+                borderRadius: "50%",
                 backgroundColor: "white",
-                borderRadius: "var(--radius-md)",
-                boxShadow: "0 20px 40px rgba(0,0,0,0.2)",
-                padding: "1.5rem",
-                color: "hsl(var(--foreground-hsl))",
-                position: "absolute",
-                top: "15%",
-                left: "10%",
-                zIndex: 2,
-                transform: "rotate(-4deg)"
-              }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                  <img src="/Apex-Workwear-Logo-Horizontal.webp" style={{ height: "24px" }} alt="Logo" />
-                  <span style={{ fontSize: "0.7rem", color: "hsl(var(--accent-hsl))", fontWeight: 700 }}>PREMIUM PRINT</span>
-                </div>
-                <div style={{ marginTop: "2rem" }}>
-                  <p style={{ fontWeight: 800, fontSize: "1.1rem", lineHeight: 1.2 }}>High-Impact Marketing Renders</p>
-                  <p style={{ fontSize: "0.75rem", color: "hsl(var(--muted-hsl))", marginTop: "0.25rem" }}>Toronto Business Card configurations</p>
-                </div>
-              </div>
-
-              <div style={{
-                width: "75%",
-                height: "180px",
-                backgroundColor: "hsl(var(--secondary-hsl))",
-                borderRadius: "var(--radius-md)",
-                boxShadow: "0 10px 20px rgba(0,0,0,0.15)",
-                padding: "1.5rem",
-                color: "hsl(var(--foreground-hsl))",
-                position: "absolute",
-                bottom: "10%",
-                right: "8%",
-                zIndex: 1,
-                transform: "rotate(6deg)"
-              }}>
-                <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
-                  <div style={{ width: "8px", height: "8px", borderRadius: "50%", backgroundColor: "hsl(var(--success-hsl))" }}></div>
-                  <span style={{ fontSize: "0.65rem", fontWeight: 700, color: "hsl(var(--muted-hsl))", textTransform: "uppercase" }}>Configurator Loaded</span>
-                </div>
-                <div style={{ marginTop: "1.5rem" }}>
-                  <p style={{ fontWeight: 700, fontSize: "0.95rem" }}>GTA Courier Estimates</p>
-                  <p style={{ fontSize: "0.7rem", color: "hsl(var(--muted-hsl))" }}>1-2 business days delivery lookup</p>
-                </div>
-              </div>
-            </div>
-          </motion.div>
-
+                transition: "left 0.2s ease"
+              }} />
+            </span>
+          </button>
         </div>
+
+        {heroStyle === "slider" ? (
+          <div style={{
+            position: "relative",
+            width: "100%",
+            maxWidth: "100%",
+            height: "auto",
+            margin: "0",
+            overflow: "hidden",
+            zIndex: 10
+          }}>
+            {/* Active Image */}
+            <motion.img
+              key={sliderIndex}
+              src={sliderImages[sliderIndex]}
+              alt={`Slider banner ${sliderIndex + 1}`}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.8 }}
+              style={{
+                width: "100%",
+                height: "auto",
+                display: "block"
+              }}
+            />
+            
+            {/* Dots navigation */}
+            <div style={{
+              position: "absolute",
+              bottom: "1.5rem",
+              left: "50%",
+              transform: "translateX(-50%)",
+              display: "flex",
+              gap: "0.75rem",
+              zIndex: 30,
+              backgroundColor: "rgba(0,0,0,0.5)",
+              padding: "0.5rem 1rem",
+              borderRadius: "40px",
+              backdropFilter: "blur(4px)"
+            }}>
+              {sliderImages.map((_, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => setSliderIndex(idx)}
+                  style={{
+                    width: "10px",
+                    height: "10px",
+                    borderRadius: "50%",
+                    backgroundColor: sliderIndex === idx ? "hsl(var(--accent-hsl))" : "rgba(255,255,255,0.4)",
+                    border: "none",
+                    cursor: "pointer",
+                    padding: 0,
+                    transition: "all 0.2s ease"
+                  }}
+                  aria-label={`Go to slide ${idx + 1}`}
+                />
+              ))}
+            </div>
+
+            {/* Left & Right arrow controls */}
+            <button
+              onClick={() => setSliderIndex((prev) => (prev - 1 + sliderImages.length) % sliderImages.length)}
+              style={{
+                position: "absolute",
+                left: "1rem",
+                top: "50%",
+                transform: "translateY(-50%)",
+                width: "40px",
+                height: "40px",
+                borderRadius: "50%",
+                backgroundColor: "rgba(0,0,0,0.5)",
+                color: "white",
+                border: "none",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor: "pointer",
+                backdropFilter: "blur(4px)",
+                transition: "background-color 0.2s ease",
+                fontSize: "1.25rem",
+                fontWeight: 700
+              }}
+              aria-label="Previous slide"
+            >
+              ←
+            </button>
+            <button
+              onClick={() => setSliderIndex((prev) => (prev + 1) % sliderImages.length)}
+              style={{
+                position: "absolute",
+                right: "1rem",
+                top: "50%",
+                transform: "translateY(-50%)",
+                width: "40px",
+                height: "40px",
+                borderRadius: "50%",
+                backgroundColor: "rgba(0,0,0,0.5)",
+                color: "white",
+                border: "none",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor: "pointer",
+                backdropFilter: "blur(4px)",
+                transition: "background-color 0.2s ease",
+                fontSize: "1.25rem",
+                fontWeight: 700
+              }}
+              aria-label="Next slide"
+            >
+              →
+            </button>
+          </div>
+        ) : (
+          <div style={{
+            maxWidth: "1200px",
+            margin: "0 auto",
+            display: "grid",
+            gridTemplateColumns: "1.1fr 0.9fr",
+            gap: "4rem",
+            alignItems: "center",
+            position: "relative",
+            zIndex: 10
+          }} className="hero-grid">
+            
+            {/* Left Column */}
+            <motion.div 
+              initial={{ opacity: 0, x: -30 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+              style={{ display: "flex", flexDirection: "column", gap: "1.75rem" }}
+            >
+              <div>
+                <span style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "0.4rem",
+                  fontSize: "0.75rem",
+                  fontWeight: 800,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.15em",
+                  color: "hsl(var(--accent-hsl))",
+                  backgroundColor: "hsl(var(--accent-hsl) / 0.15)",
+                  padding: "0.35rem 0.85rem",
+                  borderRadius: "40px",
+                  marginBottom: "1rem"
+                }}>
+                  <Sparkles size={12} /> Direct GTA Print Shop
+                </span>
+                <h1 style={{
+                  fontSize: "clamp(2.5rem, 5vw, 3.75rem)",
+                  fontWeight: 900,
+                  lineHeight: 1.1,
+                  color: "white",
+                  letterSpacing: "-0.03em"
+                }}>
+                  Configure, Preview <br />
+                  & Order <span style={{ color: "hsl(var(--accent-hsl))" }}>Print Instantly</span>
+                </h1>
+              </div>
+              
+              <p style={{
+                fontSize: "1.15rem",
+                lineHeight: "1.6",
+                color: "rgba(255, 255, 255, 0.85)",
+                maxWidth: "540px"
+              }}>
+                Zero waiting for custom sales estimates. Input your specifications, upload print-ready artwork files, and calculate live courier prices directly.
+              </p>
+
+              {/* CTA Buttons */}
+              <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap", marginTop: "0.5rem" }}>
+                <Link href="/products" className="btn btn-primary" style={{ padding: "0.85rem 2rem", fontSize: "1rem" }}>
+                  Shop Print Catalog <ArrowRight size={18} />
+                </Link>
+                <Link href="/about" className="btn btn-outline" style={{ color: "white", borderColor: "rgba(255,255,255,0.25)", padding: "0.85rem 2rem", fontSize: "1rem" }}>
+                  GTA Turnarounds
+                </Link>
+              </div>
+
+              {/* Quick Shortcuts */}
+              <div style={{ marginTop: "1rem" }}>
+                <p style={{ fontSize: "0.8rem", fontWeight: 700, color: "rgba(255,255,255,0.5)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.75rem" }}>
+                  Popular Configurations:
+                </p>
+                <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                  {categories.slice(0, 3).map(cat => (
+                    <Link 
+                      key={cat.id} 
+                      href={`/products?category=${cat.id}`}
+                      style={{
+                        fontSize: "0.8rem",
+                        padding: "0.4rem 0.85rem",
+                        backgroundColor: "rgba(255,255,255,0.08)",
+                        color: "rgba(255,255,255,0.9)",
+                        borderRadius: "var(--radius-sm)",
+                        fontWeight: 600,
+                        border: "1px solid rgba(255,255,255,0.1)",
+                        transition: "all 0.2s ease"
+                      }}
+                      className="hero-tag"
+                    >
+                      {cat.name}
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            </motion.div>
+
+            {/* Right Column: Hero Graphic Presentation */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1], delay: 0.15 }}
+              style={{ display: "flex", justifyContent: "center", position: "relative" }}
+              className="hero-graphic-col"
+            >
+              <div style={{
+                width: "100%",
+                maxWidth: "480px",
+                height: "360px",
+                backgroundColor: "rgba(255,255,255,0.03)",
+                border: "1px solid rgba(255,255,255,0.1)",
+                borderRadius: "var(--radius-lg)",
+                padding: "1.5rem",
+                backdropFilter: "blur(12px)",
+                position: "relative",
+                boxShadow: "var(--shadow-lg)"
+              }}>
+                {/* Stack Card Presentation */}
+                <div style={{
+                  width: "80%",
+                  height: "180px",
+                  backgroundColor: "white",
+                  borderRadius: "var(--radius-md)",
+                  boxShadow: "0 20px 40px rgba(0,0,0,0.2)",
+                  padding: "1.5rem",
+                  color: "hsl(var(--foreground-hsl))",
+                  position: "absolute",
+                  top: "15%",
+                  left: "10%",
+                  zIndex: 2,
+                  transform: "rotate(-4deg)"
+                }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                    <img src="/Apex-Workwear-Logo-Horizontal.webp" style={{ height: "24px" }} alt="Logo" />
+                    <span style={{ fontSize: "0.7rem", color: "hsl(var(--accent-hsl))", fontWeight: 700 }}>PREMIUM PRINT</span>
+                  </div>
+                  <div style={{ marginTop: "2rem" }}>
+                    <p style={{ fontWeight: 800, fontSize: "1.1rem", lineHeight: 1.2 }}>High-Impact Marketing Renders</p>
+                    <p style={{ fontSize: "0.75rem", color: "hsl(var(--muted-hsl))", marginTop: "0.25rem" }}>Toronto Business Card configurations</p>
+                  </div>
+                </div>
+
+                <div style={{
+                  width: "75%",
+                  height: "180px",
+                  backgroundColor: "hsl(var(--secondary-hsl))",
+                  borderRadius: "var(--radius-md)",
+                  boxShadow: "0 10px 20px rgba(0,0,0,0.15)",
+                  padding: "1.5rem",
+                  color: "hsl(var(--foreground-hsl))",
+                  position: "absolute",
+                  bottom: "10%",
+                  right: "8%",
+                  zIndex: 1,
+                  transform: "rotate(6deg)"
+                }}>
+                  <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+                    <div style={{ width: "8px", height: "8px", borderRadius: "50%", backgroundColor: "hsl(var(--success-hsl))" }}></div>
+                    <span style={{ fontSize: "0.65rem", fontWeight: 700, color: "hsl(var(--muted-hsl))", textTransform: "uppercase" }}>Configurator Loaded</span>
+                  </div>
+                  <div style={{ marginTop: "1.5rem" }}>
+                    <p style={{ fontWeight: 700, fontSize: "0.95rem" }}>GTA Courier Estimates</p>
+                    <p style={{ fontSize: "0.7rem", color: "hsl(var(--muted-hsl))" }}>1-2 business days delivery lookup</p>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+
+          </div>
+        )}
       </section>
 
       {/* 2. TRUST/VALUE BAND */}
@@ -545,47 +727,239 @@ export default function HomeClient({ categories }) {
         </div>
       </section>
 
-      {/* 6. TESTIMONIALS/SOCIAL PROOF */}
+      {/* SECTION 6: HOW IT WORKS */}
+      <section style={{ padding: "5rem 1.5rem", backgroundColor: "hsl(var(--secondary-hsl) / 0.15)" }}>
+        <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
+          <div style={{ textAlign: "center", marginBottom: "3rem" }}>
+            <span style={{ fontSize: "0.75rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.15em", color: "hsl(var(--accent-hsl))" }}>How It Works</span>
+            <h2 style={{ fontSize: "2rem", fontWeight: 800, marginTop: "0.25rem", color: "hsl(var(--primary-hsl))" }}>
+              From Configuration to Checkout in Minutes
+            </h2>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))", gap: "1.5rem" }}>
+            <div className="card" style={{ padding: "2rem", display: "flex", flexDirection: "column", gap: "1rem", backgroundColor: "white", border: "1px solid hsl(var(--border-hsl))" }}>
+              <div style={{ width: "32px", height: "32px", borderRadius: "50%", backgroundColor: "hsl(var(--primary-hsl))", color: "white", display: "flex", alignItems: "center", justify: "center", fontWeight: 800, fontSize: "0.95rem" }}>
+                1
+              </div>
+              <h3 style={{ fontSize: "1.1rem", fontWeight: 700 }}>Choose Your Product</h3>
+              <p style={{ color: "hsl(var(--muted-hsl))", fontSize: "0.85rem", lineHeight: "1.6" }}>
+                Browse 60+ print products and custom apparel. Filter by category, size, or turnaround speed.
+              </p>
+            </div>
+
+            <div className="card" style={{ padding: "2rem", display: "flex", flexDirection: "column", gap: "1rem", backgroundColor: "white", border: "1px solid hsl(var(--border-hsl))" }}>
+              <div style={{ width: "32px", height: "32px", borderRadius: "50%", backgroundColor: "hsl(var(--primary-hsl))", color: "white", display: "flex", alignItems: "center", justify: "center", fontWeight: 800, fontSize: "0.95rem" }}>
+                2
+              </div>
+              <h3 style={{ fontSize: "1.1rem", fontWeight: 700 }}>Configure & Preview</h3>
+              <p style={{ color: "hsl(var(--muted-hsl))", fontSize: "0.85rem", lineHeight: "1.6" }}>
+                Select your size, material, and quantity, then upload print ready artwork and preview your order.
+              </p>
+            </div>
+
+            <div className="card" style={{ padding: "2rem", display: "flex", flexDirection: "column", gap: "1rem", backgroundColor: "white", border: "1px solid hsl(var(--border-hsl))" }}>
+              <div style={{ width: "32px", height: "32px", borderRadius: "50%", backgroundColor: "hsl(var(--primary-hsl))", color: "white", display: "flex", alignItems: "center", justify: "center", fontWeight: 800, fontSize: "0.95rem" }}>
+                3
+              </div>
+              <h3 style={{ fontSize: "1.1rem", fontWeight: 700 }}>Checkout Instantly</h3>
+              <p style={{ color: "hsl(var(--muted-hsl))", fontSize: "0.85rem", lineHeight: "1.6" }}>
+                See live wholesale pricing as you configure. Pay securely and your order is confirmed right away.
+              </p>
+            </div>
+
+            <div className="card" style={{ padding: "2rem", display: "flex", flexDirection: "column", gap: "1rem", backgroundColor: "white", border: "1px solid hsl(var(--border-hsl))" }}>
+              <div style={{ width: "32px", height: "32px", borderRadius: "50%", backgroundColor: "hsl(var(--primary-hsl))", color: "white", display: "flex", alignItems: "center", justify: "center", fontWeight: 800, fontSize: "0.95rem" }}>
+                4
+              </div>
+              <h3 style={{ fontSize: "1.1rem", fontWeight: 700 }}>We Print & Ship</h3>
+              <p style={{ color: "hsl(var(--muted-hsl))", fontSize: "0.85rem", lineHeight: "1.6" }}>
+                Your order enters production immediately with our Ontario production partners. Free shipping in the GTA on eligible orders.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* SECTION 7: WHY APEX WORKWEAR */}
       <section style={{ padding: "5rem 1.5rem" }}>
+        <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4rem", alignItems: "center" }} className="why-grid">
+            <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+              <h2 style={{ fontSize: "2rem", fontWeight: 800, color: "hsl(var(--primary-hsl))", letterSpacing: "-0.02em" }}>
+                Why GTA Businesses Order From Apex Workwear
+              </h2>
+              <p style={{ color: "hsl(var(--foreground-hsl) / 0.85)", lineHeight: "1.7", fontSize: "0.95rem" }}>
+                Apex Workwear connects you directly to wholesale print and apparel pricing. Configure your product, see live pricing, and place your order online in minutes. No quote requests. No waiting on hold.
+              </p>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+              {[
+                "60+ print products, plus custom apparel",
+                "Zero order minimums on select items",
+                "Next day turnaround on eligible orders",
+                "Wholesale trade pricing, mapped dynamically",
+                "Proudly finished in Ontario production facilities",
+                "Free shipping in the GTA on eligible orders"
+              ].map((item, idx) => (
+                <div key={idx} style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                  <div style={{
+                    width: "24px",
+                    height: "24px",
+                    borderRadius: "50%",
+                    backgroundColor: "hsl(var(--success-hsl) / 0.15)",
+                    color: "hsl(var(--success-hsl))",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexShrink: 0
+                  }}>
+                    <Check size={14} />
+                  </div>
+                  <span style={{ fontSize: "0.95rem", fontWeight: 600, color: "hsl(var(--foreground-hsl) / 0.9)" }}>
+                    {item}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* SECTION 8: SEO TEXT BLOCK */}
+      <section style={{ padding: "4rem 1.5rem", borderTop: "1px solid hsl(var(--border-hsl))" }}>
+        <div style={{ maxWidth: "800px", margin: "0 auto", textAlign: "center" }}>
+          <h2 style={{ fontSize: "1.5rem", fontWeight: 800, color: "hsl(var(--primary-hsl))", marginBottom: "1rem" }}>
+            Print & Apparel Products for Every GTA Business
+          </h2>
+          <p style={{ color: "hsl(var(--muted-hsl))", fontSize: "0.85rem", lineHeight: "1.8", marginBottom: "1rem" }}>
+            At Apex Workwear, we supply print and apparel products to businesses across the Greater Toronto Area. Our catalogue covers business cards, letterhead, and NCR forms for everyday office use, flyers, brochures, and postcards for marketing campaigns, coroplast yard signs, vinyl banners, and aluminum signage for storefronts and job sites, and labels, stickers, and packaging for product lines. We also produce custom apparel, including t-shirts, hoodies, and hats, with embroidery, DTG, and screen printing available.
+          </p>
+          <p style={{ color: "hsl(var(--primary-hsl))", fontSize: "0.85rem", fontWeight: 700 }}>
+            Configure your specifications, see wholesale pricing instantly, and check out online. No quote requests. No waiting for a callback.
+          </p>
+        </div>
+      </section>
+
+      {/* SECTION 9: TRUSTED BY GTA SMALL BUSINESSES */}
+      <section style={{ padding: "5rem 1.5rem", backgroundColor: "white", borderTop: "1px solid hsl(var(--border-hsl))" }}>
         <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
           <div style={{ textAlign: "center", marginBottom: "3.5rem" }}>
             <span style={{ fontSize: "0.75rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.15em", color: "hsl(var(--accent-hsl))" }}>Reviews</span>
-            <h2 style={{ fontSize: "2rem", fontWeight: 800, marginTop: "0.25rem" }}>Trusted by GTA Small Businesses</h2>
+            <h2 style={{ fontSize: "2rem", fontWeight: 800, marginTop: "0.25rem", color: "hsl(var(--primary-hsl))" }}>
+              Trusted by GTA Small Businesses
+            </h2>
             <p style={{ color: "hsl(var(--muted-hsl))", fontSize: "0.95rem", marginTop: "0.5rem" }}>
               See why Toronto developers, real estate agents, and local shops print with Apex.
             </p>
           </div>
 
-          <div style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
-            gap: "2rem"
-          }}>
-            <div className="card" style={{ padding: "2.25rem 2rem", display: "flex", flexDirection: "column", gap: "1.25rem", border: "1px solid hsl(var(--border-hsl))" }}>
-              <div style={{ display: "flex", gap: "0.1rem", color: "#f59e0b" }}>
-                {[...Array(5)].map((_, i) => <Star key={i} size={16} fill="currentColor" />)}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "1.5rem" }}>
+            {[
+              {
+                text: "Ordering business cards online used to require emailing files back and forth. With Apex Workwear's new storefront, I simply selected 16pt cardstock with UV gloss, saw the instant price, uploaded my PDF, and checked out. They arrived in Mississauga two days later. Unbeatable turnaround.",
+                author: "Liam K.",
+                role: "GTA Real Estate Agent"
+              },
+              {
+                text: "We needed custom coroplast lawn signs for our landscaping business. The instant shipping estimate to Scarborough was accurate and the pricing was much better than our previous local shop. The checkout was seamless.",
+                author: "Sophia M.",
+                role: "GreenSpace Ltd. Owner"
+              },
+              {
+                text: "Our staff hoodies were exactly what we needed for the winter season. Embroidered logos, fast turnaround, and shipped right to our office in Toronto.",
+                author: "Priya D.",
+                role: "Operations Manager"
+              },
+              {
+                text: "We ordered vinyl banners and window decals for our new Brampton location. The instant pricing made budgeting easy, and everything arrived within days.",
+                author: "Marcus T.",
+                role: "Retail Owner"
+              }
+            ].map((t, idx) => (
+              <div key={idx} className="card" style={{ padding: "1.75rem 1.5rem", display: "flex", flexDirection: "column", gap: "1rem", border: "1px solid hsl(var(--border-hsl))", backgroundColor: "white" }}>
+                <div style={{ display: "flex", gap: "0.05rem", color: "#f59e0b" }}>
+                  {[...Array(5)].map((_, i) => <Star key={i} size={14} fill="currentColor" />)}
+                </div>
+                <p style={{ fontStyle: "italic", fontSize: "0.85rem", color: "hsl(var(--foreground-hsl) / 0.85)", lineHeight: "1.6" }}>
+                  "{t.text}"
+                </p>
+                <div style={{ marginTop: "auto", paddingTop: "0.5rem" }}>
+                  <p style={{ fontWeight: 700, fontSize: "0.9rem" }}>{t.author}</p>
+                  <p style={{ fontSize: "0.75rem", color: "hsl(var(--muted-hsl))" }}>{t.role}</p>
+                </div>
               </div>
-              <p style={{ fontStyle: "italic", fontSize: "0.95rem", color: "hsl(var(--foreground-hsl) / 0.85)", lineHeight: "1.6" }}>
-                "Ordering business cards online used to require emailing files back and forth. With Apex Workwear's new storefront, I simply selected 16pt cardstock with UV gloss, saw the instant price, uploaded my PDF, and checked out. They arrived in Mississauga two days later. Unbeatable turnaround!"
-              </p>
-              <div>
-                <p style={{ fontWeight: 700, fontSize: "0.95rem" }}>Liam K.</p>
-                <p style={{ fontSize: "0.75rem", color: "hsl(var(--muted-hsl))" }}>GTA Real Estate Agent</p>
-              </div>
-            </div>
+            ))}
+          </div>
+        </div>
+      </section>
 
-            <div className="card" style={{ padding: "2.25rem 2rem", display: "flex", flexDirection: "column", gap: "1.25rem", border: "1px solid hsl(var(--border-hsl))" }}>
-              <div style={{ display: "flex", gap: "0.1rem", color: "#f59e0b" }}>
-                {[...Array(5)].map((_, i) => <Star key={i} size={16} fill="currentColor" />)}
-              </div>
-              <p style={{ fontStyle: "italic", fontSize: "0.95rem", color: "hsl(var(--foreground-hsl) / 0.85)", lineHeight: "1.6" }}>
-                "We needed custom coroplast lawn signs for our landscape business. The instant shipping estimate to Scarborough was accurate and the pricing was much better than our previous WordPress local shop. The checkout was seamless."
-              </p>
-              <div>
-                <p style={{ fontWeight: 700, fontSize: "0.95rem" }}>Sophia M.</p>
-                <p style={{ fontSize: "0.75rem", color: "hsl(var(--muted-hsl))" }}>GreenSpace Ltd. Owner</p>
-              </div>
-            </div>
+      {/* SECTION 10: FAQ */}
+      <section style={{ padding: "5rem 1.5rem", borderTop: "1px solid hsl(var(--border-hsl))" }}>
+        <div style={{ maxWidth: "800px", margin: "0 auto" }}>
+          <div style={{ textAlign: "center", marginBottom: "3rem" }}>
+            <h2 style={{ fontSize: "2rem", fontWeight: 800, color: "hsl(var(--primary-hsl))" }}>
+              Frequently Asked Questions
+            </h2>
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+            {[
+              { q: "What types of products do you offer?", a: "We offer 60+ print products, including business cards, flyers, signage, labels, and packaging, plus custom apparel like t-shirts, hoodies, and hats with embroidery, DTG, or screen printing available." },
+              { q: "Is there a minimum order?", a: "No. Most products have zero order minimums. Order one piece or several thousand." },
+              { q: "How does online configuration work?", a: "Choose your product, select size, material, and quantity, then upload your artwork. Pricing updates instantly as you configure. No quote request needed." },
+              { q: "Do you offer bulk or wholesale pricing?", a: "Yes. Our pricing is mapped directly to wholesale trade rates, so larger orders get better per unit pricing automatically." },
+              { q: "How fast is turnaround?", a: "Most products ship within one to two business days. Select items like flyers and brochures offer same day options." },
+              { q: "Where do you ship?", a: "We ship across the Greater Toronto Area and Ontario wide, with free shipping on eligible orders in the GTA." },
+              { q: "Can I use my own design?", a: "Yes. Upload print ready artwork during checkout, or contact us for design assistance." },
+              { q: "Can I see a proof before printing?", a: "Yes. Digital proofs are available before your order enters production." },
+              { q: "Do you offer custom or contractor pricing?", a: "Yes. For high volume or recurring orders, contact our team for custom contract pricing." },
+              { q: "Where are my products printed?", a: "All orders are finished locally at our Ontario production partners." }
+            ].map((faq, idx) => {
+              const isOpen = activeFaq === idx;
+              return (
+                <div key={idx} style={{
+                  border: "1px solid hsl(var(--border-hsl))",
+                  borderRadius: "var(--radius-sm)",
+                  overflow: "hidden",
+                  backgroundColor: "white"
+                }}>
+                  <button
+                    onClick={() => setActiveFaq(isOpen ? null : idx)}
+                    style={{
+                      width: "100%",
+                      padding: "1rem 1.25rem",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      backgroundColor: isOpen ? "hsl(var(--secondary-hsl) / 0.1)" : "transparent",
+                      border: "none",
+                      outline: "none",
+                      cursor: "pointer",
+                      textAlign: "left"
+                    }}
+                  >
+                    <span style={{ fontWeight: 700, fontSize: "0.95rem", color: "hsl(var(--primary-hsl))" }}>
+                      {faq.q}
+                    </span>
+                    {isOpen ? <ChevronUp size={18} style={{ color: "hsl(var(--accent-hsl))" }} /> : <ChevronDown size={18} style={{ color: "hsl(var(--muted-hsl))" }} />}
+                  </button>
+                  {isOpen && (
+                    <div style={{
+                      padding: "1rem 1.25rem",
+                      borderTop: "1px solid hsl(var(--border-hsl))",
+                      backgroundColor: "hsl(var(--background-hsl))",
+                      color: "hsl(var(--foreground-hsl) / 0.8)",
+                      fontSize: "0.85rem",
+                      lineHeight: "1.6"
+                    }}>
+                      {faq.a}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
       </section>

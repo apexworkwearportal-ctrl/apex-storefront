@@ -27,7 +27,7 @@ export default function Footer() {
             />
           </Link>
           <p style={{ fontSize: "0.9rem", color: "hsl(var(--foreground-hsl) / 0.7)", lineHeight: "1.5" }}>
-            Your premium print partner in the Greater Toronto Area. High-quality business cards, marketing brochures, yard signs, and custom merchandise.
+            Your print and apparel partner in the Greater Toronto Area. Business cards, marketing brochures, yard signs, custom apparel, and more.
           </p>
           <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem" }}>
             <span style={{
@@ -60,6 +60,7 @@ export default function Footer() {
           </h3>
           <nav style={{ display: "flex", flexDirection: "column", gap: "0.75rem", fontSize: "0.9rem" }}>
             <Link href="/products" className="footer-link">Print Products</Link>
+            <Link href="/products?category=apparel" className="footer-link">Apparel</Link>
             <Link href="/about" className="footer-link">Why Choose Us</Link>
             <Link href="/account" className="footer-link">Customer Portal</Link>
           </nav>
