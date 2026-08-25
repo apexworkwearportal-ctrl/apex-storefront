@@ -68,18 +68,35 @@ function CatalogContent() {
     // 1. Category Filter
     let catMatch = true;
     if (selectedCategory !== "all") {
-      const pCat = (p.categoryOverride || p.sinalite?.category || "").toLowerCase().trim();
-      const sCatName = (categories.find(c => c.id === selectedCategory)?.name || "").toLowerCase().trim();
-      const sCatId = selectedCategory.toLowerCase().trim();
-      
-      catMatch = pCat === sCatName || pCat === sCatId;
+      const targetCategoryIds = [selectedCategory];
+      // Include all children categories if the selected category is a parent
+      categories.forEach(c => {
+        if (c.parentId === selectedCategory) {
+          targetCategoryIds.push(c.id);
+        }
+      });
+
+      const pCatId = (p.categoryId || "").toLowerCase().trim();
+      const pCatOverride = (p.categoryOverride || "").toLowerCase().trim();
+      const pSinaCat = (p.sinalite?.category || "").toLowerCase().trim();
+
+      catMatch = targetCategoryIds.some(catId => {
+        const catObj = categories.find(c => c.id === catId);
+        const catName = (catObj?.name || "").toLowerCase().trim();
+        
+        return pCatId === catId.toLowerCase() || 
+               pCatOverride === catId.toLowerCase() ||
+               pCatOverride === catName ||
+               pSinaCat === catName ||
+               pSinaCat === catId.toLowerCase();
+      });
     }
 
     // 2. Search Query Filter
     const searchLower = searchQuery.toLowerCase();
-    const nameMatch = p.sinalite?.name?.toLowerCase().includes(searchLower) ||
-                      p.sinalite?.sku?.toLowerCase().includes(searchLower) ||
-                      p.description?.toLowerCase().includes(searchLower);
+    const nameMatch = (p.name || p.sinalite?.name || "").toLowerCase().includes(searchLower) ||
+                      (p.sku || p.sinalite?.sku || "").toLowerCase().includes(searchLower) ||
+                      (p.description || "").toLowerCase().includes(searchLower);
 
     return catMatch && nameMatch;
   });
@@ -90,10 +107,14 @@ function CatalogContent() {
       return (a.displayOrder || 0) - (b.displayOrder || 0);
     }
     if (sortBy === "name-asc") {
-      return (a.sinalite?.name || "").localeCompare(b.sinalite?.name || "");
+      const nameA = a.name || a.sinalite?.name || "";
+      const nameB = b.name || b.sinalite?.name || "";
+      return nameA.localeCompare(nameB);
     }
     if (sortBy === "name-desc") {
-      return (b.sinalite?.name || "").localeCompare(b.sinalite?.name || "");
+      const nameA = a.name || a.sinalite?.name || "";
+      const nameB = b.name || b.sinalite?.name || "";
+      return nameB.localeCompare(nameA);
     }
     if (sortBy === "price-asc") {
       const priceA = parseFloat(a.pricing?.startingPriceOverride || a.pricing?.startingPrice || 0);
@@ -171,7 +192,7 @@ function CatalogContent() {
                   <SlidersHorizontal size={16} /> Categories
                 </h3>
 
-                <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
                   <button
                     onClick={() => setSelectedCategory("all")}
                     className="category-btn"
@@ -192,36 +213,76 @@ function CatalogContent() {
                       transition: "all 0.2s ease"
                     }}
                   >
-                    <span>All Products</span>
+                    <span style={{ fontWeight: selectedCategory === "all" ? 800 : 600 }}>All Catalog Items</span>
                     <ChevronRight size={14} style={{ opacity: selectedCategory === "all" ? 1 : 0.3 }} />
                   </button>
 
-                  {categories.map(cat => (
-                    <button
-                      key={cat.id}
-                      onClick={() => setSelectedCategory(cat.id)}
-                      className="category-btn"
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        width: "100%",
-                        padding: "0.6rem 0.85rem",
-                        border: "none",
-                        borderRadius: "var(--radius-sm)",
-                        cursor: "pointer",
-                        fontSize: "0.85rem",
-                        fontWeight: selectedCategory === cat.id ? 700 : 500,
-                        backgroundColor: selectedCategory === cat.id ? "hsl(var(--accent-hsl) / 0.08)" : "transparent",
-                        color: selectedCategory === cat.id ? "hsl(var(--accent-hsl))" : "hsl(var(--foreground-hsl) / 0.8)",
-                        textAlign: "left",
-                        transition: "all 0.2s ease"
-                      }}
-                    >
-                      <span>{cat.name}</span>
-                      <ChevronRight size={14} style={{ opacity: selectedCategory === cat.id ? 1 : 0.3 }} />
-                    </button>
-                  ))}
+                  {categories.filter(c => !c.parentId).map(parentCat => {
+                    const children = categories.filter(c => c.parentId === parentCat.id);
+                    const isParentActive = selectedCategory === parentCat.id;
+
+                    return (
+                      <div key={parentCat.id} style={{ display: "flex", flexDirection: "column", gap: "0.15rem", marginTop: "0.25rem" }}>
+                        <button
+                          onClick={() => setSelectedCategory(parentCat.id)}
+                          className="category-btn"
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            width: "100%",
+                            padding: "0.6rem 0.85rem",
+                            border: "none",
+                            borderRadius: "var(--radius-sm)",
+                            cursor: "pointer",
+                            fontSize: "0.85rem",
+                            fontWeight: isParentActive ? 800 : 600,
+                            backgroundColor: isParentActive ? "hsl(var(--accent-hsl) / 0.08)" : "transparent",
+                            color: isParentActive ? "hsl(var(--accent-hsl))" : "hsl(var(--primary-hsl))",
+                            textAlign: "left",
+                            transition: "all 0.2s ease"
+                          }}
+                        >
+                          <span style={{ textTransform: "uppercase", fontSize: "0.75rem", letterSpacing: "0.05em" }}>{parentCat.name}</span>
+                          <ChevronRight size={14} style={{ opacity: isParentActive ? 1 : 0.3 }} />
+                        </button>
+
+                        {children.length > 0 && (
+                          <div style={{ paddingLeft: "1rem", display: "flex", flexDirection: "column", gap: "0.15rem", borderLeft: "1px solid hsl(var(--border-hsl))", marginLeft: "0.5rem" }}>
+                            {children.map(childCat => {
+                              const isChildActive = selectedCategory === childCat.id;
+                              return (
+                                <button
+                                  key={childCat.id}
+                                  onClick={() => setSelectedCategory(childCat.id)}
+                                  className="category-btn"
+                                  style={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "space-between",
+                                    width: "100%",
+                                    padding: "0.45rem 0.75rem",
+                                    border: "none",
+                                    borderRadius: "var(--radius-sm)",
+                                    cursor: "pointer",
+                                    fontSize: "0.8rem",
+                                    fontWeight: isChildActive ? 700 : 500,
+                                    backgroundColor: isChildActive ? "hsl(var(--accent-hsl) / 0.06)" : "transparent",
+                                    color: isChildActive ? "hsl(var(--accent-hsl))" : "hsl(var(--foreground-hsl) / 0.7)",
+                                    textAlign: "left",
+                                    transition: "all 0.2s ease"
+                                  }}
+                                >
+                                  <span>{childCat.name}</span>
+                                  <ChevronRight size={12} style={{ opacity: isChildActive ? 1 : 0.3 }} />
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             </aside>
@@ -311,7 +372,23 @@ function CatalogContent() {
                           style={{ height: "100%" }}
                         >
                           <div className="card card-hover" style={{ display: "flex", flexDirection: "column", padding: 0, overflow: "hidden", height: "100%", border: "1px solid hsl(var(--border-hsl))", position: "relative" }}>
-                            {startingPrice > 0 && (
+                            {product.isCustom ? (
+                              <span style={{
+                                position: "absolute",
+                                top: "0.75rem",
+                                left: "0.75rem",
+                                backgroundColor: "hsl(var(--primary-hsl) / 0.15)",
+                                color: "hsl(var(--primary-hsl))",
+                                fontSize: "0.65rem",
+                                fontWeight: 800,
+                                textTransform: "uppercase",
+                                padding: "0.2rem 0.5rem",
+                                borderRadius: "4px",
+                                zIndex: 2
+                              }}>
+                                Custom Apparel
+                              </span>
+                            ) : startingPrice > 0 ? (
                               <span style={{
                                 position: "absolute",
                                 top: "0.75rem",
@@ -327,11 +404,11 @@ function CatalogContent() {
                               }}>
                                 Instant Pricing
                               </span>
-                            )}
+                            ) : null}
                             <div style={{ width: "100%", height: "180px", overflow: "hidden", borderBottom: "1px solid hsl(var(--border-hsl))" }}>
                               <img
                                 src={image}
-                                alt={product.sinalite?.name}
+                                alt={product.name || product.sinalite?.name}
                                 style={{
                                   width: "100%",
                                   height: "100%",
@@ -344,7 +421,7 @@ function CatalogContent() {
                               />
                             </div>
                             <div style={{ padding: "1.25rem", display: "flex", flexDirection: "column", flexGrow: 1, gap: "0.4rem" }}>
-                              <h3 style={{ fontSize: "0.95rem", fontWeight: 700, lineHeight: "1.4" }}>{product.sinalite?.name}</h3>
+                              <h3 style={{ fontSize: "0.95rem", fontWeight: 700, lineHeight: "1.4" }}>{product.name || product.sinalite?.name}</h3>
                               <p style={{ color: "hsl(var(--muted-hsl))", fontSize: "0.8rem", overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", minHeight: "36px", lineHeight: "1.4" }}>
                                 {product.description || "Configure option weights, turnarounds, and coating options for custom prints."}
                               </p>

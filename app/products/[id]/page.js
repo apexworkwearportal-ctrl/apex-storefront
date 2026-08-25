@@ -57,19 +57,33 @@ export default function ProductDetailPage({ params: paramsPromise }) {
         setProduct(data);
         setLoadingProduct(false);
 
-        // Fetch options live from SinaLite API proxy
-        const optRes = await fetch(`/api/product/${productId}/options`);
-        const optData = await optRes.json();
-        
-        if (!optRes.ok) {
-          throw new Error(optData.error || "Failed to load product options.");
+        if (data.isCustom) {
+          // Build custom options structure
+          const customGroups = {};
+          (data.options || []).forEach(group => {
+            customGroups[group.name] = (group.choices || []).map((choice, index) => ({
+              id: `${group.name}:${choice.name}`, // unique ID within option selections
+              name: choice.name,
+              priceUpcharge: parseFloat(choice.priceUpcharge || 0)
+            }));
+          });
+          setOptionGroups(customGroups);
+          setSelectedOptions({});
+          setLoadingOptions(false);
+        } else {
+          // Fetch options live from SinaLite API proxy
+          const optRes = await fetch(`/api/product/${productId}/options`);
+          const optData = await optRes.json();
+          
+          if (!optRes.ok) {
+            throw new Error(optData.error || "Failed to load product options.");
+          }
+
+          const groups = optData.optionGroups || {};
+          setOptionGroups(groups);
+          setSelectedOptions({});
+          setLoadingOptions(false);
         }
-
-        const groups = optData.optionGroups || {};
-        setOptionGroups(groups);
-
-        // At first, no option will be selected (empty object)
-        setSelectedOptions({});
       } catch (err) {
         console.error("Error loading product/options:", err);
         setError(err.message || "Failed to load product details.");
@@ -90,6 +104,20 @@ export default function ProductDetailPage({ params: paramsPromise }) {
   useEffect(() => {
     if (!product || loadingOptions || !allSelected) {
       setPriceData(null);
+      return;
+    }
+
+    if (product.isCustom) {
+      // Local calculation for custom firebase products
+      let price = parseFloat(product.pricing?.startingPrice || 0);
+      Object.entries(selectedOptions).forEach(([groupName, selectedId]) => {
+        const groupChoices = optionGroups[groupName] || [];
+        const choice = groupChoices.find(c => c.id === selectedId);
+        if (choice) {
+          price += parseFloat(choice.priceUpcharge || 0);
+        }
+      });
+      setPriceData({ price: price });
       return;
     }
 
@@ -126,7 +154,7 @@ export default function ProductDetailPage({ params: paramsPromise }) {
     }, 150); // Small debounce
 
     return () => clearTimeout(timer);
-  }, [selectedOptions, product, productId, loadingOptions, allSelected]);
+  }, [selectedOptions, product, productId, loadingOptions, allSelected, optionGroups]);
 
   const handleOptionChange = (groupName, value) => {
     setSelectedOptions(prev => ({
@@ -183,15 +211,16 @@ export default function ProductDetailPage({ params: paramsPromise }) {
     });
 
     const cartItem = {
-      productId: parseInt(productId),
-      name: product.sinalite?.name,
+      productId: product.isCustom ? productId : parseInt(productId),
+      name: product.name || product.sinalite?.name,
       images: product.images || [],
       selectedOptionMap: selectedOptions,
-      selectedOptionIds: Object.values(selectedOptions).map(id => parseInt(id)),
+      selectedOptionIds: product.isCustom ? Object.values(selectedOptions) : Object.values(selectedOptions).map(id => parseInt(id)),
       optionSummary: optionSummaries.join(" | "),
       price: parseFloat(priceData.price || priceData.price?.price || product.pricing?.startingPrice || 0),
       quantity: 1, // Add one configuration unit by default
-      artworkFiles: artworkFiles, // Linked files uploaded on details page!
+      artworkFiles: artworkFiles,
+      isCustom: !!product.isCustom
     };
 
     addToCart(cartItem);
@@ -200,153 +229,145 @@ export default function ProductDetailPage({ params: paramsPromise }) {
 
   if (loadingProduct) {
     return (
-      <div style={{ display: "flex", flexDirection: "column", minHeight: "100vh" }}>
-        <Header />
-        <div style={{ flexGrow: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "hsl(var(--muted-hsl))", fontWeight: 500 }}>
-          <Loader2 className="animate-spin" style={{ animation: "spin 1.5s linear infinite", marginRight: "0.5rem" }} /> Loading configuration...
-        </div>
-        <Footer />
-        <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", color: "hsl(var(--muted-hsl))" }}>
+        <Loader2 className="animate-spin" style={{ animation: "spin 1.5s linear infinite", marginRight: "0.5rem" }} /> Loading product details...
       </div>
     );
   }
 
   if (error || !product) {
     return (
-      <div style={{ display: "flex", flexDirection: "column", minHeight: "100vh" }}>
-        <Header />
-        <div style={{ flexGrow: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "1rem" }}>
-          <h2>Product Not Found</h2>
-          <p style={{ color: "hsl(var(--muted-hsl))" }}>{error || "The requested printing product does not exist."}</p>
-          <Link href="/products" className="btn btn-primary">Back to Catalog</Link>
-        </div>
-        <Footer />
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh", gap: "1rem" }}>
+        <h2 style={{ fontWeight: 800 }}>Error</h2>
+        <p style={{ color: "hsl(var(--destructive-hsl))" }}>{error || "Product details could not be loaded."}</p>
+        <Link href="/products" className="btn btn-secondary">Back to Catalog</Link>
       </div>
     );
   }
 
-  const imagesList = product.images?.length > 0 ? product.images : ["https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?q=80&w=600&auto=format&fit=crop"];
-  const displayCategory = product.categoryOverride || product.sinalite?.category;
+  // Display details setup
+  const title = product.name || product.sinalite?.name;
+  const skuCode = product.sku || product.sinalite?.sku;
+  const imagesList = product.images || ["https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?q=80&w=600&auto=format&fit=crop"];
+  const displayStartingPrice = parseFloat(product.pricing?.startingPriceOverride || product.pricing?.startingPrice || 0);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", minHeight: "100vh" }}>
+    <div style={{ display: "flex", flexDirection: "column", minHeight: "100vh", backgroundColor: "hsl(var(--background-hsl))" }}>
       <Header />
-
-      <main style={{ maxWidth: "1200px", margin: "2.5rem auto", padding: "0 1.5rem", width: "100%" }}>
-        {/* Breadcrumbs */}
+      
+      <main style={{ maxWidth: "1200px", margin: "2rem auto 4rem auto", padding: "0 1.5rem", width: "100%", flexGrow: 1 }}>
+        {/* Back Link */}
         <div style={{ marginBottom: "2rem" }}>
-          <Link href="/products" style={{ display: "inline-flex", alignItems: "center", gap: "0.25rem", color: "hsl(var(--muted-hsl))", fontSize: "0.9rem", fontWeight: 600 }}>
-            <ArrowLeft size={16} /> All Products
+          <Link href="/products" style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem", color: "hsl(var(--muted-hsl))", fontSize: "0.9rem", fontWeight: 600 }}>
+            <ArrowLeft size={16} /> Back to Catalog
           </Link>
         </div>
 
-        {/* Dynamic Grid Layout */}
-        <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: "3.5rem" }} className="product-grid">
-          {/* Left Column: Visual Gallery */}
-          <motion.div 
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.5 }}
-            style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}
-          >
-            <div className="card" style={{
-              padding: "2rem",
-              backgroundColor: "white",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              minHeight: "400px",
-              border: "1px solid hsl(var(--border-hsl))"
-            }}>
-              <img
-                src={imagesList[activeImageIdx]}
-                alt={product.sinalite?.name}
-                style={{ width: "100%", maxHeight: "350px", objectFit: "contain" }}
-              />
-            </div>
-
-            {/* Thumbnail Selectors */}
-            {imagesList.length > 1 && (
-              <div style={{ display: "flex", gap: "0.75rem" }}>
-                {imagesList.map((img, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => setActiveImageIdx(idx)}
-                    className="card"
-                    style={{
-                      padding: "0.25rem",
-                      width: "80px",
-                      height: "80px",
-                      cursor: "pointer",
-                      borderColor: activeImageIdx === idx ? "hsl(var(--accent-hsl))" : "hsl(var(--border-hsl))",
-                      backgroundColor: "white",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center"
-                    }}
-                  >
-                    <img src={img} alt="Thumbnail" style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} />
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {/* Description & Merchandising Details */}
-            <div style={{ marginTop: "1rem" }}>
-              <h2 style={{ fontSize: "1.5rem", marginBottom: "1rem" }}>Product Specifications</h2>
+        <div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr", gap: "3rem" }} className="product-grid">
+          {/* Left Column: Image Gallery and Description */}
+          <div style={{ display: "flex", flexDirection: "column", gap: "2rem" }}>
+            {/* Gallery presentation */}
+            <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
               <div style={{
-                color: "hsl(var(--foreground-hsl) / 0.85)",
-                fontSize: "0.95rem",
-                lineHeight: "1.7",
-                whiteSpace: "pre-line"
+                width: "100%",
+                height: "400px",
+                backgroundColor: "white",
+                borderRadius: "var(--radius-lg)",
+                border: "1px solid hsl(var(--border-hsl))",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: "2rem",
+                overflow: "hidden"
               }}>
-                {product.description || "High-quality storefront print products configured dynamically to order."}
+                <img
+                  src={imagesList[activeImageIdx]}
+                  alt={`${title} view`}
+                  style={{ maxWith: "100%", maxHeight: "100%", objectFit: "contain" }}
+                />
+              </div>
+              {/* Thumbs list */}
+              {imagesList.length > 1 && (
+                <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
+                  {imagesList.map((url, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => setActiveImageIdx(idx)}
+                      style={{
+                        width: "70px",
+                        height: "70px",
+                        padding: "0.25rem",
+                        backgroundColor: "white",
+                        borderRadius: "var(--radius-sm)",
+                        border: activeImageIdx === idx ? "2px solid hsl(var(--accent-hsl))" : "1px solid hsl(var(--border-hsl))",
+                        cursor: "pointer"
+                      }}
+                    >
+                      <img src={url} alt="thumbnail" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Description Details */}
+            <div className="card" style={{ padding: "2rem" }}>
+              <h2 style={{ fontSize: "1.25rem", fontWeight: 800, marginBottom: "1rem", color: "hsl(var(--primary-hsl))" }}>Product Specifications</h2>
+              <div style={{ whiteSpace: "pre-line", fontSize: "0.95rem", lineHeight: "1.6", color: "hsl(var(--foreground-hsl) / 0.85)" }}>
+                {description || "No specifications are currently defined for this product."}
               </div>
             </div>
-          </motion.div>
+          </div>
 
-          {/* Right Column: Spec Configurator Form */}
-          <motion.div 
+          {/* Right Column: Configurator Panel */}
+          <motion.div
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.5, delay: 0.05 }}
-            style={{ display: "flex", flexDirection: "column", gap: "2rem" }}
+            transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+            style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}
           >
-            <div>
-              <span style={{
-                fontSize: "0.75rem",
-                fontWeight: 700,
-                textTransform: "uppercase",
-                letterSpacing: "0.1em",
-                color: "hsl(var(--accent-hsl))"
-              }}>
-                {displayCategory}
-              </span>
-              <h1 style={{ fontSize: "2.25rem", fontWeight: 900, lineHeight: "1.2", marginTop: "0.25rem", marginBottom: "0.5rem" }}>
-                {product.sinalite?.name}
-              </h1>
-              <p style={{ fontSize: "0.85rem", color: "hsl(var(--muted-hsl))" }}>
-                SKU: {product.sinalite?.sku}
-              </p>
-            </div>
+            <div className="card" style={{ padding: "2rem", display: "flex", flexDirection: "column", gap: "1.5rem", border: "1px solid hsl(var(--border-hsl))" }}>
+              <div>
+                <span style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "0.3rem",
+                  fontSize: "0.65rem",
+                  fontWeight: 800,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.1em",
+                  color: product.isCustom ? "hsl(var(--primary-hsl))" : "hsl(var(--accent-hsl))",
+                  backgroundColor: product.isCustom ? "hsl(var(--primary-hsl) / 0.1)" : "hsl(var(--accent-hsl) / 0.1)",
+                  padding: "0.25rem 0.65rem",
+                  borderRadius: "4px",
+                  marginBottom: "0.75rem"
+                }}>
+                  {product.isCustom ? (
+                    <><Sparkles size={10} /> Custom Apparel</>
+                  ) : (
+                    <><Sparkles size={10} /> Instant Printing</>
+                  )}
+                </span>
+                <h1 style={{ fontSize: "1.75rem", fontWeight: 900, lineHeight: "1.2", letterSpacing: "-0.01em" }}>{title}</h1>
+                <p style={{ color: "hsl(var(--muted-hsl))", fontSize: "0.8rem", marginTop: "0.25rem" }}>SKU: {skuCode}</p>
+              </div>
 
-            {/* Configurator Form Card */}
-            <div className="card" style={{ padding: "2rem", display: "flex", flexDirection: "column", gap: "1.5rem" }}>
-              <h3 style={{ fontSize: "1.1rem", fontWeight: 700, borderBottom: "1px solid hsl(var(--border-hsl))", paddingBottom: "0.5rem" }}>
-                Configure Options
-              </h3>
+              {/* Display starting price info */}
+              {!allSelected && displayStartingPrice > 0 && (
+                <div style={{ padding: "0.85rem 1rem", backgroundColor: "hsl(var(--secondary-hsl) / 0.3)", borderRadius: "var(--radius-sm)" }}>
+                  <p style={{ fontSize: "0.75rem", color: "hsl(var(--muted-hsl))", fontWeight: 600 }}>Starting Price</p>
+                  <p style={{ fontSize: "1.25rem", fontWeight: 800, color: "hsl(var(--accent-hsl))" }}>${displayStartingPrice.toFixed(2)} CAD</p>
+                </div>
+              )}
 
-              {/* Option Selector Fields */}
+              {/* Dynamic Option Groups loop */}
               <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+                <h3 style={{ fontSize: "0.9rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.05em", color: "hsl(var(--muted-hsl))" }}>Configure Options</h3>
+                
                 {loadingOptions ? (
-                  <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", color: "hsl(var(--muted-hsl))", fontSize: "0.9rem" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                      <Loader2 className="animate-spin" size={16} style={{ animation: "spin 1s linear infinite" }} />
-                      Loading options list...
-                    </div>
+                  <div style={{ display: "flex", alignItems: "center", color: "hsl(var(--muted-hsl))", fontSize: "0.85rem", padding: "1rem 0" }}>
+                    <Loader2 className="animate-spin" size={14} style={{ animation: "spin 1.5s linear infinite", marginRight: "0.25rem" }} /> Loading configuration options...
                   </div>
-                ) : Object.keys(optionGroups).length === 0 ? (
-                  <p style={{ fontSize: "0.85rem", color: "hsl(var(--muted-hsl))" }}>No options available.</p>
                 ) : (
                   Object.entries(optionGroups).map(([groupName, options]) => {
                     const isQuantity = groupName.toLowerCase().includes("qty") || groupName.toLowerCase().includes("quantity");
@@ -364,11 +385,14 @@ export default function ProductDetailPage({ params: paramsPromise }) {
                             onChange={(e) => handleOptionChange(groupName, e.target.value)}
                           >
                             <option value="">Select quantity...</option>
-                            {options.map(opt => (
-                              <option key={opt.id} value={opt.id.toString()}>
-                                {opt.name}
-                              </option>
-                            ))}
+                            {options.map(opt => {
+                              const upchargeText = opt.priceUpcharge > 0 ? ` (+$${opt.priceUpcharge.toFixed(2)})` : "";
+                              return (
+                                <option key={opt.id} value={opt.id.toString()}>
+                                  {opt.name}{upchargeText}
+                                </option>
+                              );
+                            })}
                           </select>
                         </div>
                       );
@@ -382,6 +406,8 @@ export default function ProductDetailPage({ params: paramsPromise }) {
                         <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginTop: "0.25rem" }}>
                           {options.map(opt => {
                             const isSelected = selectedOptions[groupName] === opt.id.toString();
+                            const upchargeText = opt.priceUpcharge > 0 ? ` (+$${opt.priceUpcharge.toFixed(2)})` : "";
+                            
                             return (
                               <button
                                 key={opt.id}
@@ -400,7 +426,7 @@ export default function ProductDetailPage({ params: paramsPromise }) {
                                   fontFamily: "var(--font-sans)"
                                 }}
                               >
-                                {opt.name}
+                                {opt.name}{upchargeText}
                               </button>
                             );
                           })}
@@ -471,8 +497,8 @@ export default function ProductDetailPage({ params: paramsPromise }) {
                     </div>
                   </div>
 
-                  {/* Box weight details */}
-                  {priceData?.packageInfo && (
+                  {/* Box weight details (Only for API products) */}
+                  {!product.isCustom && priceData?.packageInfo && (
                     <div style={{
                       padding: "0.6rem 0.85rem",
                       backgroundColor: "hsl(var(--secondary-hsl) / 0.4)",
@@ -502,7 +528,7 @@ export default function ProductDetailPage({ params: paramsPromise }) {
                 marginTop: "0.5rem"
               }}>
                 <label className="label" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span>Upload Print-Ready Artwork</span>
+                  <span>Upload Artwork / Custom Specifications</span>
                   <span style={{ fontSize: "0.75rem", fontWeight: 500, color: "hsl(var(--muted-hsl))" }}>PDF, PNG, JPG (Max 10MB)</span>
                 </label>
                 

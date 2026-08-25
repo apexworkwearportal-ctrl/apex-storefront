@@ -3,10 +3,10 @@
 import { useEffect, useState, use } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { db } from "@/lib/firebase";
-import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { doc, getDoc, updateDoc, collection, getDocs } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Upload, Trash2, Eye, EyeOff, Save, Loader2, AlertCircle } from "lucide-react";
+import { ArrowLeft, Upload, Trash2, Eye, EyeOff, Save, Loader2, AlertCircle, Plus } from "lucide-react";
 
 export default function AdminProductEditPage({ params: paramsPromise }) {
   const params = use(paramsPromise);
@@ -21,40 +21,69 @@ export default function AdminProductEditPage({ params: paramsPromise }) {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
 
-  // Form states
+  // Categories list
+  const [categories, setCategories] = useState([]);
+
+  // Form states (common)
   const [description, setDescription] = useState("");
-  const [categoryOverride, setCategoryOverride] = useState("");
   const [displayOrder, setDisplayOrder] = useState(0);
   const [isVisible, setIsVisible] = useState(true);
   const [priceOverride, setPriceOverride] = useState("");
   const [images, setImages] = useState([]);
+  
+  // Custom Product only states
+  const [name, setName] = useState("");
+  const [sku, setSku] = useState("");
+  const [categoryId, setCategoryId] = useState("");
+  const [optionGroups, setOptionGroups] = useState([]);
+
+  // API Product options count helper
   const [optionGroupsCount, setOptionGroupsCount] = useState(0);
 
   useEffect(() => {
-    const fetchProduct = async () => {
+    const fetchProductAndCategories = async () => {
       setLoading(true);
       try {
+        // Fetch categories list
+        const catSnap = await getDocs(collection(db, "categories"));
+        const catList = [];
+        catSnap.forEach(d => {
+          catList.push({ id: d.id, ...d.data() });
+        });
+        setCategories(catList);
+
+        // Fetch product
         const docRef = doc(db, "products", productId);
         const snap = await getDoc(docRef);
         if (snap.exists()) {
           const data = snap.data();
           setProduct(data);
           setDescription(data.description || "");
-          setCategoryOverride(data.categoryOverride || "");
           setDisplayOrder(data.displayOrder || 0);
           setIsVisible(data.isVisible !== undefined ? data.isVisible : true);
-          setPriceOverride(data.pricing?.startingPriceOverride || "");
           setImages(data.images || []);
+          
+          if (data.isCustom) {
+            setName(data.name || "");
+            setSku(data.sku || "");
+            setCategoryId(data.categoryId || "");
+            setPriceOverride(data.pricing?.startingPrice || "");
+            setOptionGroups(data.options || []);
+          } else {
+            // API product overrides
+            setCategoryId(data.categoryOverride || "");
+            setPriceOverride(data.pricing?.startingPriceOverride || "");
 
-          // Fetch options count dynamically from live API proxy
-          const optRes = await fetch(`/api/product/${productId}/options`);
-          if (optRes.ok) {
-            const optData = await optRes.json();
-            const count = optData.optionGroups ? Object.keys(optData.optionGroups).length : 0;
-            setOptionGroupsCount(count);
+            // Fetch live API options count
+            const optRes = await fetch(`/api/product/${productId}/options`);
+            if (optRes.ok) {
+              const optData = await optRes.json();
+              const count = optData.optionGroups ? Object.keys(optData.optionGroups).length : 0;
+              setOptionGroupsCount(count);
+            }
           }
         } else {
-          setError("Product not found in Firestore cache.");
+          setError("Product not found in Firestore.");
         }
       } catch (err) {
         console.error("Error loading product:", err);
@@ -64,7 +93,7 @@ export default function AdminProductEditPage({ params: paramsPromise }) {
       }
     };
 
-    fetchProduct();
+    fetchProductAndCategories();
   }, [productId]);
 
   const handleUploadImage = async (e) => {
@@ -105,6 +134,61 @@ export default function AdminProductEditPage({ params: paramsPromise }) {
     setImages(prev => prev.filter((_, idx) => idx !== index));
   };
 
+  // Custom Options group handlers
+  const addOptionGroup = () => {
+    setOptionGroups(prev => [...prev, { name: "", choices: [{ name: "", priceUpcharge: 0 }] }]);
+  };
+
+  const removeOptionGroup = (groupIndex) => {
+    setOptionGroups(prev => prev.filter((_, idx) => idx !== groupIndex));
+  };
+
+  const handleGroupNameChange = (groupIndex, value) => {
+    setOptionGroups(prev => prev.map((g, idx) => idx === groupIndex ? { ...g, name: value } : g));
+  };
+
+  const addChoice = (groupIndex) => {
+    setOptionGroups(prev => prev.map((g, idx) => {
+      if (idx === groupIndex) {
+        return {
+          ...g,
+          choices: [...g.choices, { name: "", priceUpcharge: 0 }]
+        };
+      }
+      return g;
+    }));
+  };
+
+  const removeChoice = (groupIndex, choiceIndex) => {
+    setOptionGroups(prev => prev.map((g, idx) => {
+      if (idx === groupIndex) {
+        return {
+          ...g,
+          choices: g.choices.filter((_, cIdx) => cIdx !== choiceIndex)
+        };
+      }
+      return g;
+    }));
+  };
+
+  const handleChoiceChange = (groupIndex, choiceIndex, field, value) => {
+    setOptionGroups(prev => prev.map((g, idx) => {
+      if (idx === groupIndex) {
+        const updatedChoices = g.choices.map((c, cIdx) => {
+          if (cIdx === choiceIndex) {
+            return {
+              ...c,
+              [field]: field === "priceUpcharge" ? parseFloat(value) || 0 : value
+            };
+          }
+          return c;
+        });
+        return { ...g, choices: updatedChoices };
+      }
+      return g;
+    }));
+  };
+
   const handleSave = async (e) => {
     e.preventDefault();
     setSaving(true);
@@ -113,24 +197,60 @@ export default function AdminProductEditPage({ params: paramsPromise }) {
 
     try {
       const docRef = doc(db, "products", productId);
-      
-      const priceVal = priceOverride !== "" ? parseFloat(priceOverride) : null;
-      
-      // Determine needsAttention: true if no description or images
       const needsAttention = images.length === 0 || !description;
 
-      const updateData = {
-        description,
-        categoryOverride: categoryOverride || null,
-        displayOrder: parseInt(displayOrder) || 0,
-        isVisible,
-        images,
-        needsAttention,
-        "pricing.startingPriceOverride": priceVal,
-      };
+      if (product.isCustom) {
+        // Validate custom option groups
+        for (const group of optionGroups) {
+          if (!group.name.trim()) {
+            throw new Error("Option groups must have a name.");
+          }
+          if (group.choices.length === 0) {
+            throw new Error(`Option group "${group.name}" must have at least one choice.`);
+          }
+          for (const choice of group.choices) {
+            if (!choice.name.trim()) {
+              throw new Error(`All choices in option group "${group.name}" must have a name.`);
+            }
+          }
+        }
 
-      await updateDoc(docRef, updateData);
+        const updateData = {
+          name,
+          sku,
+          description,
+          categoryId,
+          "pricing.startingPrice": parseFloat(priceOverride) || 0,
+          displayOrder: parseInt(displayOrder) || 0,
+          isVisible,
+          images,
+          options: optionGroups,
+          needsAttention,
+        };
+
+        await updateDoc(docRef, updateData);
+      } else {
+        const priceVal = priceOverride !== "" ? parseFloat(priceOverride) : null;
+        
+        const updateData = {
+          description,
+          categoryOverride: categoryId || null,
+          displayOrder: parseInt(displayOrder) || 0,
+          isVisible,
+          images,
+          needsAttention,
+          "pricing.startingPriceOverride": priceVal,
+        };
+
+        await updateDoc(docRef, updateData);
+      }
+
       setSuccess(true);
+      // Refresh local model cache
+      const freshSnap = await getDoc(docRef);
+      if (freshSnap.exists()) {
+        setProduct(freshSnap.data());
+      }
     } catch (err) {
       console.error("Error saving product:", err);
       setError("Failed to save changes: " + err.message);
@@ -174,7 +294,17 @@ export default function AdminProductEditPage({ params: paramsPromise }) {
         <div>
           <h1 style={{ fontSize: "2rem", marginBottom: "0.25rem" }}>Edit Product</h1>
           <p style={{ color: "hsl(var(--muted-hsl))", fontSize: "0.95rem" }}>
-            {product?.sinalite?.name} <span style={{ fontSize: "0.8rem", padding: "0.1rem 0.4rem", backgroundColor: "hsl(var(--secondary-hsl))", borderRadius: "4px" }}>SKU: {product?.sinalite?.sku}</span>
+            {product?.isCustom ? (
+              <>
+                <span style={{ fontSize: "0.85rem", padding: "0.2rem 0.5rem", marginRight: "0.5rem", backgroundColor: "hsl(var(--primary-hsl) / 0.15)", color: "hsl(var(--primary-hsl))", borderRadius: "4px", fontWeight: 700 }}>Custom Product</span>
+                {name} <span style={{ fontSize: "0.8rem", padding: "0.1rem 0.4rem", backgroundColor: "hsl(var(--secondary-hsl))", borderRadius: "4px" }}>SKU: {sku}</span>
+              </>
+            ) : (
+              <>
+                <span style={{ fontSize: "0.85rem", padding: "0.2rem 0.5rem", marginRight: "0.5rem", backgroundColor: "hsl(var(--success-hsl) / 0.15)", color: "hsl(var(--success-hsl))", borderRadius: "4px", fontWeight: 700 }}>API Product</span>
+                {product?.sinalite?.name} <span style={{ fontSize: "0.8rem", padding: "0.1rem 0.4rem", backgroundColor: "hsl(var(--secondary-hsl))", borderRadius: "4px" }}>SKU: {product?.sinalite?.sku}</span>
+              </>
+            )}
           </p>
         </div>
         <button
@@ -203,28 +333,131 @@ export default function AdminProductEditPage({ params: paramsPromise }) {
       <form onSubmit={handleSave} style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr", gap: "2rem" }}>
         {/* Left column: Content details */}
         <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+          
+          {/* Custom specifications if product is custom */}
+          {product?.isCustom && (
+            <div className="card" style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+              <h2 style={{ fontSize: "1.2rem", marginBottom: "0.5rem" }}>Product Details</h2>
+              <div>
+                <label className="label">Product Name</label>
+                <input className="input" value={name} onChange={(e) => setName(e.target.value)} required />
+              </div>
+              <div>
+                <label className="label">SKU</label>
+                <input className="input" value={sku} onChange={(e) => setSku(e.target.value)} required />
+              </div>
+            </div>
+          )}
+
           {/* Description Card */}
           <div className="card">
             <h2 style={{ fontSize: "1.2rem", marginBottom: "1rem" }}>Product Description</h2>
             <p style={{ fontSize: "0.85rem", color: "hsl(var(--muted-hsl))", marginBottom: "0.75rem" }}>
-              Add a compelling storefront description for merchandising. Supports clean spacing.
+              Add storefront description details. Supports spacing.
             </p>
             <textarea
               className="input"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Provide information on paper weights, sizes, turnarounds, best practices..."
-              rows={8}
+              placeholder="Provide information on sizes, materials, templates..."
+              rows={6}
               required
               style={{ resize: "vertical", fontFamily: "inherit" }}
             />
           </div>
 
+          {/* Custom Options Manager if product is custom */}
+          {product?.isCustom && (
+            <div className="card">
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.5rem" }}>
+                <div>
+                  <h2 style={{ fontSize: "1.2rem" }}>Options & Variants Configurator</h2>
+                  <p style={{ fontSize: "0.8rem", color: "hsl(var(--muted-hsl))" }}>
+                    Configure dynamic upcharges for selectable custom sizing, colors, or printing placements.
+                  </p>
+                </div>
+                <button type="button" onClick={addOptionGroup} className="btn btn-outline" style={{ padding: "0.4rem 0.85rem", fontSize: "0.8rem", display: "flex", alignItems: "center", gap: "0.25rem" }}>
+                  <Plus size={14} /> Add Option Group
+                </button>
+              </div>
+
+              {optionGroups.length === 0 ? (
+                <div style={{ textAlign: "center", padding: "2rem", border: "1px dashed hsl(var(--border-hsl))", borderRadius: "var(--radius-md)", color: "hsl(var(--muted-hsl))" }}>
+                  No custom options specified. The product will sell at base price only.
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+                  {optionGroups.map((group, gIdx) => (
+                    <div key={gIdx} className="card" style={{ padding: "1.25rem", backgroundColor: "hsl(var(--secondary-hsl) / 0.15)", position: "relative" }}>
+                      <button
+                        type="button"
+                        onClick={() => removeOptionGroup(gIdx)}
+                        className="btn"
+                        style={{
+                          position: "absolute",
+                          top: "1rem",
+                          right: "1rem",
+                          padding: "0.3rem",
+                          backgroundColor: "rgba(220, 38, 38, 0.1)",
+                          color: "hsl(var(--destructive-hsl))",
+                          border: "none",
+                          cursor: "pointer",
+                          borderRadius: "var(--radius-sm)"
+                        }}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+
+                      <div style={{ maxWidth: "80%", marginBottom: "1rem" }}>
+                        <label className="label">Option Group Name</label>
+                        <input className="input" value={group.name} onChange={(e) => handleGroupNameChange(gIdx, e.target.value)} required />
+                      </div>
+
+                      <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+                        <label className="label">Choices & Price Upcharges</label>
+                        {group.choices.map((choice, cIdx) => (
+                          <div key={cIdx} style={{ display: "flex", gap: "0.75rem", alignItems: "center" }}>
+                            <input
+                              className="input"
+                              value={choice.name}
+                              onChange={(e) => handleChoiceChange(gIdx, cIdx, "name", e.target.value)}
+                              placeholder="Choice name (e.g. XL, Navy Blue)"
+                              style={{ flex: 2 }}
+                              required
+                            />
+                            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flex: 1 }}>
+                              <span style={{ fontSize: "0.85rem", fontWeight: 700 }}>+$</span>
+                              <input
+                                type="number"
+                                step="0.01"
+                                className="input"
+                                value={choice.priceUpcharge}
+                                onChange={(e) => handleChoiceChange(gIdx, cIdx, "priceUpcharge", e.target.value)}
+                              />
+                            </div>
+                            {group.choices.length > 1 && (
+                              <button type="button" onClick={() => removeChoice(gIdx, cIdx)} className="btn btn-outline" style={{ padding: "0.5rem", color: "hsl(var(--destructive-hsl))" }}>
+                                <Trash2 size={14} />
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                        <button type="button" onClick={() => addChoice(gIdx)} className="btn btn-outline" style={{ padding: "0.4rem 0.85rem", fontSize: "0.8rem", width: "fit-content", marginTop: "0.5rem", display: "flex", alignItems: "center", gap: "0.25rem" }}>
+                          <Plus size={12} /> Add Choice Row
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Media Images Card */}
           <div className="card">
             <h2 style={{ fontSize: "1.2rem", marginBottom: "0.5rem" }}>Storefront Images</h2>
             <p style={{ fontSize: "0.85rem", color: "hsl(var(--muted-hsl))", marginBottom: "1.5rem" }}>
-              Add product renders or photos uploaded directly to Cloudinary. Order matters.
+              Add product renders or photos uploaded directly. Order matters.
             </p>
 
             {/* Existing Images Grid */}
@@ -326,18 +559,21 @@ export default function AdminProductEditPage({ params: paramsPromise }) {
                 </button>
               </div>
 
-              {/* Category Override */}
+              {/* Category Select */}
               <div>
-                <label className="label" htmlFor="cat-override">Category Override</label>
-                <input
-                  id="cat-override"
+                <label className="label">Storefront Category</label>
+                <select
                   className="input"
-                  placeholder={product?.sinalite?.category || "Enter category..."}
-                  value={categoryOverride}
-                  onChange={(e) => setCategoryOverride(e.target.value)}
-                />
+                  value={categoryId}
+                  onChange={(e) => setCategoryId(e.target.value)}
+                >
+                  <option value="">Select category...</option>
+                  {categories.map(cat => (
+                    <option key={cat.id} value={cat.id}>{cat.name}</option>
+                  ))}
+                </select>
                 <span style={{ fontSize: "0.75rem", color: "hsl(var(--muted-hsl))", display: "block", marginTop: "0.25rem" }}>
-                  Override category mapping (defaults to SinaLite's <i>{product?.sinalite?.category}</i>).
+                  Choose which category this product is filed under.
                 </span>
               </div>
 
@@ -357,9 +593,11 @@ export default function AdminProductEditPage({ params: paramsPromise }) {
                 </span>
               </div>
 
-              {/* Starting Price Override */}
+              {/* Starting Price (Override for API, main price for Custom) */}
               <div>
-                <label className="label" htmlFor="price-override">Starting Price Override ($ CAD)</label>
+                <label className="label" htmlFor="price-override">
+                  {product?.isCustom ? "Base Selling Price ($ CAD)" : "Starting Price Override ($ CAD)"}
+                </label>
                 <input
                   id="price-override"
                   type="number"
@@ -370,34 +608,39 @@ export default function AdminProductEditPage({ params: paramsPromise }) {
                   onChange={(e) => setPriceOverride(e.target.value)}
                 />
                 <span style={{ fontSize: "0.75rem", color: "hsl(var(--muted-hsl))", display: "block", marginTop: "0.25rem" }}>
-                  Manually override starting price (calculated cheapest price is <i>${parseFloat(product?.pricing?.startingPrice || 0).toFixed(2)}</i>).
+                  {product?.isCustom 
+                    ? "Starting base price before option choices are selected."
+                    : `Manually override starting price (cheapest calculations: $${parseFloat(product?.pricing?.startingPrice || 0).toFixed(2)}).`
+                  }
                 </span>
               </div>
             </div>
           </div>
 
-          {/* SinaLite Specs */}
-          <div className="card" style={{ backgroundColor: "hsl(var(--secondary-hsl) / 0.2)" }}>
-            <h2 style={{ fontSize: "1.1rem", marginBottom: "1rem" }}>SinaLite Details</h2>
-            <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", fontSize: "0.85rem" }}>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: "hsl(var(--muted-hsl))" }}>SinaLite Category</span>
-                <span style={{ fontWeight: 600 }}>{product?.sinalite?.category}</span>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: "hsl(var(--muted-hsl))" }}>SKU Prefix</span>
-                <span style={{ fontWeight: 600 }}>{product?.sinalite?.sku}</span>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: "hsl(var(--muted-hsl))" }}>Option Groups Count</span>
-                <span style={{ fontWeight: 600 }}>{optionGroupsCount}</span>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <span style={{ color: "hsl(var(--muted-hsl))" }}>Last Synced At</span>
-                <span style={{ fontWeight: 600 }}>{product?.lastSyncedAt ? new Date(product.lastSyncedAt.seconds * 1000 || product.lastSyncedAt).toLocaleString() : "Never"}</span>
+          {/* SinaLite Specs (Only if API Product) */}
+          {!product?.isCustom && (
+            <div className="card" style={{ backgroundColor: "hsl(var(--secondary-hsl) / 0.2)" }}>
+              <h2 style={{ fontSize: "1.1rem", marginBottom: "1rem" }}>SinaLite Details</h2>
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", fontSize: "0.85rem" }}>
+                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                  <span style={{ color: "hsl(var(--muted-hsl))" }}>SinaLite Category</span>
+                  <span style={{ fontWeight: 600 }}>{product?.sinalite?.category}</span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                  <span style={{ color: "hsl(var(--muted-hsl))" }}>SKU Prefix</span>
+                  <span style={{ fontWeight: 600 }}>{product?.sinalite?.sku}</span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                  <span style={{ color: "hsl(var(--muted-hsl))" }}>Option Groups Count</span>
+                  <span style={{ fontWeight: 600 }}>{optionGroupsCount}</span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                  <span style={{ color: "hsl(var(--muted-hsl))" }}>Last Synced At</span>
+                  <span style={{ fontWeight: 600 }}>{product?.lastSyncedAt ? new Date(product.lastSyncedAt.seconds * 1000 || product.lastSyncedAt).toLocaleString() : "Never"}</span>
+                </div>
               </div>
             </div>
-          </div>
+          )}
         </div>
       </form>
     </div>

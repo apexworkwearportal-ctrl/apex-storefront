@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { db } from "@/lib/firebase";
 import { collection, getDocs, updateDoc, doc, query, orderBy } from "firebase/firestore";
-import { AlertCircle, Eye, EyeOff, Search, Edit3, CheckCircle2 } from "lucide-react";
+import { AlertCircle, Eye, EyeOff, Search, Edit3, CheckCircle2, Download, Upload, Plus } from "lucide-react";
 import Link from "next/link";
 
 export default function AdminProductsPage() {
@@ -18,21 +18,29 @@ export default function AdminProductsPage() {
     const fetchProducts = async () => {
       setLoading(true);
       try {
-        const q = query(collection(db, "products"), orderBy("sinalite.name", "asc"));
-        const snapshot = await getDocs(q);
+        // Fetch categories first
+        const catSnapshot = await getDocs(collection(db, "categories"));
+        const catList = [];
+        catSnapshot.forEach(d => {
+          catList.push({ id: d.id, ...d.data() });
+        });
+        setCategories(catList);
+
+        // Fetch products without orderBy to prevent Firestore from omitting custom products
+        const snapshot = await getDocs(collection(db, "products"));
         const list = [];
-        const cats = new Set();
-        
         snapshot.forEach(doc => {
-          const data = doc.data();
-          list.push({ id: doc.id, ...data });
-          if (data.sinalite?.category) {
-            cats.add(data.sinalite.category);
-          }
+          list.push({ id: doc.id, ...doc.data() });
+        });
+        
+        // Sort client-side by name
+        list.sort((a, b) => {
+          const nameA = a.name || a.sinalite?.name || "";
+          const nameB = b.name || b.sinalite?.name || "";
+          return nameA.localeCompare(nameB);
         });
         
         setProducts(list);
-        setCategories(Array.from(cats));
       } catch (err) {
         console.error("Error loading products:", err);
       } finally {
@@ -55,23 +63,123 @@ export default function AdminProductsPage() {
 
   // Filter products
   const filteredProducts = products.filter(p => {
-    const nameMatch = p.sinalite?.name?.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                      p.sinalite?.sku?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    const nameLower = (p.name || p.sinalite?.name || "").toLowerCase();
+    const skuLower = (p.sku || p.sinalite?.sku || "").toLowerCase();
+    const nameMatch = nameLower.includes(searchQuery.toLowerCase()) || 
+                      skuLower.includes(searchQuery.toLowerCase()) ||
                       p.id.includes(searchQuery);
+                      
     const attentionMatch = !filterAttention || p.needsAttention;
-    const catMatch = filterCategory === "all" || p.sinalite?.category === filterCategory;
+    
+    // Resolve category name/id to match selector
+    const catVal = p.categoryOverride || p.categoryId || p.sinalite?.category || "";
+    const catMatch = filterCategory === "all" || 
+                     catVal.toLowerCase().trim() === filterCategory.toLowerCase().trim() ||
+                     (categories.find(c => c.id === filterCategory)?.name || "").toLowerCase().trim() === catVal.toLowerCase().trim();
+                     
     return nameMatch && attentionMatch && catMatch;
   });
+
+  const handleExport = () => {
+    try {
+      const dataStr = JSON.stringify(products, null, 2);
+      const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
+      const exportFileDefaultName = `apex-products-export-${new Date().toISOString().slice(0,10)}.json`;
+      
+      const linkElement = document.createElement('a');
+      linkElement.setAttribute('href', dataUri);
+      linkElement.setAttribute('download', exportFileDefaultName);
+      linkElement.click();
+    } catch (err) {
+      console.error("Export failed:", err);
+      alert("Failed to export products: " + err.message);
+    }
+  };
+
+  const handleImport = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const importedData = JSON.parse(event.target.result);
+        if (!Array.isArray(importedData)) {
+          alert("Invalid file format. The file must contain a JSON array of products.");
+          return;
+        }
+
+        setLoading(true);
+        let successCount = 0;
+        let failCount = 0;
+
+        for (const item of importedData) {
+          if (!item.id) {
+            failCount++;
+            continue;
+          }
+
+          try {
+            const productRef = doc(db, "products", item.id);
+            const updatePayload = {};
+            
+            if (item.isVisible !== undefined) updatePayload.isVisible = Boolean(item.isVisible);
+            if (item.needsAttention !== undefined) updatePayload.needsAttention = Boolean(item.needsAttention);
+            if (item.customDescription !== undefined) updatePayload.customDescription = item.customDescription;
+            if (item.heroImage !== undefined) updatePayload.heroImage = item.heroImage;
+            if (item.fileRequired !== undefined) updatePayload.fileRequired = Boolean(item.fileRequired);
+            
+            if (item.sinalite) {
+              updatePayload.sinalite = {
+                ...item.sinalite
+              };
+            }
+            if (item.pricing) {
+              updatePayload.pricing = {
+                ...item.pricing
+              };
+            }
+
+            await updateDoc(productRef, updatePayload);
+            successCount++;
+          } catch (itemErr) {
+            console.error(`Failed to update product ${item.id}:`, itemErr);
+            failCount++;
+          }
+        }
+
+        alert(`Import completed!\nSuccessfully updated: ${successCount} products.\nFailed: ${failCount} products.`);
+        window.location.reload();
+      } catch (err) {
+        console.error("Import failed:", err);
+        alert("Failed to parse JSON file: " + err.message);
+        setLoading(false);
+      }
+    };
+    reader.readAsText(file);
+  };
 
   return (
     <div>
       {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "2rem" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "2rem", flexWrap: "wrap", gap: "1rem" }}>
         <div>
           <h1 style={{ fontSize: "2rem", marginBottom: "0.25rem" }}>Product Catalog</h1>
           <p style={{ color: "hsl(var(--muted-hsl))", fontSize: "0.95rem" }}>
             Manage synced items, configure descriptions, and edit visibility toggles.
           </p>
+        </div>
+        <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
+          <Link href="/admin/products/new" className="btn btn-primary" style={{ padding: "0.6rem 1.25rem", fontSize: "0.85rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+            <Plus size={16} /> Add Custom Product
+          </Link>
+          <button onClick={handleExport} className="btn btn-outline" style={{ padding: "0.6rem 1.25rem", fontSize: "0.85rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+            <Download size={16} /> Export Catalog
+          </button>
+          <label className="btn btn-primary" style={{ padding: "0.6rem 1.25rem", fontSize: "0.85rem", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "0.5rem" }}>
+            <Upload size={16} /> Import Catalog
+            <input type="file" accept=".json" onChange={handleImport} style={{ display: "none" }} />
+          </label>
         </div>
       </div>
 
@@ -104,7 +212,7 @@ export default function AdminProductsPage() {
         >
           <option value="all">All Categories</option>
           {categories.map(cat => (
-            <option key={cat} value={cat}>{cat}</option>
+            <option key={cat.id} value={cat.id}>{cat.name}</option>
           ))}
         </select>
 
@@ -145,9 +253,9 @@ export default function AdminProductsPage() {
                 <tr key={product.id} style={{ borderBottom: "1px solid hsl(var(--border-hsl))" }}>
                   {/* Name and SKU */}
                   <td style={{ padding: "1.25rem 1.5rem" }}>
-                    <p style={{ fontWeight: 600 }}>{product.sinalite?.name}</p>
+                    <p style={{ fontWeight: 600 }}>{product.name || product.sinalite?.name}</p>
                     <p style={{ fontSize: "0.8rem", color: "hsl(var(--muted-hsl))" }}>
-                      SKU: {product.sinalite?.sku} • ID: {product.id}
+                      SKU: {product.sku || product.sinalite?.sku} • ID: {product.id}
                     </p>
                   </td>
                   {/* Category */}
@@ -160,16 +268,30 @@ export default function AdminProductsPage() {
                       padding: "0.2rem 0.5rem",
                       borderRadius: "4px"
                     }}>
-                      {product.sinalite?.category}
+                      {categories.find(c => c.id === product.categoryId)?.name || product.categoryOverride || product.sinalite?.category || product.categoryId}
                     </span>
                   </td>
                   {/* Starting Price */}
                   <td style={{ padding: "1.25rem 1.5rem", fontWeight: 600 }}>
-                    ${parseFloat(product.pricing?.startingPrice || 0).toFixed(2)} CAD
+                    ${parseFloat(product.pricing?.startingPriceOverride || product.pricing?.startingPrice || 0).toFixed(2)} CAD
                   </td>
                   {/* Status Badges */}
                   <td style={{ padding: "1.25rem 1.5rem" }}>
-                    {product.needsAttention ? (
+                    {product.isCustom ? (
+                      <span style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "0.25rem",
+                        color: "hsl(var(--primary-hsl))",
+                        fontSize: "0.75rem",
+                        fontWeight: 700,
+                        backgroundColor: "hsl(var(--primary-hsl) / 0.1)",
+                        padding: "0.2rem 0.5rem",
+                        borderRadius: "4px"
+                      }}>
+                        Custom Product
+                      </span>
+                    ) : product.needsAttention ? (
                       <span style={{
                         display: "inline-flex",
                         alignItems: "center",
