@@ -36,6 +36,46 @@ export default function AdminCategoriesPage() {
   const [creating, setCreating] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
+  const [faqs, setFaqs] = useState([]);
+  const [newFaqs, setNewFaqs] = useState([]);
+
+  // FAQ Handlers for Editing Form
+  const handleAddFaq = () => {
+    setFaqs([...faqs, { question: "", answer: "" }]);
+  };
+
+  const handleUpdateFaq = (index, field, value) => {
+    const updated = faqs.map((f, idx) => {
+      if (idx === index) {
+        return { ...f, [field]: value };
+      }
+      return f;
+    });
+    setFaqs(updated);
+  };
+
+  const handleRemoveFaq = (index) => {
+    setFaqs(faqs.filter((_, idx) => idx !== index));
+  };
+
+  // FAQ Handlers for Creation Form
+  const handleAddNewFaq = () => {
+    setNewFaqs([...newFaqs, { question: "", answer: "" }]);
+  };
+
+  const handleUpdateNewFaq = (index, field, value) => {
+    const updated = newFaqs.map((f, idx) => {
+      if (idx === index) {
+        return { ...f, [field]: value };
+      }
+      return f;
+    });
+    setNewFaqs(updated);
+  };
+
+  const handleRemoveNewFaq = (index) => {
+    setNewFaqs(newFaqs.filter((_, idx) => idx !== index));
+  };
 
   const fetchCategories = async () => {
     setLoading(true);
@@ -67,6 +107,7 @@ export default function AdminCategoriesPage() {
     setShowOnHome(cat.showOnHome !== false);
     setHomeOrder(cat.homeOrder !== undefined ? cat.homeOrder : (cat.displayOrder || 0));
     setParentId(cat.parentId || "");
+    setFaqs(cat.faqs || []);
     setError("");
   };
 
@@ -114,7 +155,6 @@ export default function AdminCategoriesPage() {
     setError("");
 
     try {
-      const catRef = doc(db, "categories", editingId);
       await updateDoc(catRef, {
         name,
         description,
@@ -122,7 +162,8 @@ export default function AdminCategoriesPage() {
         displayOrder: parseInt(displayOrder) || 0,
         showOnHome: Boolean(showOnHome),
         homeOrder: parseInt(homeOrder) || 0,
-        parentId: parentId || null
+        parentId: parentId || null,
+        faqs: faqs || []
       });
       
       setEditingId(null);
@@ -163,7 +204,8 @@ export default function AdminCategoriesPage() {
         displayOrder: parseInt(newDisplayOrder) || 0,
         showOnHome: Boolean(newShowOnHome),
         homeOrder: parseInt(newHomeOrder) || 0,
-        parentId: newParentId || null
+        parentId: newParentId || null,
+        faqs: newFaqs || []
       });
 
       // Reset form states
@@ -175,6 +217,7 @@ export default function AdminCategoriesPage() {
       setNewShowOnHome(true);
       setNewHomeOrder(0);
       setNewParentId("");
+      setNewFaqs([]);
       setShowCreateForm(false);
 
       await fetchCategories();
@@ -339,6 +382,69 @@ export default function AdminCategoriesPage() {
                 </div>
               )}
             </div>
+
+            {/* FAQs Management Section */}
+            <div style={{ gridColumn: "1 / -1", borderTop: "1px solid hsl(var(--border-hsl))", paddingTop: "1.5rem", marginTop: "1rem" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
+                <h3 style={{ fontSize: "1rem", fontWeight: 700, margin: 0, color: "hsl(var(--primary-hsl))" }}>Category FAQs Accordion items</h3>
+                <button
+                  type="button"
+                  onClick={handleAddNewFaq}
+                  className="btn btn-outline"
+                  style={{ padding: "0.4rem 1rem", fontSize: "0.8rem", display: "flex", alignItems: "center", gap: "0.25rem" }}
+                >
+                  <Plus size={14} /> Add FAQ Item
+                </button>
+              </div>
+
+              {newFaqs.length === 0 ? (
+                <p style={{ color: "hsl(var(--muted-hsl))", fontSize: "0.85rem", fontStyle: "italic", margin: 0 }}>
+                  No FAQs added for this category yet. Click "Add FAQ Item" to set dynamic FAQs.
+                </p>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+                  {newFaqs.map((faq, index) => (
+                    <div key={index} style={{ display: "flex", gap: "1rem", alignItems: "flex-start" }}>
+                      <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                        <input
+                          className="input"
+                          placeholder="FAQ Question (e.g. What sizes are available?)"
+                          value={faq.question}
+                          onChange={(e) => handleUpdateNewFaq(index, "question", e.target.value)}
+                          required
+                          style={{ fontSize: "0.85rem" }}
+                        />
+                        <textarea
+                          className="input"
+                          placeholder="FAQ Answer details..."
+                          value={faq.answer}
+                          onChange={(e) => handleUpdateNewFaq(index, "answer", e.target.value)}
+                          required
+                          rows={2}
+                          style={{ fontSize: "0.85rem" }}
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveNewFaq(index)}
+                        className="btn"
+                        style={{
+                          padding: "0.5rem",
+                          backgroundColor: "hsl(var(--destructive-hsl) / 0.1)",
+                          color: "hsl(var(--destructive-hsl))",
+                          border: "none",
+                          borderRadius: "var(--radius-sm)",
+                          cursor: "pointer",
+                          marginTop: "0.25rem"
+                        }}
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </form>
         </div>
       )}
@@ -471,6 +577,69 @@ export default function AdminCategoriesPage() {
                         </div>
                       )}
                     </div>
+
+                    {/* FAQs Management Section */}
+                    <div style={{ gridColumn: "1 / -1", borderTop: "1px solid hsl(var(--border-hsl))", paddingTop: "1.5rem", marginTop: "1rem" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
+                        <h3 style={{ fontSize: "1rem", fontWeight: 700, margin: 0, color: "hsl(var(--primary-hsl))" }}>Category FAQs Accordion items</h3>
+                        <button
+                          type="button"
+                          onClick={handleAddFaq}
+                          className="btn btn-outline"
+                          style={{ padding: "0.4rem 1rem", fontSize: "0.8rem", display: "flex", alignItems: "center", gap: "0.25rem" }}
+                        >
+                          <Plus size={14} /> Add FAQ Item
+                        </button>
+                      </div>
+
+                      {faqs.length === 0 ? (
+                        <p style={{ color: "hsl(var(--muted-hsl))", fontSize: "0.85rem", fontStyle: "italic", margin: 0 }}>
+                          No FAQs added for this category yet. Click "Add FAQ Item" to set dynamic FAQs.
+                        </p>
+                      ) : (
+                        <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+                          {faqs.map((faq, index) => (
+                            <div key={index} style={{ display: "flex", gap: "1rem", alignItems: "flex-start" }}>
+                              <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                                <input
+                                  className="input"
+                                  placeholder="FAQ Question (e.g. What sizes are available?)"
+                                  value={faq.question}
+                                  onChange={(e) => handleUpdateFaq(index, "question", e.target.value)}
+                                  required
+                                  style={{ fontSize: "0.85rem" }}
+                                />
+                                <textarea
+                                  className="input"
+                                  placeholder="FAQ Answer details..."
+                                  value={faq.answer}
+                                  onChange={(e) => handleUpdateFaq(index, "answer", e.target.value)}
+                                  required
+                                  rows={2}
+                                  style={{ fontSize: "0.85rem" }}
+                                />
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveFaq(index)}
+                                className="btn"
+                                style={{
+                                  padding: "0.5rem",
+                                  backgroundColor: "hsl(var(--destructive-hsl) / 0.1)",
+                                  color: "hsl(var(--destructive-hsl))",
+                                  border: "none",
+                                  borderRadius: "var(--radius-sm)",
+                                  cursor: "pointer",
+                                  marginTop: "0.25rem"
+                                }}
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </form>
                 ) : (
                   <div style={{ display: "flex", justifyContent: "space-between", gap: "2rem", alignItems: "center", flexWrap: "wrap" }}>
@@ -501,6 +670,11 @@ export default function AdminCategoriesPage() {
                         }}>
                           {cat.showOnHome !== false ? "Visible on Home" : "Hidden on Home"}
                         </span>
+                        {cat.faqs && cat.faqs.length > 0 && (
+                          <span style={{ fontSize: "0.75rem", fontWeight: 700, padding: "0.1rem 0.4rem", backgroundColor: "hsl(var(--accent-hsl) / 0.1)", color: "hsl(var(--accent-hsl))", borderRadius: "4px" }}>
+                            FAQs: {cat.faqs.length}
+                          </span>
+                        )}
                       </div>
                       <p style={{ color: "hsl(var(--foreground-hsl) / 0.8)", fontSize: "0.9rem", marginBottom: "0.5rem" }}>
                         {cat.description || <i>No custom description provided yet.</i>}

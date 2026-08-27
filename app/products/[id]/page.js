@@ -314,7 +314,7 @@ export default function ProductDetailPage({ params: paramsPromise }) {
             <div className="card" style={{ padding: "2rem" }}>
               <h2 style={{ fontSize: "1.25rem", fontWeight: 800, marginBottom: "1rem", color: "hsl(var(--primary-hsl))" }}>Product Specifications</h2>
               <div style={{ whiteSpace: "pre-line", fontSize: "0.95rem", lineHeight: "1.6", color: "hsl(var(--foreground-hsl) / 0.85)" }}>
-                {description || "No specifications are currently defined for this product."}
+                {product.description || product.sinalite?.description || "No specifications are currently defined for this product."}
               </div>
             </div>
           </div>

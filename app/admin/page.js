@@ -2,361 +2,355 @@
 
 import { useEffect, useState } from "react";
 import { db } from "@/lib/firebase";
-import { collection, getDocs, updateDoc, doc, query, orderBy } from "firebase/firestore";
-import { AlertCircle, Eye, EyeOff, Search, Edit3, CheckCircle2, Download, Upload, Plus } from "lucide-react";
+import { collection, getDocs } from "firebase/firestore";
+import { 
+  ShoppingBag, 
+  Layers, 
+  RefreshCw, 
+  ArrowRight, 
+  AlertCircle, 
+  Plus, 
+  CheckCircle2, 
+  FileText, 
+  Package, 
+  Sparkles 
+} from "lucide-react";
 import Link from "next/link";
 
-export default function AdminProductsPage() {
-  const [products, setProducts] = useState([]);
+export default function AdminDashboardPage() {
   const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [filterAttention, setFilterAttention] = useState(false);
-  const [filterCategory, setFilterCategory] = useState("all");
-  const [categories, setCategories] = useState([]);
+  const [stats, setStats] = useState({
+    totalProducts: 0,
+    printProducts: 0,
+    customProducts: 0,
+    visibleProducts: 0,
+    hiddenProducts: 0,
+    needsAttention: 0,
+    totalCategories: 0,
+    parentCategories: 0,
+    subCategories: 0,
+    leafCategories: 0,
+    totalOrders: 0
+  });
+
+  const [attentionList, setAttentionList] = useState([]);
 
   useEffect(() => {
-    const fetchProducts = async () => {
+    const loadDashboardStats = async () => {
       setLoading(true);
       try {
-        // Fetch categories first
-        const catSnapshot = await getDocs(collection(db, "categories"));
-        const catList = [];
-        catSnapshot.forEach(d => {
-          catList.push({ id: d.id, ...d.data() });
-        });
-        setCategories(catList);
+        // Load categories
+        const catSnap = await getDocs(collection(db, "categories"));
+        let parents = 0;
+        let subs = 0;
+        let leafs = 0;
 
-        // Fetch products without orderBy to prevent Firestore from omitting custom products
-        const snapshot = await getDocs(collection(db, "products"));
-        const list = [];
-        snapshot.forEach(doc => {
-          list.push({ id: doc.id, ...doc.data() });
+        const catMap = {};
+        catSnap.forEach(d => {
+          catMap[d.id] = d.data();
         });
-        
-        // Sort client-side by name
-        list.sort((a, b) => {
-          const nameA = a.name || a.sinalite?.name || "";
-          const nameB = b.name || b.sinalite?.name || "";
-          return nameA.localeCompare(nameB);
+
+        Object.keys(catMap).forEach(id => {
+          const cat = catMap[id];
+          if (!cat.parentId) {
+            parents++;
+          } else {
+            const p = catMap[cat.parentId];
+            if (!p || !p.parentId) {
+              subs++;
+            } else {
+              leafs++;
+            }
+          }
         });
-        
-        setProducts(list);
+
+        // Load products
+        const prodSnap = await getDocs(collection(db, "products"));
+        let totalProd = 0;
+        let printProd = 0;
+        let customProd = 0;
+        let visibleProd = 0;
+        let hiddenProd = 0;
+        let attentionProd = 0;
+        const attentionItems = [];
+
+        prodSnap.forEach(d => {
+          const data = d.data();
+          totalProd++;
+          if (data.isCustom) {
+            customProd++;
+          } else {
+            printProd++;
+          }
+
+          if (data.isVisible) {
+            visibleProd++;
+          } else {
+            hiddenProd++;
+          }
+
+          if (data.needsAttention) {
+            attentionProd++;
+            if (attentionItems.length < 5) {
+              attentionItems.push({ id: d.id, ...data });
+            }
+          }
+        });
+
+        // Load orders
+        const ordersSnap = await getDocs(collection(db, "orders"));
+        const totalOrd = ordersSnap.size;
+
+        setStats({
+          totalProducts: totalProd,
+          printProducts: printProd,
+          customProducts: customProd,
+          visibleProducts: visibleProd,
+          hiddenProducts: hiddenProd,
+          needsAttention: attentionProd,
+          totalCategories: catSnap.size,
+          parentCategories: parents,
+          subCategories: subs,
+          leafCategories: leafs,
+          totalOrders: totalOrd
+        });
+
+        setAttentionList(attentionItems);
       } catch (err) {
-        console.error("Error loading products:", err);
+        console.error("Error loading dashboard stats:", err);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchProducts();
+    loadDashboardStats();
   }, []);
 
-  const handleToggleVisibility = async (productId, currentVisibility) => {
-    try {
-      const productRef = doc(db, "products", productId);
-      await updateDoc(productRef, { isVisible: !currentVisibility });
-      setProducts(prev => prev.map(p => p.id === productId ? { ...p, isVisible: !currentVisibility } : p));
-    } catch (err) {
-      console.error("Failed to update visibility:", err);
-    }
-  };
-
-  // Filter products
-  const filteredProducts = products.filter(p => {
-    const nameLower = (p.name || p.sinalite?.name || "").toLowerCase();
-    const skuLower = (p.sku || p.sinalite?.sku || "").toLowerCase();
-    const nameMatch = nameLower.includes(searchQuery.toLowerCase()) || 
-                      skuLower.includes(searchQuery.toLowerCase()) ||
-                      p.id.includes(searchQuery);
-                      
-    const attentionMatch = !filterAttention || p.needsAttention;
-    
-    // Resolve category name/id to match selector
-    const catVal = p.categoryOverride || p.categoryId || p.sinalite?.category || "";
-    const catMatch = filterCategory === "all" || 
-                     catVal.toLowerCase().trim() === filterCategory.toLowerCase().trim() ||
-                     (categories.find(c => c.id === filterCategory)?.name || "").toLowerCase().trim() === catVal.toLowerCase().trim();
-                     
-    return nameMatch && attentionMatch && catMatch;
-  });
-
-  const handleExport = () => {
-    try {
-      const dataStr = JSON.stringify(products, null, 2);
-      const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
-      const exportFileDefaultName = `apex-products-export-${new Date().toISOString().slice(0,10)}.json`;
-      
-      const linkElement = document.createElement('a');
-      linkElement.setAttribute('href', dataUri);
-      linkElement.setAttribute('download', exportFileDefaultName);
-      linkElement.click();
-    } catch (err) {
-      console.error("Export failed:", err);
-      alert("Failed to export products: " + err.message);
-    }
-  };
-
-  const handleImport = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      try {
-        const importedData = JSON.parse(event.target.result);
-        if (!Array.isArray(importedData)) {
-          alert("Invalid file format. The file must contain a JSON array of products.");
-          return;
-        }
-
-        setLoading(true);
-        let successCount = 0;
-        let failCount = 0;
-
-        for (const item of importedData) {
-          if (!item.id) {
-            failCount++;
-            continue;
-          }
-
-          try {
-            const productRef = doc(db, "products", item.id);
-            const updatePayload = {};
-            
-            if (item.isVisible !== undefined) updatePayload.isVisible = Boolean(item.isVisible);
-            if (item.needsAttention !== undefined) updatePayload.needsAttention = Boolean(item.needsAttention);
-            if (item.customDescription !== undefined) updatePayload.customDescription = item.customDescription;
-            if (item.heroImage !== undefined) updatePayload.heroImage = item.heroImage;
-            if (item.fileRequired !== undefined) updatePayload.fileRequired = Boolean(item.fileRequired);
-            
-            if (item.sinalite) {
-              updatePayload.sinalite = {
-                ...item.sinalite
-              };
-            }
-            if (item.pricing) {
-              updatePayload.pricing = {
-                ...item.pricing
-              };
-            }
-
-            await updateDoc(productRef, updatePayload);
-            successCount++;
-          } catch (itemErr) {
-            console.error(`Failed to update product ${item.id}:`, itemErr);
-            failCount++;
-          }
-        }
-
-        alert(`Import completed!\nSuccessfully updated: ${successCount} products.\nFailed: ${failCount} products.`);
-        window.location.reload();
-      } catch (err) {
-        console.error("Import failed:", err);
-        alert("Failed to parse JSON file: " + err.message);
-        setLoading(false);
-      }
-    };
-    reader.readAsText(file);
-  };
+  if (loading) {
+    return (
+      <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "60vh", color: "hsl(var(--muted-hsl))" }}>
+        Loading dashboard metrics...
+      </div>
+    );
+  }
 
   return (
-    <div>
-      {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "2rem", flexWrap: "wrap", gap: "1rem" }}>
-        <div>
-          <h1 style={{ fontSize: "2rem", marginBottom: "0.25rem" }}>Product Catalog</h1>
-          <p style={{ color: "hsl(var(--muted-hsl))", fontSize: "0.95rem" }}>
-            Manage synced items, configure descriptions, and edit visibility toggles.
-          </p>
+    <div style={{ display: "flex", flexDirection: "column", gap: "2.5rem" }}>
+      {/* Welcome Header */}
+      <div>
+        <span style={{ fontSize: "0.75rem", fontWeight: 800, textTransform: "uppercase", color: "hsl(var(--accent-hsl))", letterSpacing: "0.05em", display: "block", marginBottom: "0.25rem" }}>
+          Administrative Console
+        </span>
+        <h1 style={{ fontSize: "2rem", fontWeight: 900, color: "hsl(var(--primary-hsl))", letterSpacing: "-0.02em", margin: 0 }}>
+          Apex Workwear Dashboard
+        </h1>
+        <p style={{ color: "hsl(var(--muted-hsl))", fontSize: "0.95rem", fontWeight: 500, marginTop: "0.25rem" }}>
+          Real-time summary statistics, database counts, catalog sync metrics, and shortcut operations.
+        </p>
+      </div>
+
+      {/* KPI Cards Grid */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "1.5rem" }}>
+        {/* Products KPI */}
+        <div className="card card-hover" style={{ padding: "1.5rem", display: "flex", flexDirection: "column", gap: "1rem", border: "1px solid hsl(var(--border-hsl))", position: "relative", overflow: "hidden" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ fontSize: "0.8rem", fontWeight: 700, color: "hsl(var(--muted-hsl))", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              Total Products
+            </span>
+            <div style={{ width: "32px", height: "32px", borderRadius: "50%", backgroundColor: "hsl(var(--accent-hsl) / 0.1)", display: "flex", alignItems: "center", justifyContent: "center", color: "hsl(var(--accent-hsl))" }}>
+              <Package size={16} />
+            </div>
+          </div>
+          <div>
+            <h2 style={{ fontSize: "2.25rem", fontWeight: 900, margin: 0, lineHeight: 1 }}>{stats.totalProducts}</h2>
+            <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem", fontSize: "0.75rem", fontWeight: 650 }}>
+              <span style={{ color: "hsl(var(--primary-hsl))" }}>{stats.printProducts} Print</span>
+              <span style={{ color: "hsl(var(--muted-hsl))" }}>•</span>
+              <span style={{ color: "hsl(var(--accent-hsl))" }}>{stats.customProducts} Custom</span>
+            </div>
+          </div>
+          <div style={{ borderTop: "1px solid hsl(var(--border-hsl))", paddingTop: "0.75rem", display: "flex", justifyContent: "space-between", fontSize: "0.75rem", color: "hsl(var(--muted-hsl))" }}>
+            <span>Visible: {stats.visibleProducts}</span>
+            <span>Hidden: {stats.hiddenProducts}</span>
+          </div>
         </div>
-        <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
-          <Link href="/admin/products/new" className="btn btn-primary" style={{ padding: "0.6rem 1.25rem", fontSize: "0.85rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
-            <Plus size={16} /> Add Custom Product
-          </Link>
-          <button onClick={handleExport} className="btn btn-outline" style={{ padding: "0.6rem 1.25rem", fontSize: "0.85rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
-            <Download size={16} /> Export Catalog
-          </button>
-          <label className="btn btn-primary" style={{ padding: "0.6rem 1.25rem", fontSize: "0.85rem", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: "0.5rem" }}>
-            <Upload size={16} /> Import Catalog
-            <input type="file" accept=".json" onChange={handleImport} style={{ display: "none" }} />
-          </label>
+
+        {/* Categories KPI */}
+        <div className="card card-hover" style={{ padding: "1.5rem", display: "flex", flexDirection: "column", gap: "1rem", border: "1px solid hsl(var(--border-hsl))", position: "relative", overflow: "hidden" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ fontSize: "0.8rem", fontWeight: 700, color: "hsl(var(--muted-hsl))", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              Categories Taxonomy
+            </span>
+            <div style={{ width: "32px", height: "32px", borderRadius: "50%", backgroundColor: "hsl(var(--primary-hsl) / 0.15)", display: "flex", alignItems: "center", justifyContent: "center", color: "hsl(var(--primary-hsl))" }}>
+              <Layers size={16} />
+            </div>
+          </div>
+          <div>
+            <h2 style={{ fontSize: "2.25rem", fontWeight: 900, margin: 0, lineHeight: 1 }}>{stats.totalCategories}</h2>
+            <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem", fontSize: "0.75rem", fontWeight: 650 }}>
+              <span style={{ color: "hsl(var(--muted-hsl))" }}>{stats.parentCategories} L1</span>
+              <span style={{ color: "hsl(var(--muted-hsl))" }}>•</span>
+              <span style={{ color: "hsl(var(--muted-hsl))" }}>{stats.subCategories} L2</span>
+              <span style={{ color: "hsl(var(--muted-hsl))" }}>•</span>
+              <span style={{ color: "hsl(var(--muted-hsl))" }}>{stats.leafCategories} L3</span>
+            </div>
+          </div>
+          <div style={{ borderTop: "1px solid hsl(var(--border-hsl))", paddingTop: "0.75rem", display: "flex", justifyContent: "space-between", fontSize: "0.75rem", color: "hsl(var(--muted-hsl))" }}>
+            <span>Database Taxonomy Restructured</span>
+          </div>
+        </div>
+
+        {/* Sync Status KPI */}
+        <div className="card card-hover" style={{ padding: "1.5rem", display: "flex", flexDirection: "column", gap: "1rem", border: "1px solid hsl(var(--border-hsl))", position: "relative", overflow: "hidden" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ fontSize: "0.8rem", fontWeight: 700, color: "hsl(var(--muted-hsl))", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              Catalog Sync Status
+            </span>
+            <div style={{ width: "32px", height: "32px", borderRadius: "50%", backgroundColor: "hsl(var(--success-hsl) / 0.1)", display: "flex", alignItems: "center", justifyContent: "center", color: "hsl(var(--success-hsl))" }}>
+              <RefreshCw size={16} />
+            </div>
+          </div>
+          <div>
+            <h2 style={{ fontSize: "2.25rem", fontWeight: 900, margin: 0, lineHeight: 1 }}>
+              {stats.totalProducts > 0 ? Math.round(((stats.totalProducts - stats.needsAttention) / stats.totalProducts) * 100) : 100}%
+            </h2>
+            <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem", fontSize: "0.75rem", fontWeight: 650 }}>
+              <span style={{ color: "hsl(var(--success-hsl))" }}>SinaLite Online</span>
+            </div>
+          </div>
+          <div style={{ borderTop: "1px solid hsl(var(--border-hsl))", paddingTop: "0.75rem", display: "flex", justifyContent: "space-between", fontSize: "0.75rem", color: "hsl(var(--muted-hsl))" }}>
+            <span style={{ color: stats.needsAttention > 0 ? "hsl(var(--destructive-hsl))" : "inherit", fontWeight: stats.needsAttention > 0 ? 700 : "normal" }}>
+              {stats.needsAttention} products need attention
+            </span>
+          </div>
+        </div>
+
+        {/* Orders KPI */}
+        <div className="card card-hover" style={{ padding: "1.5rem", display: "flex", flexDirection: "column", gap: "1rem", border: "1px solid hsl(var(--border-hsl))", position: "relative", overflow: "hidden" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ fontSize: "0.8rem", fontWeight: 700, color: "hsl(var(--muted-hsl))", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              Storefront Orders
+            </span>
+            <div style={{ width: "32px", height: "32px", borderRadius: "50%", backgroundColor: "hsl(var(--primary-hsl) / 0.1)", display: "flex", alignItems: "center", justifyContent: "center", color: "hsl(var(--primary-hsl))" }}>
+              <ShoppingBag size={16} />
+            </div>
+          </div>
+          <div>
+            <h2 style={{ fontSize: "2.25rem", fontWeight: 900, margin: 0, lineHeight: 1 }}>{stats.totalOrders}</h2>
+            <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem", fontSize: "0.75rem", fontWeight: 650 }}>
+              <span style={{ color: "hsl(var(--muted-hsl))" }}>Connected with Stripe</span>
+            </div>
+          </div>
+          <div style={{ borderTop: "1px solid hsl(var(--border-hsl))", paddingTop: "0.75rem", display: "flex", justifyContent: "space-between", fontSize: "0.75rem", color: "hsl(var(--muted-hsl))" }}>
+            <span>Active Checkout Sessions</span>
+          </div>
         </div>
       </div>
 
-      {/* Filter Toolbar */}
-      <div className="card" style={{ padding: "1.25rem", marginBottom: "2rem", display: "flex", flexWrap: "wrap", gap: "1rem", alignItems: "center" }}>
-        {/* Search */}
-        <div style={{ position: "relative", flex: 1, minWidth: "260px" }}>
-          <input
-            className="input"
-            placeholder="Search by name, SKU, or ID..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            style={{ paddingLeft: "2.5rem" }}
-          />
-          <Search size={18} style={{
-            position: "absolute",
-            left: "0.85rem",
-            top: "50%",
-            transform: "translateY(-50%)",
-            color: "hsl(var(--foreground-hsl) / 0.4)"
-          }} />
+      {/* Main Grid: Shortcuts & Attention List */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1.2fr", gap: "2.5rem" }} className="catalog-grid">
+        
+        {/* Shortcuts Column */}
+        <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+          <h3 style={{ fontSize: "1.1rem", fontWeight: 800, textTransform: "uppercase", color: "hsl(var(--muted-hsl))", letterSpacing: "0.05em", margin: 0 }}>
+            Operational Shortcuts
+          </h3>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: "1rem" }}>
+            {/* Catalog Syncer shortcut */}
+            <Link href="/admin/sync" className="card card-hover" style={{ textDecoration: "none", color: "inherit", padding: "1.25rem", border: "1px solid hsl(var(--border-hsl))", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div>
+                <p style={{ fontWeight: 700, color: "hsl(var(--primary-hsl))" }}>SinaLite Sync Operations</p>
+                <p style={{ fontSize: "0.8rem", color: "hsl(var(--muted-hsl))", marginTop: "0.15rem" }}>Trigger background catalog updates from supplier API.</p>
+              </div>
+              <ArrowRight size={18} style={{ color: "hsl(var(--accent-hsl))" }} />
+            </Link>
+
+            {/* Category manager shortcut */}
+            <Link href="/admin/categories" className="card card-hover" style={{ textDecoration: "none", color: "inherit", padding: "1.25rem", border: "1px solid hsl(var(--border-hsl))", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div>
+                <p style={{ fontWeight: 700, color: "hsl(var(--primary-hsl))" }}>Category Taxonomy Editor</p>
+                <p style={{ fontSize: "0.8rem", color: "hsl(var(--muted-hsl))", marginTop: "0.15rem" }}>Edit hierarchy trees, hero images, descriptions, and FAQs.</p>
+              </div>
+              <ArrowRight size={18} style={{ color: "hsl(var(--accent-hsl))" }} />
+            </Link>
+
+            {/* Custom apparel product creator shortcut */}
+            <Link href="/admin/products/new" className="card card-hover" style={{ textDecoration: "none", color: "inherit", padding: "1.25rem", border: "1px solid hsl(var(--border-hsl))", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div>
+                <p style={{ fontWeight: 700, color: "hsl(var(--primary-hsl))" }}>Add New Custom Apparel</p>
+                <p style={{ fontSize: "0.8rem", color: "hsl(var(--muted-hsl))", marginTop: "0.15rem" }}>Upload custom hat, shirt, or jacket items to Firestore database.</p>
+              </div>
+              <ArrowRight size={18} style={{ color: "hsl(var(--accent-hsl))" }} />
+            </Link>
+
+            {/* Order dashboard shortcut */}
+            <Link href="/admin/orders" className="card card-hover" style={{ textDecoration: "none", color: "inherit", padding: "1.25rem", border: "1px solid hsl(var(--border-hsl))", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div>
+                <p style={{ fontWeight: 700, color: "hsl(var(--primary-hsl))" }}>Customer Order Manager</p>
+                <p style={{ fontSize: "0.8rem", color: "hsl(var(--muted-hsl))", marginTop: "0.15rem" }}>Track checkouts, shipping labels, and payment completions.</p>
+              </div>
+              <ArrowRight size={18} style={{ color: "hsl(var(--accent-hsl))" }} />
+            </Link>
+
+            {/* Browse catalog list shortcut */}
+            <Link href="/admin/products" className="card card-hover" style={{ textDecoration: "none", color: "inherit", padding: "1.25rem", border: "1px solid hsl(var(--border-hsl))", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div>
+                <p style={{ fontWeight: 700, color: "hsl(var(--primary-hsl))" }}>Browse Full Products List</p>
+                <p style={{ fontSize: "0.8rem", color: "hsl(var(--muted-hsl))", marginTop: "0.15rem" }}>Configure tags, toggle visibility, and edit specific custom details.</p>
+              </div>
+              <ArrowRight size={18} style={{ color: "hsl(var(--accent-hsl))" }} />
+            </Link>
+          </div>
         </div>
 
-        {/* Category select */}
-        <select
-          className="input"
-          value={filterCategory}
-          onChange={(e) => setFilterCategory(e.target.value)}
-          style={{ width: "200px" }}
-        >
-          <option value="all">All Categories</option>
-          {categories.map(cat => (
-            <option key={cat.id} value={cat.id}>{cat.name}</option>
-          ))}
-        </select>
+        {/* Attention Items Column */}
+        <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+          <h3 style={{ fontSize: "1.1rem", fontWeight: 800, textTransform: "uppercase", color: "hsl(var(--muted-hsl))", letterSpacing: "0.05em", margin: 0 }}>
+            Attention Required ({stats.needsAttention} Items)
+          </h3>
 
-        {/* Needs Attention Filter Toggle */}
-        <button
-          onClick={() => setFilterAttention(!filterAttention)}
-          className={`btn ${filterAttention ? "btn-primary" : "btn-outline"}`}
-          style={{ padding: "0.6rem 1.25rem", fontSize: "0.85rem" }}
-        >
-          <AlertCircle size={16} /> Needs Attention
-        </button>
+          <div className="card" style={{ padding: 0, border: "1px solid hsl(var(--border-hsl))", overflow: "hidden" }}>
+            {attentionList.length === 0 ? (
+              <div style={{ padding: "3rem", textAlign: "center", color: "hsl(var(--muted-hsl))" }}>
+                <CheckCircle2 size={36} style={{ color: "hsl(var(--success-hsl))", marginBottom: "0.5rem", display: "inline-block" }} />
+                <p style={{ fontSize: "0.9rem", fontWeight: 600 }}>All items synced and complete!</p>
+              </div>
+            ) : (
+              <div>
+                <div style={{ padding: "1rem 1.25rem", borderBottom: "1px solid hsl(var(--border-hsl))", backgroundColor: "hsl(var(--secondary-hsl) / 0.1)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "hsl(var(--muted-hsl))" }}>PRODUCT DETAILS</span>
+                  <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "hsl(var(--muted-hsl))" }}>ACTION</span>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column" }}>
+                  {attentionList.map(item => (
+                    <div key={item.id} style={{ padding: "1rem 1.25rem", borderBottom: "1px solid hsl(var(--border-hsl))", display: "flex", justifyContent: "space-between", alignItems: "center", gap: "1.5rem" }}>
+                      <div style={{ flex: 1 }}>
+                        <p style={{ fontWeight: 700, fontSize: "0.9rem" }}>{item.name || item.sinalite?.name}</p>
+                        <p style={{ fontSize: "0.75rem", color: "hsl(var(--muted-hsl))", marginTop: "0.1rem" }}>
+                          SKU: {item.sku || item.sinalite?.sku} • {item.sinalite?.category || "Unknown Category"}
+                        </p>
+                      </div>
+                      <Link 
+                        href={`/admin/products/${item.id}`} 
+                        className="btn btn-outline" 
+                        style={{ padding: "0.4rem 0.75rem", fontSize: "0.75rem", display: "flex", alignItems: "center", gap: "0.25rem", whiteSpace: "nowrap" }}
+                      >
+                        Add Info <ArrowRight size={12} />
+                      </Link>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ padding: "1rem", textAlign: "center", backgroundColor: "hsl(var(--secondary-hsl) / 0.05)" }}>
+                  <Link href="/admin/products?attention=true" style={{ fontSize: "0.8rem", fontWeight: 700, color: "hsl(var(--accent-hsl))", textDecoration: "none" }}>
+                    View all items requiring info ({stats.needsAttention}) →
+                  </Link>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
-
-      {/* Main product table */}
-      {loading ? (
-        <div style={{ textAlign: "center", padding: "4rem", color: "hsl(var(--muted-hsl))" }}>
-          Loading products catalog...
-        </div>
-      ) : filteredProducts.length === 0 ? (
-        <div className="card" style={{ textAlign: "center", padding: "4rem", color: "hsl(var(--muted-hsl))" }}>
-          No products match your filters.
-        </div>
-      ) : (
-        <div className="card" style={{ padding: 0, overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: "0.95rem" }}>
-            <thead>
-              <tr style={{ borderBottom: "1px solid hsl(var(--border-hsl))", backgroundColor: "hsl(var(--secondary-hsl) / 0.2)" }}>
-                <th style={{ padding: "1rem 1.5rem", fontWeight: 600 }}>Product</th>
-                <th style={{ padding: "1rem 1.5rem", fontWeight: 600 }}>Category</th>
-                <th style={{ padding: "1rem 1.5rem", fontWeight: 600 }}>Starting Price</th>
-                <th style={{ padding: "1rem 1.5rem", fontWeight: 600 }}>Status</th>
-                <th style={{ padding: "1rem 1.5rem", fontWeight: 600 }}>Visibility</th>
-                <th style={{ padding: "1rem 1.5rem", fontWeight: 600 }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredProducts.map(product => (
-                <tr key={product.id} style={{ borderBottom: "1px solid hsl(var(--border-hsl))" }}>
-                  {/* Name and SKU */}
-                  <td style={{ padding: "1.25rem 1.5rem" }}>
-                    <p style={{ fontWeight: 600 }}>{product.name || product.sinalite?.name}</p>
-                    <p style={{ fontSize: "0.8rem", color: "hsl(var(--muted-hsl))" }}>
-                      SKU: {product.sku || product.sinalite?.sku} • ID: {product.id}
-                    </p>
-                  </td>
-                  {/* Category */}
-                  <td style={{ padding: "1.25rem 1.5rem" }}>
-                    <span style={{
-                      display: "inline-block",
-                      backgroundColor: "hsl(var(--secondary-hsl))",
-                      fontSize: "0.8rem",
-                      fontWeight: 500,
-                      padding: "0.2rem 0.5rem",
-                      borderRadius: "4px"
-                    }}>
-                      {categories.find(c => c.id === product.categoryId)?.name || product.categoryOverride || product.sinalite?.category || product.categoryId}
-                    </span>
-                  </td>
-                  {/* Starting Price */}
-                  <td style={{ padding: "1.25rem 1.5rem", fontWeight: 600 }}>
-                    ${parseFloat(product.pricing?.startingPriceOverride || product.pricing?.startingPrice || 0).toFixed(2)} CAD
-                  </td>
-                  {/* Status Badges */}
-                  <td style={{ padding: "1.25rem 1.5rem" }}>
-                    {product.isCustom ? (
-                      <span style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: "0.25rem",
-                        color: "hsl(var(--primary-hsl))",
-                        fontSize: "0.75rem",
-                        fontWeight: 700,
-                        backgroundColor: "hsl(var(--primary-hsl) / 0.1)",
-                        padding: "0.2rem 0.5rem",
-                        borderRadius: "4px"
-                      }}>
-                        Custom Product
-                      </span>
-                    ) : product.needsAttention ? (
-                      <span style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: "0.25rem",
-                        color: "hsl(var(--destructive-hsl))",
-                        fontSize: "0.75rem",
-                        fontWeight: 700,
-                        backgroundColor: "hsl(var(--destructive-hsl) / 0.1)",
-                        padding: "0.2rem 0.5rem",
-                        borderRadius: "4px"
-                      }}>
-                        <AlertCircle size={12} /> Needs Info
-                      </span>
-                    ) : (
-                      <span style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: "0.25rem",
-                        color: "hsl(var(--success-hsl))",
-                        fontSize: "0.75rem",
-                        fontWeight: 700,
-                        backgroundColor: "hsl(var(--success-hsl) / 0.1)",
-                        padding: "0.2rem 0.5rem",
-                        borderRadius: "4px"
-                      }}>
-                        <CheckCircle2 size={12} /> Synced
-                      </span>
-                    )}
-                  </td>
-                  {/* Visibility Toggle */}
-                  <td style={{ padding: "1.25rem 1.5rem" }}>
-                    <button
-                      onClick={() => handleToggleVisibility(product.id, product.isVisible)}
-                      className="btn"
-                      style={{
-                        padding: "0.4rem 0.75rem",
-                        fontSize: "0.8rem",
-                        backgroundColor: product.isVisible ? "hsl(var(--success-hsl) / 0.1)" : "hsl(var(--secondary-hsl))",
-                        color: product.isVisible ? "hsl(var(--success-hsl))" : "hsl(var(--muted-hsl))",
-                        border: "1px solid transparent"
-                      }}
-                    >
-                      {product.isVisible ? (
-                        <span style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}><Eye size={14} /> Visible</span>
-                      ) : (
-                        <span style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}><EyeOff size={14} /> Hidden</span>
-                      )}
-                    </button>
-                  </td>
-                  {/* Action */}
-                  <td style={{ padding: "1.25rem 1.5rem" }}>
-                    <Link
-                      href={`/admin/products/${product.id}`}
-                      className="btn btn-outline"
-                      style={{ padding: "0.4rem 0.75rem", fontSize: "0.8rem" }}
-                    >
-                      <Edit3 size={14} /> Edit
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
     </div>
   );
 }

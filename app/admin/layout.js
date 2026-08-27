@@ -1,7 +1,7 @@
 "use client";
 
 import { useAuth } from "@/lib/auth-context";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { useEffect } from "react";
 import Link from "next/link";
 import { 
@@ -12,12 +12,14 @@ import {
   ShieldAlert,
   ChevronRight,
   LogOut,
-  Printer
+  Printer,
+  Package
 } from "lucide-react";
 
 export default function AdminLayout({ children }) {
   const { user, userData, loading, logout } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
 
   const isAdmin = user && (
     userData?.role === "admin" || 
@@ -105,18 +107,40 @@ export default function AdminLayout({ children }) {
 
           {/* Nav list */}
           <nav style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-            <Link href="/admin" className="btn" style={{ justifyContent: "flex-start", fontSize: "0.9rem" }}>
-              <LayoutDashboard size={18} /> Products Catalog
-            </Link>
-            <Link href="/admin/sync" className="btn" style={{ justifyContent: "flex-start", fontSize: "0.9rem" }}>
-              <RefreshCw size={18} /> Sync Dashboard
-            </Link>
-            <Link href="/admin/categories" className="btn" style={{ justifyContent: "flex-start", fontSize: "0.9rem" }}>
-              <FolderEdit size={18} /> Categories
-            </Link>
-            <Link href="/admin/orders" className="btn" style={{ justifyContent: "flex-start", fontSize: "0.9rem" }}>
-              <ShoppingBag size={18} /> Order Manager
-            </Link>
+            {[
+              { label: "Dashboard", href: "/admin", icon: LayoutDashboard },
+              { label: "Products Catalog", href: "/admin/products", icon: Package },
+              { label: "Sync Dashboard", href: "/admin/sync", icon: RefreshCw },
+              { label: "Categories", href: "/admin/categories", icon: FolderEdit },
+              { label: "Order Manager", href: "/admin/orders", icon: ShoppingBag }
+            ].map(item => {
+              const Icon = item.icon;
+              const active = item.href === "/admin" ? pathname === "/admin" : pathname.startsWith(item.href);
+              return (
+                <Link 
+                  key={item.href}
+                  href={item.href} 
+                  className="btn" 
+                  style={{ 
+                    justifyContent: "flex-start", 
+                    fontSize: "0.85rem",
+                    fontWeight: 650,
+                    backgroundColor: active ? "hsl(var(--accent-hsl))" : "transparent",
+                    color: active ? "white" : "hsl(var(--foreground-hsl) / 0.85)",
+                    border: "none",
+                    borderRadius: "var(--radius-sm)",
+                    padding: "0.6rem 0.85rem",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.75rem",
+                    transition: "all 0.2s ease"
+                  }}
+                >
+                  <Icon size={16} style={{ color: active ? "white" : "hsl(var(--muted-hsl))" }} />
+                  {item.label}
+                </Link>
+              );
+            })}
           </nav>
         </div>
 

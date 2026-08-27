@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Printer, Phone, Mail, Clock, MapPin } from "lucide-react";
+import { Phone, Mail, Clock, MapPin } from "lucide-react";
 
 export default function Footer() {
   return (
@@ -60,7 +60,7 @@ export default function Footer() {
           </h3>
           <nav style={{ display: "flex", flexDirection: "column", gap: "0.75rem", fontSize: "0.9rem" }}>
             <Link href="/products" className="footer-link">Print Products</Link>
-            <Link href="/products?category=apparel" className="footer-link">Apparel</Link>
+            <Link href="/products" className="footer-link">Apparel</Link>
             <Link href="/about" className="footer-link">Why Choose Us</Link>
             <Link href="/account" className="footer-link">Customer Portal</Link>
           </nav>
@@ -79,23 +79,26 @@ export default function Footer() {
               <Mail size={16} /> info@apexworkwear.ca
             </a>
             <div style={{ display: "flex", alignItems: "flex-start", gap: "0.5rem" }}>
-              <MapPin size={16} style={{ marginTop: "0.2rem" }} />
-              <span>Greater Toronto Area, Ontario, Canada</span>
+              <MapPin size={16} style={{ marginTop: "0.2rem", shrink: 0 }} />
+              <span>1515 Britannia Rd E, Unit 14-15, Mississauga, ON L4W 4K1</span>
             </div>
           </div>
         </div>
 
         {/* Business Hours */}
         <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-          <h3 style={{ fontSize: "1.05rem", textTransform: "uppercase", letterSpacing: "0.55", color: "hsl(var(--foreground-hsl) / 0.5)", fontWeight: 700 }}>
+          <h3 style={{ fontSize: "1.05rem", textTransform: "uppercase", letterSpacing: "0.05em", color: "hsl(var(--foreground-hsl) / 0.5)", fontWeight: 700 }}>
             Business Hours
           </h3>
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", fontSize: "0.9rem", color: "hsl(var(--foreground-hsl) / 0.8)" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", fontSize: "0.9rem", color: "hsl(var(--foreground-hsl) / 0.8)" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
               <Clock size={16} />
-              <span>Monday – Friday: 9 AM – 6 PM</span>
+              <span>Monday – Friday: 9:00 AM – 8:30 PM</span>
             </div>
-            <p style={{ fontSize: "0.85rem", color: "hsl(var(--muted-hsl))", lineHeight: "1.4" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.85rem", color: "hsl(var(--muted-hsl))", paddingLeft: "1.5rem" }}>
+              <span>Saturday & Sunday: Closed</span>
+            </div>
+            <p style={{ fontSize: "0.85rem", color: "hsl(var(--muted-hsl))", lineHeight: "1.4", marginTop: "0.5rem" }}>
               Configure your print specifications, view mockups, and order online 24/7.
             </p>
           </div>
@@ -117,9 +120,10 @@ export default function Footer() {
         gap: "1rem"
       }}>
         <span>© {new Date().getFullYear()} Apex Workwear. All rights reserved.</span>
-        <div style={{ display: "flex", gap: "1.5rem" }}>
-          <Link href="/" className="footer-link">Privacy Policy</Link>
-          <Link href="/" className="footer-link">Terms of Service</Link>
+        <div style={{ display: "flex", gap: "1.5rem", flexWrap: "wrap" }}>
+          <Link href="/privacy" className="footer-link">Privacy Policy</Link>
+          <Link href="/terms" className="footer-link">Terms & Conditions</Link>
+          <Link href="/refunds" className="footer-link">Refund Policy</Link>
         </div>
       </div>
 
