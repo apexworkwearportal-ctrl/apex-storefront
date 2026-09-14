@@ -106,6 +106,8 @@ async function handleSync(req) {
         
         // Preserving admin fields (merging logic)
         const images = existingData.images || [];
+        const shortDescription = existingData.shortDescription || "";
+        const longDescription = existingData.longDescription || existingData.description || "";
         const description = existingData.description || "";
         const isVisible = existingData.isVisible !== undefined ? existingData.isVisible : true;
         const displayOrder = existingData.displayOrder !== undefined ? existingData.displayOrder : 0;
@@ -113,7 +115,7 @@ async function handleSync(req) {
         const startingPriceOverride = existingData.pricing?.startingPriceOverride || null;
         
         // Determine needsAttention
-        const needsAttention = images.length === 0 || !description;
+        const needsAttention = images.length === 0 || (!shortDescription && !longDescription && !description);
         
         const mergedProductData = {
           sinalite: {
@@ -129,6 +131,8 @@ async function handleSync(req) {
             priceLastSyncedAt: new Date(),
           },
           images,
+          shortDescription,
+          longDescription,
           description,
           isVisible,
           needsAttention,

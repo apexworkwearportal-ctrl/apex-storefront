@@ -22,7 +22,8 @@ export default function AdminNewProductPage() {
   // Form states
   const [name, setName] = useState("");
   const [sku, setSku] = useState("");
-  const [description, setDescription] = useState("");
+  const [shortDescription, setShortDescription] = useState("");
+  const [longDescription, setLongDescription] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [basePrice, setBasePrice] = useState("");
   const [images, setImages] = useState([]);
@@ -181,14 +182,16 @@ export default function AdminNewProductPage() {
         isVisible: true,
         name,
         sku: sku || `custom-${docRef.id.slice(0, 6)}`,
-        description,
+        shortDescription,
+        longDescription,
+        description: longDescription || shortDescription,
         categoryId,
         pricing: {
           startingPrice: parseFloat(basePrice) || 0
         },
         images,
         options: optionGroups,
-        needsAttention: images.length === 0 || !description,
+        needsAttention: images.length === 0 || (!shortDescription && !longDescription),
         createdAt: new Date()
       };
 
@@ -288,8 +291,13 @@ export default function AdminNewProductPage() {
             </div>
 
             <div>
-              <label className="label">Product Description</label>
-              <textarea className="input" value={description} onChange={(e) => setDescription(e.target.value)} rows={6} placeholder="Provide description, material options, layout specs, artwork templates details..." required />
+              <label className="label">Short Description (Summary)</label>
+              <textarea className="input" value={shortDescription} onChange={(e) => setShortDescription(e.target.value)} rows={3} placeholder="Brief summary of the product (shown in product cards and previews)..." required />
+            </div>
+
+            <div>
+              <label className="label">Long Description (Detailed Specifications)</label>
+              <textarea className="input" value={longDescription} onChange={(e) => setLongDescription(e.target.value)} rows={6} placeholder="Detailed product specifications, material options, artwork requirements, layout templates..." required />
             </div>
           </div>
 

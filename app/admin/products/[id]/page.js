@@ -25,7 +25,8 @@ export default function AdminProductEditPage({ params: paramsPromise }) {
   const [categories, setCategories] = useState([]);
 
   // Form states (common)
-  const [description, setDescription] = useState("");
+  const [shortDescription, setShortDescription] = useState("");
+  const [longDescription, setLongDescription] = useState("");
   const [displayOrder, setDisplayOrder] = useState(0);
   const [isVisible, setIsVisible] = useState(true);
   const [priceOverride, setPriceOverride] = useState("");
@@ -58,7 +59,8 @@ export default function AdminProductEditPage({ params: paramsPromise }) {
         if (snap.exists()) {
           const data = snap.data();
           setProduct(data);
-          setDescription(data.description || "");
+          setShortDescription(data.shortDescription || data.description || "");
+          setLongDescription(data.longDescription || data.description || "");
           setDisplayOrder(data.displayOrder || 0);
           setIsVisible(data.isVisible !== undefined ? data.isVisible : true);
           setImages(data.images || []);
@@ -197,7 +199,7 @@ export default function AdminProductEditPage({ params: paramsPromise }) {
 
     try {
       const docRef = doc(db, "products", productId);
-      const needsAttention = images.length === 0 || !description;
+      const needsAttention = images.length === 0 || (!shortDescription && !longDescription);
 
       if (product.isCustom) {
         // Validate custom option groups
@@ -218,7 +220,9 @@ export default function AdminProductEditPage({ params: paramsPromise }) {
         const updateData = {
           name,
           sku,
-          description,
+          shortDescription,
+          longDescription,
+          description: longDescription || shortDescription,
           categoryId,
           "pricing.startingPrice": parseFloat(priceOverride) || 0,
           displayOrder: parseInt(displayOrder) || 0,
@@ -233,7 +237,9 @@ export default function AdminProductEditPage({ params: paramsPromise }) {
         const priceVal = priceOverride !== "" ? parseFloat(priceOverride) : null;
         
         const updateData = {
-          description,
+          shortDescription,
+          longDescription,
+          description: longDescription || shortDescription,
           categoryOverride: categoryId || null,
           displayOrder: parseInt(displayOrder) || 0,
           isVisible,
@@ -350,20 +356,36 @@ export default function AdminProductEditPage({ params: paramsPromise }) {
           )}
 
           {/* Description Card */}
-          <div className="card">
-            <h2 style={{ fontSize: "1.2rem", marginBottom: "1rem" }}>Product Description</h2>
-            <p style={{ fontSize: "0.85rem", color: "hsl(var(--muted-hsl))", marginBottom: "0.75rem" }}>
-              Add storefront description details. Supports spacing.
-            </p>
-            <textarea
-              className="input"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Provide information on sizes, materials, templates..."
-              rows={6}
-              required
-              style={{ resize: "vertical", fontFamily: "inherit" }}
-            />
+          <div className="card" style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+            <div>
+              <h2 style={{ fontSize: "1.2rem", marginBottom: "0.25rem" }}>Short Description (Summary)</h2>
+              <p style={{ fontSize: "0.85rem", color: "hsl(var(--muted-hsl))", marginBottom: "0.5rem" }}>
+                Brief summary for catalog cards, search results, and quick previews.
+              </p>
+              <textarea
+                className="input"
+                value={shortDescription}
+                onChange={(e) => setShortDescription(e.target.value)}
+                placeholder="e.g. 16pt premium business cards with gloss UV finish."
+                rows={3}
+                style={{ resize: "vertical", fontFamily: "inherit" }}
+              />
+            </div>
+
+            <div>
+              <h2 style={{ fontSize: "1.2rem", marginBottom: "0.25rem" }}>Long Description (Detailed Specs)</h2>
+              <p style={{ fontSize: "0.85rem", color: "hsl(var(--muted-hsl))", marginBottom: "0.5rem" }}>
+                Full product specifications, paper stock details, template requirements, and artwork guidelines.
+              </p>
+              <textarea
+                className="input"
+                value={longDescription}
+                onChange={(e) => setLongDescription(e.target.value)}
+                placeholder="Provide detailed specs, sizing tables, material options, artwork instructions..."
+                rows={7}
+                style={{ resize: "vertical", fontFamily: "inherit" }}
+              />
+            </div>
           </div>
 
           {/* Custom Options Manager if product is custom */}

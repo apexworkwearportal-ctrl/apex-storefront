@@ -25,18 +25,16 @@ import {
 export default function HomeClient({ categories }) {
   const [searchVal, setSearchVal] = useState("");
   const [activeFaq, setActiveFaq] = useState(null);
-  const [heroStyle, setHeroStyle] = useState("standard"); // "standard" or "slider"
   const [sliderIndex, setSliderIndex] = useState(0);
 
   const sliderImages = ["/assets/1.webp", "/assets/2.webp", "/assets/3.webp", "/assets/4.webp"];
 
   useEffect(() => {
-    if (heroStyle !== "slider") return;
     const timer = setInterval(() => {
       setSliderIndex((prev) => (prev + 1) % sliderImages.length);
     }, 4000);
     return () => clearInterval(timer);
-  }, [heroStyle]);
+  }, [sliderImages.length]);
 
   // Animation variants
   const containerVariants = {
@@ -97,10 +95,10 @@ export default function HomeClient({ categories }) {
   return (
     <div style={{ backgroundColor: "hsl(var(--background-hsl))" }}>
       <Header />
-      {/* 1. HERO SECTION */}
+      {/* 1. HERO SECTION (Image Slider Only) */}
       <section style={{
         position: "relative",
-        padding: heroStyle === "slider" ? "0" : "6rem 2rem 5rem 2rem",
+        padding: "0",
         backgroundColor: "hsl(var(--primary-hsl))",
         color: "white",
         overflow: "hidden"
@@ -129,339 +127,118 @@ export default function HomeClient({ categories }) {
           pointerEvents: "none"
         }} />
 
-        {/* Toggle Hero Style Button */}
         <div style={{
-          position: "absolute",
-          top: "1.5rem",
-          right: "2rem",
-          zIndex: 40,
-          display: "flex",
-          alignItems: "center"
+          position: "relative",
+          width: "100%",
+          maxWidth: "100%",
+          height: "auto",
+          margin: "0",
+          overflow: "hidden",
+          zIndex: 10
         }}>
-          <button 
-            onClick={() => setHeroStyle(heroStyle === "standard" ? "slider" : "standard")}
-            style={{ 
-              padding: "0.5rem 1rem", 
-              fontSize: "0.75rem", 
-              color: "white", 
-              borderColor: "rgba(255,255,255,0.25)",
+          {/* Active Image */}
+          <motion.img
+            key={sliderIndex}
+            src={sliderImages[sliderIndex]}
+            alt={`Slider banner ${sliderIndex + 1}`}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.8 }}
+            style={{
+              width: "100%",
+              height: "auto",
+              display: "block"
+            }}
+          />
+          
+          {/* Dots navigation */}
+          <div style={{
+            position: "absolute",
+            bottom: "1.5rem",
+            left: "50%",
+            transform: "translateX(-50%)",
+            display: "flex",
+            gap: "0.75rem",
+            zIndex: 30,
+            backgroundColor: "rgba(0,0,0,0.5)",
+            padding: "0.5rem 1rem",
+            borderRadius: "40px",
+            backdropFilter: "blur(4px)"
+          }}>
+            {sliderImages.map((_, idx) => (
+              <button
+                key={idx}
+                onClick={() => setSliderIndex(idx)}
+                style={{
+                  width: "10px",
+                  height: "10px",
+                  borderRadius: "50%",
+                  backgroundColor: sliderIndex === idx ? "hsl(var(--accent-hsl))" : "rgba(255,255,255,0.4)",
+                  border: "none",
+                  cursor: "pointer",
+                  padding: 0,
+                  transition: "all 0.2s ease"
+                }}
+                aria-label={`Go to slide ${idx + 1}`}
+              />
+            ))}
+          </div>
+
+          {/* Left & Right arrow controls */}
+          <button
+            onClick={() => setSliderIndex((prev) => (prev - 1 + sliderImages.length) % sliderImages.length)}
+            style={{
+              position: "absolute",
+              left: "1rem",
+              top: "50%",
+              transform: "translateY(-50%)",
+              width: "44px",
+              height: "44px",
+              borderRadius: "50%",
               backgroundColor: "rgba(0,0,0,0.5)",
-              backdropFilter: "blur(4px)",
-              borderRadius: "40px",
-              fontWeight: 700,
+              color: "white",
+              border: "none",
               display: "flex",
               alignItems: "center",
-              gap: "0.6rem",
-              border: "1px solid rgba(255,255,255,0.25)",
-              cursor: "pointer"
+              justifyContent: "center",
+              cursor: "pointer",
+              backdropFilter: "blur(4px)",
+              transition: "background-color 0.2s ease",
+              fontSize: "1.25rem",
+              fontWeight: 700
             }}
+            aria-label="Previous slide"
           >
-            <span>✨ Switch Hero Layout</span>
-            <span style={{
-              display: "inline-block",
-              width: "32px",
-              height: "16px",
-              backgroundColor: heroStyle === "slider" ? "hsl(var(--accent-hsl))" : "rgba(255,255,255,0.3)",
-              borderRadius: "20px",
-              position: "relative",
-              transition: "background-color 0.2s ease"
-            }}>
-              <span style={{
-                position: "absolute",
-                top: "2px",
-                left: heroStyle === "slider" ? "18px" : "2px",
-                width: "12px",
-                height: "12px",
-                borderRadius: "50%",
-                backgroundColor: "white",
-                transition: "left 0.2s ease"
-              }} />
-            </span>
+            ←
+          </button>
+          <button
+            onClick={() => setSliderIndex((prev) => (prev + 1) % sliderImages.length)}
+            style={{
+              position: "absolute",
+              right: "1rem",
+              top: "50%",
+              transform: "translateY(-50%)",
+              width: "44px",
+              height: "44px",
+              borderRadius: "50%",
+              backgroundColor: "rgba(0,0,0,0.5)",
+              color: "white",
+              border: "none",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: "pointer",
+              backdropFilter: "blur(4px)",
+              transition: "background-color 0.2s ease",
+              fontSize: "1.25rem",
+              fontWeight: 700
+            }}
+            aria-label="Next slide"
+          >
+            →
           </button>
         </div>
-
-        {heroStyle === "slider" ? (
-          <div style={{
-            position: "relative",
-            width: "100%",
-            maxWidth: "100%",
-            height: "auto",
-            margin: "0",
-            overflow: "hidden",
-            zIndex: 10
-          }}>
-            {/* Active Image */}
-            <motion.img
-              key={sliderIndex}
-              src={sliderImages[sliderIndex]}
-              alt={`Slider banner ${sliderIndex + 1}`}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.8 }}
-              style={{
-                width: "100%",
-                height: "auto",
-                display: "block"
-              }}
-            />
-            
-            {/* Dots navigation */}
-            <div style={{
-              position: "absolute",
-              bottom: "1.5rem",
-              left: "50%",
-              transform: "translateX(-50%)",
-              display: "flex",
-              gap: "0.75rem",
-              zIndex: 30,
-              backgroundColor: "rgba(0,0,0,0.5)",
-              padding: "0.5rem 1rem",
-              borderRadius: "40px",
-              backdropFilter: "blur(4px)"
-            }}>
-              {sliderImages.map((_, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => setSliderIndex(idx)}
-                  style={{
-                    width: "10px",
-                    height: "10px",
-                    borderRadius: "50%",
-                    backgroundColor: sliderIndex === idx ? "hsl(var(--accent-hsl))" : "rgba(255,255,255,0.4)",
-                    border: "none",
-                    cursor: "pointer",
-                    padding: 0,
-                    transition: "all 0.2s ease"
-                  }}
-                  aria-label={`Go to slide ${idx + 1}`}
-                />
-              ))}
-            </div>
-
-            {/* Left & Right arrow controls */}
-            <button
-              onClick={() => setSliderIndex((prev) => (prev - 1 + sliderImages.length) % sliderImages.length)}
-              style={{
-                position: "absolute",
-                left: "1rem",
-                top: "50%",
-                transform: "translateY(-50%)",
-                width: "40px",
-                height: "40px",
-                borderRadius: "50%",
-                backgroundColor: "rgba(0,0,0,0.5)",
-                color: "white",
-                border: "none",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                cursor: "pointer",
-                backdropFilter: "blur(4px)",
-                transition: "background-color 0.2s ease",
-                fontSize: "1.25rem",
-                fontWeight: 700
-              }}
-              aria-label="Previous slide"
-            >
-              ←
-            </button>
-            <button
-              onClick={() => setSliderIndex((prev) => (prev + 1) % sliderImages.length)}
-              style={{
-                position: "absolute",
-                right: "1rem",
-                top: "50%",
-                transform: "translateY(-50%)",
-                width: "40px",
-                height: "40px",
-                borderRadius: "50%",
-                backgroundColor: "rgba(0,0,0,0.5)",
-                color: "white",
-                border: "none",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                cursor: "pointer",
-                backdropFilter: "blur(4px)",
-                transition: "background-color 0.2s ease",
-                fontSize: "1.25rem",
-                fontWeight: 700
-              }}
-              aria-label="Next slide"
-            >
-              →
-            </button>
-          </div>
-        ) : (
-          <div style={{
-            maxWidth: "1200px",
-            margin: "0 auto",
-            display: "grid",
-            gridTemplateColumns: "1.1fr 0.9fr",
-            gap: "4rem",
-            alignItems: "center",
-            position: "relative",
-            zIndex: 10
-          }} className="hero-grid">
-            
-            {/* Left Column */}
-            <motion.div 
-              initial={{ opacity: 0, x: -30 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
-              style={{ display: "flex", flexDirection: "column", gap: "1.75rem" }}
-            >
-              <div>
-                <span style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "0.4rem",
-                  fontSize: "0.75rem",
-                  fontWeight: 800,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.15em",
-                  color: "hsl(var(--accent-hsl))",
-                  backgroundColor: "hsl(var(--accent-hsl) / 0.15)",
-                  padding: "0.35rem 0.85rem",
-                  borderRadius: "40px",
-                  marginBottom: "1rem"
-                }}>
-                  <Sparkles size={12} /> Direct GTA Print Shop
-                </span>
-                <h1 style={{
-                  fontSize: "clamp(2.5rem, 5vw, 3.75rem)",
-                  fontWeight: 900,
-                  lineHeight: 1.1,
-                  color: "white",
-                  letterSpacing: "-0.03em"
-                }}>
-                  Configure, Preview <br />
-                  & Order <span style={{ color: "hsl(var(--accent-hsl))" }}>Print Instantly</span>
-                </h1>
-              </div>
-              
-              <p style={{
-                fontSize: "1.15rem",
-                lineHeight: "1.6",
-                color: "rgba(255, 255, 255, 0.85)",
-                maxWidth: "540px"
-              }}>
-                Zero waiting for custom sales estimates. Input your specifications, upload print-ready artwork files, and calculate live courier prices directly.
-              </p>
-
-              {/* CTA Buttons */}
-              <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap", marginTop: "0.5rem" }}>
-                <Link href="/products" className="btn btn-primary" style={{ padding: "0.85rem 2rem", fontSize: "1rem" }}>
-                  Shop Print Catalog <ArrowRight size={18} />
-                </Link>
-                <Link href="/about" className="btn btn-outline" style={{ color: "white", borderColor: "rgba(255,255,255,0.25)", padding: "0.85rem 2rem", fontSize: "1rem" }}>
-                  GTA Turnarounds
-                </Link>
-              </div>
-
-              {/* Quick Shortcuts */}
-              <div style={{ marginTop: "1rem" }}>
-                <p style={{ fontSize: "0.8rem", fontWeight: 700, color: "rgba(255,255,255,0.5)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.75rem" }}>
-                  Popular Configurations:
-                </p>
-                <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-                  {categories.slice(0, 3).map(cat => (
-                    <Link 
-                      key={cat.id} 
-                      href={`/products?category=${cat.id}`}
-                      style={{
-                        fontSize: "0.8rem",
-                        padding: "0.4rem 0.85rem",
-                        backgroundColor: "rgba(255,255,255,0.08)",
-                        color: "rgba(255,255,255,0.9)",
-                        borderRadius: "var(--radius-sm)",
-                        fontWeight: 600,
-                        border: "1px solid rgba(255,255,255,0.1)",
-                        transition: "all 0.2s ease"
-                      }}
-                      className="hero-tag"
-                    >
-                      {cat.name}
-                    </Link>
-                  ))}
-                </div>
-              </div>
-            </motion.div>
-
-            {/* Right Column: Hero Graphic Presentation */}
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1], delay: 0.15 }}
-              style={{ display: "flex", justifyContent: "center", position: "relative" }}
-              className="hero-graphic-col"
-            >
-              <div style={{
-                width: "100%",
-                maxWidth: "480px",
-                height: "360px",
-                backgroundColor: "rgba(255,255,255,0.03)",
-                border: "1px solid rgba(255,255,255,0.1)",
-                borderRadius: "var(--radius-lg)",
-                padding: "1.5rem",
-                backdropFilter: "blur(12px)",
-                position: "relative",
-                boxShadow: "var(--shadow-lg)"
-              }}>
-                {/* Stack Card Presentation */}
-                <div style={{
-                  width: "80%",
-                  height: "180px",
-                  backgroundColor: "white",
-                  borderRadius: "var(--radius-md)",
-                  boxShadow: "0 20px 40px rgba(0,0,0,0.2)",
-                  padding: "1.5rem",
-                  color: "hsl(var(--foreground-hsl))",
-                  position: "absolute",
-                  top: "15%",
-                  left: "10%",
-                  zIndex: 2,
-                  transform: "rotate(-4deg)"
-                }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                    <img src="/Apex-Workwear-Logo-Horizontal.webp" style={{ height: "24px" }} alt="Logo" />
-                    <span style={{ fontSize: "0.7rem", color: "hsl(var(--accent-hsl))", fontWeight: 700 }}>PREMIUM PRINT</span>
-                  </div>
-                  <div style={{ marginTop: "2rem" }}>
-                    <p style={{ fontWeight: 800, fontSize: "1.1rem", lineHeight: 1.2 }}>High-Impact Marketing Renders</p>
-                    <p style={{ fontSize: "0.75rem", color: "hsl(var(--muted-hsl))", marginTop: "0.25rem" }}>Toronto Business Card configurations</p>
-                  </div>
-                </div>
-
-                <div style={{
-                  width: "75%",
-                  height: "180px",
-                  backgroundColor: "hsl(var(--secondary-hsl))",
-                  borderRadius: "var(--radius-md)",
-                  boxShadow: "0 10px 20px rgba(0,0,0,0.15)",
-                  padding: "1.5rem",
-                  color: "hsl(var(--foreground-hsl))",
-                  position: "absolute",
-                  bottom: "10%",
-                  right: "8%",
-                  zIndex: 1,
-                  transform: "rotate(6deg)"
-                }}>
-                  <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
-                    <div style={{ width: "8px", height: "8px", borderRadius: "50%", backgroundColor: "hsl(var(--success-hsl))" }}></div>
-                    <span style={{ fontSize: "0.65rem", fontWeight: 700, color: "hsl(var(--muted-hsl))", textTransform: "uppercase" }}>Configurator Loaded</span>
-                  </div>
-                  <div style={{ marginTop: "1.5rem" }}>
-                    <p style={{ fontWeight: 700, fontSize: "0.95rem" }}>GTA Courier Estimates</p>
-                    <p style={{ fontSize: "0.7rem", color: "hsl(var(--muted-hsl))" }}>1-2 business days delivery lookup</p>
-                  </div>
-                </div>
-              </div>
-            </motion.div>
-
-          </div>
-        )}
       </section>
 
       {/* 2. TRUST/VALUE BAND */}

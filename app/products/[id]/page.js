@@ -314,7 +314,7 @@ export default function ProductDetailPage({ params: paramsPromise }) {
             <div className="card" style={{ padding: "2rem" }}>
               <h2 style={{ fontSize: "1.25rem", fontWeight: 800, marginBottom: "1rem", color: "hsl(var(--primary-hsl))" }}>Product Specifications</h2>
               <div style={{ whiteSpace: "pre-line", fontSize: "0.95rem", lineHeight: "1.6", color: "hsl(var(--foreground-hsl) / 0.85)" }}>
-                {product.description || product.sinalite?.description || "No specifications are currently defined for this product."}
+                {product.longDescription || product.description || product.sinalite?.description || "No specifications are currently defined for this product."}
               </div>
             </div>
           </div>
@@ -350,6 +350,19 @@ export default function ProductDetailPage({ params: paramsPromise }) {
                 </span>
                 <h1 style={{ fontSize: "1.75rem", fontWeight: 900, lineHeight: "1.2", letterSpacing: "-0.01em" }}>{title}</h1>
                 <p style={{ color: "hsl(var(--muted-hsl))", fontSize: "0.8rem", marginTop: "0.25rem" }}>SKU: {skuCode}</p>
+                
+                {(product.shortDescription || product.description) && (
+                  <p style={{
+                    fontSize: "0.9rem",
+                    color: "hsl(var(--foreground-hsl) / 0.8)",
+                    lineHeight: "1.5",
+                    marginTop: "0.75rem",
+                    paddingTop: "0.75rem",
+                    borderTop: "1px solid hsl(var(--border-hsl))"
+                  }}>
+                    {product.shortDescription || product.description}
+                  </p>
+                )}
               </div>
 
               {/* Display starting price info */}

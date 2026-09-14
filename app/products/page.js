@@ -180,6 +180,8 @@ function CatalogContent() {
     const searchLower = searchQuery.toLowerCase();
     const nameMatch = (p.name || p.sinalite?.name || "").toLowerCase().includes(searchLower) ||
                       (p.sku || p.sinalite?.sku || "").toLowerCase().includes(searchLower) ||
+                      (p.shortDescription || "").toLowerCase().includes(searchLower) ||
+                      (p.longDescription || "").toLowerCase().includes(searchLower) ||
                       (p.description || "").toLowerCase().includes(searchLower);
 
     return catMatch && nameMatch;
@@ -837,7 +839,7 @@ function CatalogContent() {
                               <div style={{ padding: "1.25rem", display: "flex", flexDirection: "column", flexGrow: 1, gap: "0.4rem" }}>
                                 <h3 style={{ fontSize: "0.95rem", fontWeight: 700, lineHeight: "1.4" }}>{product.name || product.sinalite?.name}</h3>
                                 <p style={{ color: "hsl(var(--muted-hsl))", fontSize: "0.8rem", overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", minHeight: "36px", lineHeight: "1.4" }}>
-                                  {product.description || "Configure option weights, turnarounds, and coating options for custom prints."}
+                                  {product.shortDescription || product.description || "Configure option weights, turnarounds, and coating options for custom prints."}
                                 </p>
                                 
                                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "auto", paddingTop: "0.5rem" }}>
