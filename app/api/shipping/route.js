@@ -1,4 +1,5 @@
 import { getShippingEstimate } from "@/lib/sinalite";
+import { adminDb } from "@/lib/firebase-admin";
 
 export async function POST(req) {
   try {
@@ -21,57 +22,76 @@ export async function POST(req) {
 
     let ratesList = [];
 
+    // Case A: Cart contains Print products (or Mixed Print + Apparel) -> Use ONLY SinaLite Print Shipping
     if (sinaliteItemsFiltered.length > 0) {
-      // Map shippingAddress to the shippingInfo format required by SinaLite
       const shippingInfo = {
         ShipState: shippingAddress.ShipState || shippingAddress.state || "",
         ShipCountry: shippingAddress.ShipCountry || shippingAddress.country || "CA",
         ShipZip: shipZip
       };
 
-      // Query SinaLite shipping estimation once with the complete payload
       const estimate = await getShippingEstimate(sinaliteItemsFiltered, shippingInfo);
 
-      // Parse SinaLite response structure where shipping options are returned in the "body" array
       if (estimate && Array.isArray(estimate.body)) {
         estimate.body.forEach((rateArr) => {
           if (Array.isArray(rateArr) && rateArr.length >= 3) {
             const [carrier, serviceName, price, deliveryDays] = rateArr;
             
-            // Deduplicate service name if it already starts with the carrier name
             let cleanName = serviceName;
             if (carrier && serviceName && !serviceName.toLowerCase().startsWith(carrier.toLowerCase())) {
               cleanName = `${carrier} ${serviceName}`;
             }
 
-            // Add handling upcharge if custom apparel items exist in the same order
-            let finalPrice = parseFloat(price || 0);
-            if (customItems.length > 0) {
-              finalPrice += 5.00 * customItems.reduce((acc, item) => acc + (parseInt(item.quantity) || 1), 0);
-            }
-
+            // Return SinaLite shipping rate ONLY (No extra apparel charge added)
             ratesList.push({
               serviceName: cleanName || "Courier Shipping",
-              price: finalPrice,
+              price: parseFloat(price || 0),
               deliveryDays: deliveryDays ? deliveryDays.toString() : "3-5"
             });
           }
         });
       }
     } else {
-      // Custom items only (e.g. apparel)
+      // Case B: Cart contains ONLY Custom Apparel products -> Load Admin Apparel Shipping Classes
       const totalCustomQty = customItems.reduce((acc, item) => acc + (parseInt(item.quantity) || 1), 0);
-      ratesList = [
-        { serviceName: "Standard Shipping (Apparel)", price: 9.99 + (1.50 * (totalCustomQty - 1)), deliveryDays: "5-7" },
-        { serviceName: "Express Shipping (Apparel)", price: 19.99 + (3.00 * (totalCustomQty - 1)), deliveryDays: "2-3" }
-      ];
+
+      let customClasses = [];
+      if (adminDb) {
+        try {
+          const snap = await adminDb.collection("settings").doc("apparelShipping").get();
+          if (snap.exists && Array.isArray(snap.data().classes)) {
+            customClasses = snap.data().classes;
+          }
+        } catch (dbErr) {
+          console.warn("Error loading admin apparel shipping classes:", dbErr.message);
+        }
+      }
+
+      if (customClasses.length > 0) {
+        ratesList = customClasses.map(cls => {
+          const base = parseFloat(cls.basePrice || 0);
+          const addl = parseFloat(cls.perItemPrice || 0);
+          const calcPrice = base + (addl * Math.max(0, totalCustomQty - 1));
+          return {
+            serviceName: cls.name || "Apparel Shipping",
+            price: parseFloat(calcPrice.toFixed(2)),
+            deliveryDays: cls.deliveryDays || "3-5"
+          };
+        });
+      } else {
+        // Fallback default apparel shipping classes
+        ratesList = [
+          { serviceName: "Standard Apparel Shipping", price: parseFloat((9.99 + (1.50 * (totalCustomQty - 1))).toFixed(2)), deliveryDays: "5-7" },
+          { serviceName: "Express Apparel Shipping", price: parseFloat((19.99 + (3.00 * (totalCustomQty - 1))).toFixed(2)), deliveryDays: "2-3" },
+          { serviceName: "Apparel Local Pickup (Storefront)", price: 0.00, deliveryDays: "1-2" }
+        ];
+      }
     }
 
     if (ratesList.length === 0) {
-      // Fallback standard shipping rates if API returns empty
       return Response.json([
-        { serviceName: "Standard Courier", price: 14.99 * items.length, deliveryDays: "3-5" },
-        { serviceName: "Express Courier", price: 29.99 * items.length, deliveryDays: "1-2" },
+        { serviceName: "Standard Shipping", price: 14.99 * items.length, deliveryDays: "3-5" },
+        { serviceName: "Express Shipping", price: 29.99 * items.length, deliveryDays: "1-2" }
       ]);
     }
 

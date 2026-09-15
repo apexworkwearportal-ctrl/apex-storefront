@@ -8,8 +8,10 @@ import { doc, getDoc } from "firebase/firestore";
 import { useCart } from "@/lib/cart-context";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, ShoppingBag, Loader2, Sparkles } from "lucide-react";
+import { ArrowLeft, ShoppingBag, Loader2, Sparkles, FileCheck, Eye } from "lucide-react";
 import { motion } from "framer-motion";
+import ApparelMockupEditor from "@/components/ApparelMockupEditor";
+import PrintProofModal from "@/components/PrintProofModal";
 
 export default function ProductDetailPage({ params: paramsPromise }) {
   const params = use(paramsPromise);
@@ -29,12 +31,62 @@ export default function ProductDetailPage({ params: paramsPromise }) {
   const [calculatingPrice, setCalculatingPrice] = useState(false);
   const [activeImageIdx, setActiveImageIdx] = useState(0);
 
-  // File Upload states
+  // File Upload & Print Proof states
   const [uploadingFile, setUploadingFile] = useState(false);
   const [artworkFiles, setArtworkFiles] = useState([]); // Array of { name, url }
   const [uploadError, setUploadError] = useState("");
+  const [proofModalOpen, setProofModalOpen] = useState(false);
+  const [proofApproved, setProofApproved] = useState(false);
+  const [proofDetails, setProofDetails] = useState(null);
 
-  // Load product details and option groups
+  const handleApparelAddToCart = (mockupCartPayload) => {
+    addToCart({
+      productId: product.isCustom ? productId : parseInt(productId),
+      name: product.name || product.sinalite?.name,
+      images: product.images || [],
+      ...mockupCartPayload,
+      isCustom: !!product.isCustom,
+      isApparel: true
+    });
+    router.push("/cart");
+  };
+
+  const handleAddToCart = () => {
+    if (!product || !priceData || !allSelected) return;
+
+    // Print Proof Enforcement
+    if (artworkFiles.length > 0 && !proofApproved) {
+      setProofModalOpen(true);
+      return;
+    }
+
+    // Build configuration summary string
+    const optionSummaries = [];
+    Object.entries(optionGroups).forEach(([groupName, options]) => {
+      const selectedId = selectedOptions[groupName];
+      const selectedOption = options.find(opt => opt.id.toString() === selectedId);
+      if (selectedOption) {
+        optionSummaries.push(`${groupName}: ${selectedOption.name}`);
+      }
+    });
+
+    const cartItem = {
+      productId: product.isCustom ? productId : parseInt(productId),
+      name: product.name || product.sinalite?.name,
+      images: product.images || [],
+      selectedOptionMap: selectedOptions,
+      selectedOptionIds: product.isCustom ? Object.values(selectedOptions) : Object.values(selectedOptions).map(id => parseInt(id)),
+      optionSummary: optionSummaries.join(" | "),
+      price: parseFloat(priceData.price || priceData.price?.price || product.pricing?.startingPrice || 0),
+      quantity: 1, // Add one configuration unit by default
+      artworkFiles: artworkFiles,
+      proofDetails: proofDetails,
+      isCustom: !!product.isCustom
+    };
+
+    addToCart(cartItem);
+    router.push("/cart");
+  };
   useEffect(() => {
     const fetchProductAndOptions = async () => {
       setLoadingProduct(true);
@@ -197,36 +249,6 @@ export default function ProductDetailPage({ params: paramsPromise }) {
     setArtworkFiles(prev => prev.filter((_, idx) => idx !== indexToRemove));
   };
 
-  const handleAddToCart = () => {
-    if (!product || !priceData || !allSelected) return;
-
-    // Build configuration summary string
-    const optionSummaries = [];
-    Object.entries(optionGroups).forEach(([groupName, options]) => {
-      const selectedId = selectedOptions[groupName];
-      const selectedOption = options.find(opt => opt.id.toString() === selectedId);
-      if (selectedOption) {
-        optionSummaries.push(`${groupName}: ${selectedOption.name}`);
-      }
-    });
-
-    const cartItem = {
-      productId: product.isCustom ? productId : parseInt(productId),
-      name: product.name || product.sinalite?.name,
-      images: product.images || [],
-      selectedOptionMap: selectedOptions,
-      selectedOptionIds: product.isCustom ? Object.values(selectedOptions) : Object.values(selectedOptions).map(id => parseInt(id)),
-      optionSummary: optionSummaries.join(" | "),
-      price: parseFloat(priceData.price || priceData.price?.price || product.pricing?.startingPrice || 0),
-      quantity: 1, // Add one configuration unit by default
-      artworkFiles: artworkFiles,
-      isCustom: !!product.isCustom
-    };
-
-    addToCart(cartItem);
-    router.push("/cart");
-  };
-
   if (loadingProduct) {
     return (
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", color: "hsl(var(--muted-hsl))" }}>
@@ -263,93 +285,143 @@ export default function ProductDetailPage({ params: paramsPromise }) {
           </Link>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr", gap: "3rem" }} className="product-grid">
-          {/* Left Column: Image Gallery and Description */}
+        {product?.isApparel ? (
+          /* Custom Apparel Product Layout */
           <div style={{ display: "flex", flexDirection: "column", gap: "2rem" }}>
-            {/* Gallery presentation */}
-            <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-              <div style={{
-                width: "100%",
-                height: "400px",
-                backgroundColor: "white",
-                borderRadius: "var(--radius-lg)",
-                border: "1px solid hsl(var(--border-hsl))",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                padding: "2rem",
-                overflow: "hidden"
-              }}>
-                <img
-                  src={imagesList[activeImageIdx]}
-                  alt={`${title} view`}
-                  style={{ maxWith: "100%", maxHeight: "100%", objectFit: "contain" }}
-                />
-              </div>
-              {/* Thumbs list */}
-              {imagesList.length > 1 && (
-                <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
-                  {imagesList.map((url, idx) => (
-                    <button
-                      key={idx}
-                      onClick={() => setActiveImageIdx(idx)}
-                      style={{
-                        width: "70px",
-                        height: "70px",
-                        padding: "0.25rem",
-                        backgroundColor: "white",
-                        borderRadius: "var(--radius-sm)",
-                        border: activeImageIdx === idx ? "2px solid hsl(var(--accent-hsl))" : "1px solid hsl(var(--border-hsl))",
-                        cursor: "pointer"
-                      }}
-                    >
-                      <img src={url} alt="thumbnail" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Description Details */}
-            <div className="card" style={{ padding: "2rem" }}>
-              <h2 style={{ fontSize: "1.25rem", fontWeight: 800, marginBottom: "1rem", color: "hsl(var(--primary-hsl))" }}>Product Specifications</h2>
-              <div style={{ whiteSpace: "pre-line", fontSize: "0.95rem", lineHeight: "1.6", color: "hsl(var(--foreground-hsl) / 0.85)" }}>
-                {product.longDescription || product.description || product.sinalite?.description || "No specifications are currently defined for this product."}
-              </div>
-            </div>
-          </div>
-
-          {/* Right Column: Configurator Panel */}
-          <motion.div
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-            style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}
-          >
-            <div className="card" style={{ padding: "2rem", display: "flex", flexDirection: "column", gap: "1.5rem", border: "1px solid hsl(var(--border-hsl))" }}>
+            {/* Apparel Product Info Banner Header */}
+            <div className="card" style={{ padding: "1.75rem 2rem", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "1rem" }}>
               <div>
                 <span style={{
                   display: "inline-flex",
                   alignItems: "center",
                   gap: "0.3rem",
-                  fontSize: "0.65rem",
+                  fontSize: "0.7rem",
                   fontWeight: 800,
                   textTransform: "uppercase",
                   letterSpacing: "0.1em",
-                  color: product.isCustom ? "hsl(var(--primary-hsl))" : "hsl(var(--accent-hsl))",
-                  backgroundColor: product.isCustom ? "hsl(var(--primary-hsl) / 0.1)" : "hsl(var(--accent-hsl) / 0.1)",
+                  color: "hsl(var(--accent-hsl))",
+                  backgroundColor: "hsl(var(--accent-hsl) / 0.1)",
                   padding: "0.25rem 0.65rem",
                   borderRadius: "4px",
-                  marginBottom: "0.75rem"
+                  marginBottom: "0.5rem"
                 }}>
-                  {product.isCustom ? (
-                    <><Sparkles size={10} /> Custom Apparel</>
-                  ) : (
-                    <><Sparkles size={10} /> Instant Printing</>
-                  )}
+                  <Sparkles size={12} /> Custom Apparel Designer
                 </span>
-                <h1 style={{ fontSize: "1.75rem", fontWeight: 900, lineHeight: "1.2", letterSpacing: "-0.01em" }}>{title}</h1>
-                <p style={{ color: "hsl(var(--muted-hsl))", fontSize: "0.8rem", marginTop: "0.25rem" }}>SKU: {skuCode}</p>
+                <h1 style={{ fontSize: "1.85rem", fontWeight: 900, color: "hsl(var(--primary-hsl))", lineHeight: 1.2 }}>{title}</h1>
+                <p style={{ color: "hsl(var(--muted-hsl))", fontSize: "0.825rem", marginTop: "0.2rem" }}>SKU: {skuCode || "APEX-CUSTOM-GARMENT"}</p>
+              </div>
+
+              <div style={{ textAlign: "right" }}>
+                <p style={{ fontSize: "0.75rem", fontWeight: 700, color: "hsl(var(--muted-hsl))", textTransform: "uppercase" }}>Base Price Per Item</p>
+                <p style={{ fontSize: "1.5rem", fontWeight: 900, color: "hsl(var(--accent-hsl))" }}>
+                  ${displayStartingPrice.toFixed(2)} <span style={{ fontSize: "0.85rem", color: "hsl(var(--muted-hsl))", fontWeight: 600 }}>CAD</span>
+                </p>
+                <p style={{ fontSize: "0.75rem", color: "hsl(var(--muted-hsl))", marginTop: "0.1rem" }}>
+                  Minimum Order Qty: <strong>{product.minimumOrderQuantity || 12} pcs</strong>
+                </p>
+              </div>
+            </div>
+
+            {/* Interactive Apparel Visual Designer & Mockup Editor */}
+            <ApparelMockupEditor
+              productName={title}
+              garmentViews={product.garmentViews || {}}
+              moq={product.minimumOrderQuantity || 12}
+              basePrice={displayStartingPrice}
+              onAddToCart={handleApparelAddToCart}
+            />
+
+            {/* Product Specifications & Care Details */}
+            <div className="card" style={{ padding: "2rem" }}>
+              <h2 style={{ fontSize: "1.25rem", fontWeight: 800, marginBottom: "1rem", color: "hsl(var(--primary-hsl))" }}>Garment Specifications & Care</h2>
+              <div style={{ whiteSpace: "pre-line", fontSize: "0.95rem", lineHeight: "1.6", color: "hsl(var(--foreground-hsl) / 0.85)" }}>
+                {product.longDescription || product.description || "High quality workwear garment crafted for durability, comfort, and professional logo printing."}
+              </div>
+            </div>
+          </div>
+        ) : (
+          /* Standard Print Product 2-Column Layout */
+          <div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr", gap: "3rem" }} className="product-grid">
+            {/* Left Column: Gallery + Description */}
+            <div style={{ display: "flex", flexDirection: "column", gap: "2rem" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+                <div style={{
+                  width: "100%",
+                  height: "400px",
+                  backgroundColor: "white",
+                  borderRadius: "var(--radius-lg)",
+                  border: "1px solid hsl(var(--border-hsl))",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  padding: "2rem",
+                  overflow: "hidden"
+                }}>
+                  <img
+                    src={imagesList[activeImageIdx]}
+                    alt={`${title} view`}
+                    style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }}
+                  />
+                </div>
+                {imagesList.length > 1 && (
+                  <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
+                    {imagesList.map((url, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => setActiveImageIdx(idx)}
+                        style={{
+                          width: "70px",
+                          height: "70px",
+                          padding: "0.25rem",
+                          backgroundColor: "white",
+                          borderRadius: "var(--radius-sm)",
+                          border: activeImageIdx === idx ? "2px solid hsl(var(--accent-hsl))" : "1px solid hsl(var(--border-hsl))",
+                          cursor: "pointer"
+                        }}
+                      >
+                        <img src={url} alt="thumbnail" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="card" style={{ padding: "2rem" }}>
+                <h2 style={{ fontSize: "1.25rem", fontWeight: 800, marginBottom: "1rem", color: "hsl(var(--primary-hsl))" }}>Product Specifications</h2>
+                <div style={{ whiteSpace: "pre-line", fontSize: "0.95rem", lineHeight: "1.6", color: "hsl(var(--foreground-hsl) / 0.85)" }}>
+                  {product.longDescription || product.description || product.sinalite?.description || "No specifications are currently defined for this product."}
+                </div>
+              </div>
+            </div>
+
+            {/* Right Column: Options Configurator Panel */}
+            <motion.div
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+              style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}
+            >
+              <div className="card" style={{ padding: "2rem", display: "flex", flexDirection: "column", gap: "1.5rem", border: "1px solid hsl(var(--border-hsl))" }}>
+                <div>
+                  <span style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "0.3rem",
+                    fontSize: "0.65rem",
+                    fontWeight: 800,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.1em",
+                    color: "hsl(var(--accent-hsl))",
+                    backgroundColor: "hsl(var(--accent-hsl) / 0.1)",
+                    padding: "0.25rem 0.65rem",
+                    borderRadius: "4px",
+                    marginBottom: "0.75rem"
+                  }}>
+                    <Sparkles size={10} /> Instant Printing
+                  </span>
+                  <h1 style={{ fontSize: "1.75rem", fontWeight: 900, lineHeight: "1.2", letterSpacing: "-0.01em" }}>{title}</h1>
+                  <p style={{ color: "hsl(var(--muted-hsl))", fontSize: "0.8rem", marginTop: "0.25rem" }}>SKU: {skuCode}</p>
+                </div>
                 
                 {(product.shortDescription || product.description) && (
                   <p style={{
@@ -363,7 +435,6 @@ export default function ProductDetailPage({ params: paramsPromise }) {
                     {product.shortDescription || product.description}
                   </p>
                 )}
-              </div>
 
               {/* Display starting price info */}
               {!allSelected && displayStartingPrice > 0 && (
@@ -626,6 +697,26 @@ export default function ProductDetailPage({ params: paramsPromise }) {
                   </div>
                 </div>
 
+                {/* Digital Print Proof Action Button */}
+                {artworkFiles.length > 0 && (
+                  <div style={{ marginTop: "0.75rem" }}>
+                    {proofApproved ? (
+                      <div style={{ padding: "0.6rem 0.85rem", backgroundColor: "rgba(34, 197, 94, 0.1)", borderRadius: "var(--radius-sm)", color: "rgb(22, 163, 74)", fontSize: "0.8rem", fontWeight: 700, display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                        <FileCheck size={16} /> Digital Print Proof Verified & Approved ✓
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setProofModalOpen(true)}
+                        className="btn btn-outline"
+                        style={{ width: "100%", fontSize: "0.85rem", padding: "0.6rem", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem", borderColor: "hsl(var(--accent-hsl))", color: "hsl(var(--accent-hsl))" }}
+                      >
+                        <Eye size={16} /> Inspect Digital Print Proof (Cut/Safe Area)
+                      </button>
+                    )}
+                  </div>
+                )}
+
                 {uploadError && (
                   <p style={{ color: "hsl(var(--destructive-hsl))", fontSize: "0.75rem", marginTop: "0.5rem", fontWeight: 500 }}>
                     {uploadError}
@@ -640,7 +731,7 @@ export default function ProductDetailPage({ params: paramsPromise }) {
                 className="btn btn-primary"
                 style={{ width: "100%", padding: "0.85rem", fontSize: "1rem" }}
               >
-                <ShoppingBag size={18} /> Add to Cart
+                <ShoppingBag size={18} /> {artworkFiles.length > 0 && !proofApproved ? "Review Proof & Add to Cart" : "Add to Cart"}
               </button>
             </div>
             
@@ -658,9 +749,25 @@ export default function ProductDetailPage({ params: paramsPromise }) {
             </div>
           </motion.div>
         </div>
+        )}
       </main>
 
       <Footer />
+
+      {/* Digital Print Proof Modal */}
+      {proofModalOpen && artworkFiles.length > 0 && (
+        <PrintProofModal
+          isOpen={proofModalOpen}
+          onClose={() => setProofModalOpen(false)}
+          artworkUrl={artworkFiles[0]?.url}
+          productName={title}
+          onApproveProof={(proofPayload) => {
+            setProofApproved(true);
+            setProofDetails(proofPayload);
+            setProofModalOpen(false);
+          }}
+        />
+      )}
       
       <style>{`
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }

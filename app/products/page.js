@@ -10,7 +10,15 @@ import { useSearchParams } from "next/navigation";
 import { Search, SlidersHorizontal, ArrowUpDown, ChevronRight, Loader2, ShoppingBag, Sparkles, ChevronDown, Plus, Minus } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
-// Category descriptions, related chips, and FAQs are fetched dynamically from the Firebase database document fields.
+// Helper to format category names nicely (Title Case, remove trailing hyphens)
+function formatCategoryName(name) {
+  if (!name) return "";
+  let cleaned = name.replace(/[-_\s]+$/g, "").trim();
+  if (cleaned === cleaned.toUpperCase() && cleaned.length > 3) {
+    cleaned = cleaned.toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+  }
+  return cleaned;
+}
 
 function CatalogContent() {
   const searchParams = useSearchParams();
@@ -570,6 +578,7 @@ function CatalogContent() {
                     const subs = categories.filter(c => c.parentId === parentCat.id).filter(shouldShowSub);
                     const parentExpanded = isParentExpanded(parentCat.id);
                     const isParentSelected = selectedCategory === parentCat.id;
+                    const count = getProductCountForCategory(parentCat.id);
 
                     return (
                       <div key={parentCat.id} style={{ display: "flex", flexDirection: "column", gap: "0.15rem", marginTop: "0.25rem" }}>
@@ -589,26 +598,39 @@ function CatalogContent() {
                             fontWeight: isParentSelected ? 800 : 600,
                             backgroundColor: isParentSelected ? "hsl(var(--accent-hsl) / 0.08)" : "transparent",
                             color: isParentSelected ? "hsl(var(--accent-hsl))" : "hsl(var(--primary-hsl))",
+                            borderLeft: isParentSelected ? "3px solid hsl(var(--accent-hsl))" : "3px solid transparent",
                             textAlign: "left",
                             transition: "all 0.2s ease"
                           }}
                         >
-                          <span style={{ display: "flex", alignItems: "center", textTransform: "uppercase", fontSize: "0.75rem", letterSpacing: "0.05em" }}>
-                            {parentCat.name}
-                            <span style={{ fontSize: "0.7rem", color: "hsl(var(--muted-hsl))", marginLeft: "0.3rem", fontWeight: 600 }}>
-                              ({getProductCountForCategory(parentCat.id)})
-                            </span>
+                          <span style={{ display: "flex", alignItems: "center", gap: "0.35rem", fontSize: "0.825rem", fontWeight: 700 }}>
+                            {formatCategoryName(parentCat.name)}
                           </span>
-                          <span style={{ fontSize: "10px", color: "hsl(var(--muted-hsl))" }}>{parentExpanded ? "▾" : "▸"}</span>
+                          <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                            <span style={{
+                              backgroundColor: isParentSelected ? "hsl(var(--accent-hsl))" : "hsl(var(--secondary-hsl))",
+                              color: isParentSelected ? "#ffffff" : "hsl(var(--muted-hsl))",
+                              fontSize: "0.675rem",
+                              fontWeight: 700,
+                              padding: "0.15rem 0.5rem",
+                              borderRadius: "10px"
+                            }}>
+                              {count}
+                            </span>
+                            {subs.length > 0 && (
+                              <span style={{ fontSize: "10px", color: "hsl(var(--muted-hsl))" }}>{parentExpanded ? "▾" : "▸"}</span>
+                            )}
+                          </div>
                         </button>
 
                         {/* Level 2 Subcategories */}
                         {parentExpanded && subs.length > 0 && (
-                          <div style={{ paddingLeft: "0.75rem", display: "flex", flexDirection: "column", gap: "0.15rem", borderLeft: "1px solid hsl(var(--border-hsl))", marginLeft: "0.5rem" }}>
+                          <div style={{ paddingLeft: "0.65rem", display: "flex", flexDirection: "column", gap: "0.15rem", borderLeft: "2px solid hsl(var(--border-hsl) / 0.6)", marginLeft: "0.75rem" }}>
                             {subs.map(subCat => {
                               const leafs = categories.filter(c => c.parentId === subCat.id).filter(shouldShowLeaf);
                               const subExpanded = isSubExpanded(subCat.id);
                               const isSubSelected = selectedCategory === subCat.id;
+                              const subCount = getProductCountForCategory(subCat.id);
 
                               return (
                                 <div key={subCat.id} style={{ display: "flex", flexDirection: "column", gap: "0.15rem" }}>
@@ -626,38 +648,46 @@ function CatalogContent() {
                                       cursor: "pointer",
                                       fontSize: "0.8rem",
                                       fontWeight: isSubSelected ? 800 : 500,
-                                      backgroundColor: isSubSelected ? "hsl(var(--accent-hsl) / 0.06)" : "transparent",
+                                      backgroundColor: isSubSelected ? "hsl(var(--accent-hsl) / 0.08)" : "transparent",
                                       color: isSubSelected ? "hsl(var(--accent-hsl))" : "hsl(var(--foreground-hsl) / 0.8)",
                                       textAlign: "left",
                                       transition: "all 0.2s ease"
                                     }}
                                   >
                                     <span style={{ display: "flex", alignItems: "center" }}>
-                                      {subCat.name}
-                                      <span style={{ fontSize: "0.7rem", color: "hsl(var(--muted-hsl))", marginLeft: "0.3rem", fontWeight: 550 }}>
-                                        ({getProductCountForCategory(subCat.id)})
-                                      </span>
+                                      {formatCategoryName(subCat.name)}
                                     </span>
-                                    <span style={{ fontSize: "8px", color: "hsl(var(--muted-hsl))" }}>{subExpanded ? "▾" : "▸"}</span>
+                                    <div style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
+                                      <span style={{ fontSize: "0.675rem", color: "hsl(var(--muted-hsl))", fontWeight: 600 }}>
+                                        ({subCount})
+                                      </span>
+                                      {leafs.length > 0 && (
+                                        <span style={{ fontSize: "8px", color: "hsl(var(--muted-hsl))" }}>{subExpanded ? "▾" : "▸"}</span>
+                                      )}
+                                    </div>
                                   </button>
 
                                   {/* Level 3 Leaf Categories (Product Types) */}
                                   {subExpanded && leafs.length > 0 && (
-                                    <div style={{ paddingLeft: "0.75rem", display: "flex", flexDirection: "column", gap: "0.15rem", borderLeft: "1px dotted hsl(var(--border-hsl))", marginLeft: "0.4rem" }}>
+                                    <div style={{ paddingLeft: "0.75rem", display: "flex", flexDirection: "column", gap: "0.15rem", borderLeft: "1px dotted hsl(var(--border-hsl))", marginLeft: "0.5rem" }}>
                                       {leafs.map(leafCat => {
                                         const isLeafSelected = selectedCategory === leafCat.id;
+                                        const leafCount = getProductCountForCategory(leafCat.id);
                                         return (
                                           <button
                                             key={leafCat.id}
                                             onClick={() => { setSelectedCategory(leafCat.id); setSelectedProduct(null); }}
                                             className="category-btn"
                                             style={{
+                                              display: "flex",
+                                              alignItems: "center",
+                                              justifyContent: "space-between",
                                               width: "100%",
                                               padding: "0.35rem 0.6rem",
                                               border: "none",
                                               borderRadius: "var(--radius-sm)",
                                               cursor: "pointer",
-                                              fontSize: "0.75rem",
+                                              fontSize: "0.775rem",
                                               fontWeight: isLeafSelected ? 800 : 500,
                                               backgroundColor: isLeafSelected ? "hsl(var(--accent-hsl) / 0.08)" : "transparent",
                                               color: isLeafSelected ? "hsl(var(--accent-hsl))" : "hsl(var(--muted-hsl))",
@@ -665,11 +695,9 @@ function CatalogContent() {
                                               transition: "all 0.2s ease"
                                             }}
                                           >
-                                            <span style={{ display: "flex", alignItems: "center" }}>
-                                              {leafCat.name}
-                                              <span style={{ fontSize: "0.65rem", color: "hsl(var(--muted-hsl))", marginLeft: "0.3rem", fontWeight: 500 }}>
-                                                ({getProductCountForCategory(leafCat.id)})
-                                              </span>
+                                            <span>{formatCategoryName(leafCat.name)}</span>
+                                            <span style={{ fontSize: "0.65rem", color: "hsl(var(--muted-hsl))" }}>
+                                              ({leafCount})
                                             </span>
                                           </button>
                                         );

@@ -21,6 +21,8 @@ export default function AdminCategoriesPage() {
   const [showOnHome, setShowOnHome] = useState(true);
   const [homeOrder, setHomeOrder] = useState(0);
   const [parentId, setParentId] = useState("");
+  const [useCustomMarkup, setUseCustomMarkup] = useState(false);
+  const [markupPercent, setMarkupPercent] = useState(30);
 
   // Create form states
   const [newId, setNewId] = useState("");
@@ -31,6 +33,8 @@ export default function AdminCategoriesPage() {
   const [newShowOnHome, setNewShowOnHome] = useState(true);
   const [newHomeOrder, setNewHomeOrder] = useState(0);
   const [newParentId, setNewParentId] = useState("");
+  const [newUseCustomMarkup, setNewUseCustomMarkup] = useState(false);
+  const [newMarkupPercent, setNewMarkupPercent] = useState(30);
   
   const [saving, setSaving] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -155,6 +159,7 @@ export default function AdminCategoriesPage() {
     setError("");
 
     try {
+      const catRef = doc(db, "categories", editingId);
       await updateDoc(catRef, {
         name,
         description,
@@ -163,7 +168,9 @@ export default function AdminCategoriesPage() {
         showOnHome: Boolean(showOnHome),
         homeOrder: parseInt(homeOrder) || 0,
         parentId: parentId || null,
-        faqs: faqs || []
+        faqs: faqs || [],
+        useCustomMarkup: Boolean(useCustomMarkup),
+        markupPercent: parseFloat(markupPercent) || 0
       });
       
       setEditingId(null);
@@ -205,7 +212,9 @@ export default function AdminCategoriesPage() {
         showOnHome: Boolean(newShowOnHome),
         homeOrder: parseInt(newHomeOrder) || 0,
         parentId: newParentId || null,
-        faqs: newFaqs || []
+        faqs: newFaqs || [],
+        useCustomMarkup: Boolean(newUseCustomMarkup),
+        markupPercent: parseFloat(newMarkupPercent) || 0
       });
 
       // Reset form states
@@ -218,6 +227,8 @@ export default function AdminCategoriesPage() {
       setNewHomeOrder(0);
       setNewParentId("");
       setNewFaqs([]);
+      setNewUseCustomMarkup(false);
+      setNewMarkupPercent(30);
       setShowCreateForm(false);
 
       await fetchCategories();

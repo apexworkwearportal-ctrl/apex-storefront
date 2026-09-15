@@ -6,7 +6,8 @@ import { db } from "@/lib/firebase";
 import { collection, getDocs, doc, setDoc } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Upload, Trash2, Plus, Save, Loader2, AlertCircle } from "lucide-react";
+import { ArrowLeft, Upload, Trash2, Plus, Save, Loader2, AlertCircle, Ruler, CheckCircle2 } from "lucide-react";
+import AdminGarmentCalibration from "@/components/AdminGarmentCalibration";
 
 export default function AdminNewProductPage() {
   const { user } = useAuth();
@@ -28,6 +29,23 @@ export default function AdminNewProductPage() {
   const [basePrice, setBasePrice] = useState("");
   const [images, setImages] = useState([]);
   const [optionGroups, setOptionGroups] = useState([]); // [{ name: "Size", choices: [{ name: "S", priceUpcharge: 0 }] }]
+
+  // Product Markup Overrides
+  const [useCustomMarkup, setUseCustomMarkup] = useState(false);
+  const [markupPercent, setMarkupPercent] = useState(35);
+
+  // Apparel & Calibration states
+  const [isApparel, setIsApparel] = useState(false);
+  const [minimumOrderQuantity, setMinimumOrderQuantity] = useState(12);
+  const [garmentViews, setGarmentViews] = useState({
+    front: { image: "", calibration: { isCalibrated: false } },
+    back: { image: "", calibration: { isCalibrated: false } },
+    left: { image: "", calibration: { isCalibrated: false } },
+    right: { image: "", calibration: { isCalibrated: false } },
+  });
+
+  // Modal for calibration
+  const [activeCalibrateSide, setActiveCalibrateSide] = useState(null);
 
   useEffect(() => {
     const fetchCategories = async () => {
@@ -144,6 +162,57 @@ export default function AdminNewProductPage() {
     }));
   };
 
+  // Garment side profile upload helper
+  const handleUploadGarmentImage = async (side, file) => {
+    if (!file) return;
+    setUploading(true);
+    setError("");
+
+    try {
+      const idToken = await user.getIdToken();
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await fetch("/api/admin/upload", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${idToken}`,
+        },
+        body: formData,
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to upload garment image.");
+      }
+
+      setGarmentViews(prev => ({
+        ...prev,
+        [side]: {
+          ...prev[side],
+          image: data.url,
+          calibration: prev[side]?.calibration || { isCalibrated: false }
+        }
+      }));
+    } catch (err) {
+      console.error(err);
+      setError(err.message || "Garment image upload failed.");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleSaveGarmentCalibration = (calibrationPayload) => {
+    if (!activeCalibrateSide) return;
+    setGarmentViews(prev => ({
+      ...prev,
+      [activeCalibrateSide]: {
+        ...prev[activeCalibrateSide],
+        calibration: calibrationPayload
+      }
+    }));
+  };
+
   const handleSave = async (e) => {
     e.preventDefault();
     setSaving(true);
@@ -176,10 +245,20 @@ export default function AdminNewProductPage() {
       const productsRef = collection(db, "products");
       const docRef = doc(productsRef); // Unique ID
 
+      // Garment Calibration Gating
+      const isFrontCalibrated = garmentViews.front?.calibration?.isCalibrated;
+      const apparelGated = isApparel && !isFrontCalibrated;
+      const finalIsVisible = apparelGated ? false : true;
+      const needsAttention = images.length === 0 || (!shortDescription && !longDescription) || apparelGated;
+
+      if (apparelGated) {
+        setError("Warning: Uncalibrated Apparel product created! It will remain hidden from storefront until front calibration is saved.");
+      }
+
       const productPayload = {
         id: docRef.id,
         isCustom: true,
-        isVisible: true,
+        isVisible: finalIsVisible,
         name,
         sku: sku || `custom-${docRef.id.slice(0, 6)}`,
         shortDescription,
@@ -191,7 +270,12 @@ export default function AdminNewProductPage() {
         },
         images,
         options: optionGroups,
-        needsAttention: images.length === 0 || (!shortDescription && !longDescription),
+        useCustomMarkup,
+        markupPercent: parseFloat(markupPercent) || 0,
+        isApparel,
+        minimumOrderQuantity: parseInt(minimumOrderQuantity) || 1,
+        garmentViews,
+        needsAttention,
         createdAt: new Date()
       };
 
@@ -464,8 +548,147 @@ export default function AdminNewProductPage() {
               </div>
             </div>
           </div>
+
+          {/* Markup Override Card */}
+          <div className="card">
+            <h2 style={{ fontSize: "1.2rem", marginBottom: "1rem" }}>Pricing & Markup Settings</h2>
+            
+            <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", cursor: "pointer", fontWeight: 600 }}>
+                <input
+                  type="checkbox"
+                  checked={useCustomMarkup}
+                  onChange={(e) => setUseCustomMarkup(e.target.checked)}
+                />
+                Enable Product Specific Markup Override
+              </label>
+
+              {useCustomMarkup ? (
+                <div>
+                  <label className="label">Custom Markup Percentage (%)</label>
+                  <input
+                    type="number"
+                    className="input"
+                    value={markupPercent}
+                    onChange={(e) => setMarkupPercent(e.target.value)}
+                    placeholder="35"
+                  />
+                  <span style={{ fontSize: "0.75rem", color: "hsl(var(--muted-hsl))", display: "block", marginTop: "0.25rem" }}>
+                    Overrides Category markup and Sitewise global markup.
+                  </span>
+                </div>
+              ) : (
+                <p style={{ fontSize: "0.8rem", color: "hsl(var(--muted-hsl))" }}>
+                  Currently following standard Category or Sitewise markup hierarchy.
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Apparel & Garment Calibration Card */}
+          <div className="card">
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
+              <h2 style={{ fontSize: "1.2rem" }}>Apparel & Interactive Mockup</h2>
+              <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", cursor: "pointer", fontWeight: 600, fontSize: "0.9rem" }}>
+                <input
+                  type="checkbox"
+                  checked={isApparel}
+                  onChange={(e) => setIsApparel(e.target.checked)}
+                />
+                Is Apparel Product
+              </label>
+            </div>
+
+            {isApparel && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+                <div>
+                  <label className="label">Minimum Order Quantity (MOQ)</label>
+                  <input
+                    type="number"
+                    className="input"
+                    value={minimumOrderQuantity}
+                    onChange={(e) => setMinimumOrderQuantity(e.target.value)}
+                    placeholder="12"
+                    min="1"
+                  />
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+                  <h3 style={{ fontSize: "0.95rem", fontWeight: 700 }}>Garment Views & Calibration</h3>
+
+                  {["front", "back", "left", "right"].map((side) => {
+                    const view = garmentViews[side] || {};
+                    const isCalibrated = view.calibration?.isCalibrated;
+
+                    return (
+                      <div key={side} style={{ padding: "0.75rem", borderRadius: "var(--radius-md)", border: "1px solid hsl(var(--border-hsl))", backgroundColor: "hsl(var(--secondary-hsl) / 0.1)" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
+                          <span style={{ fontWeight: 700, textTransform: "capitalize", fontSize: "0.9rem" }}>{side} Profile</span>
+                          <span style={{
+                            fontSize: "0.7rem",
+                            padding: "0.2rem 0.5rem",
+                            borderRadius: "999px",
+                            fontWeight: 700,
+                            backgroundColor: isCalibrated ? "rgba(34, 197, 94, 0.15)" : "rgba(239, 68, 68, 0.15)",
+                            color: isCalibrated ? "rgb(22, 163, 74)" : "rgb(220, 38, 38)"
+                          }}>
+                            {isCalibrated ? "Calibrated ✓" : "Needs Calibration ⚠️"}
+                          </span>
+                        </div>
+
+                        {view.image ? (
+                          <div style={{ display: "flex", gap: "1rem", alignItems: "center" }}>
+                            <img src={view.image} alt={side} style={{ width: "60px", height: "60px", objectFit: "contain", borderRadius: "4px", backgroundColor: "#fff", border: "1px solid #ddd" }} />
+                            <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+                              <button
+                                type="button"
+                                onClick={() => setActiveCalibrateSide(side)}
+                                className="btn btn-outline"
+                                style={{ fontSize: "0.75rem", padding: "0.3rem 0.6rem", display: "flex", alignItems: "center", gap: "0.25rem" }}
+                              >
+                                <Ruler size={12} /> {isCalibrated ? "Recalibrate View" : "Calibrate View"}
+                              </button>
+                              <label style={{ fontSize: "0.7rem", color: "hsl(var(--primary-hsl))", cursor: "pointer", textDecoration: "underline" }}>
+                                Replace Image
+                                <input type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => handleUploadGarmentImage(side, e.target.files[0])} />
+                              </label>
+                            </div>
+                          </div>
+                        ) : (
+                          <div>
+                            <label className="btn btn-outline" style={{ fontSize: "0.8rem", cursor: "pointer", width: "100%", justifyContent: "center", display: "flex", alignItems: "center", gap: "0.25rem" }}>
+                              <Upload size={14} /> Upload {side} Profile Render
+                              <input type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => handleUploadGarmentImage(side, e.target.files[0])} />
+                            </label>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {(!garmentViews.front?.calibration?.isCalibrated) && (
+                  <div style={{ padding: "0.75rem", backgroundColor: "rgba(239, 68, 68, 0.08)", borderRadius: "var(--radius-sm)", color: "rgb(185, 28, 28)", fontSize: "0.8rem", fontWeight: 600 }}>
+                    ⚠️ Front view calibration required before this apparel item can go live on the storefront.
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </form>
+
+      {/* Garment Calibration Modal */}
+      {activeCalibrateSide && (
+        <AdminGarmentCalibration
+          isOpen={!!activeCalibrateSide}
+          onClose={() => setActiveCalibrateSide(null)}
+          imageUrl={garmentViews[activeCalibrateSide]?.image}
+          sideName={`${activeCalibrateSide.toUpperCase()} View`}
+          initialCalibration={garmentViews[activeCalibrateSide]?.calibration}
+          onSaveCalibration={handleSaveGarmentCalibration}
+        />
+      )}
     </div>
   );
 }

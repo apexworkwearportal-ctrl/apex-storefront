@@ -13,11 +13,17 @@ function SuccessContent() {
   const { clearCart } = useCart();
   const searchParams = useSearchParams();
   const orderId = searchParams.get("orderId");
+  const sessionId = searchParams.get("session_id");
 
-  // Clear cart on success mount
+  // Clear cart and confirm order on success mount
   useEffect(() => {
     clearCart();
-  }, []);
+    if (orderId || sessionId) {
+      fetch(`/api/checkout/confirm?orderId=${orderId || ""}&session_id=${sessionId || ""}`)
+        .then(res => res.json())
+        .catch(err => console.error("Auto confirm error:", err));
+    }
+  }, [orderId, sessionId]);
 
   return (
     <main style={{

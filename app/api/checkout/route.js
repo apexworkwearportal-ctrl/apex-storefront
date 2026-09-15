@@ -1,6 +1,7 @@
-import stripe from "@/lib/stripe";
+import stripe, { getStripeConfig } from "@/lib/stripe";
 import { adminDb } from "@/lib/firebase-admin";
 import { sendOrderConfirmationEmail } from "@/lib/emails";
+import { splitOrderIfNeeded } from "@/lib/order-splitter";
 
 function calculateTaxRate(province) {
   const p = province ? province.toUpperCase().trim() : "";
@@ -30,11 +31,18 @@ export async function POST(req) {
       items: items.map(i => ({
         productId: i.productId,
         name: i.name,
-        optionSummary: i.optionSummary,
-        selectedOptionMap: i.selectedOptionMap,
-        price: parseFloat(i.price),
-        quantity: parseInt(i.quantity),
+        isCustom: Boolean(i.isCustom),
+        images: i.images || [],
+        optionSummary: i.optionSummary || "",
+        selectedOptionMap: i.selectedOptionMap || null,
+        price: parseFloat(i.price || 0),
+        quantity: parseInt(i.quantity || 1),
         artworkFiles: i.artworkFiles || [],
+        artworkUrl: i.artworkUrl || (i.artworkFiles && i.artworkFiles[0] ? i.artworkFiles[0].url : null),
+        mockupLayers: i.mockupLayers || null,
+        garmentViews: i.garmentViews || i.apparelViews || null,
+        selectedSide: i.selectedSide || "front",
+        logoUrl: i.logoUrl || null,
       })),
       shippingAddress: {
         ShipFName: shippingAddress.ShipFName,
@@ -58,34 +66,39 @@ export async function POST(req) {
       createdAt: new Date(),
     };
 
-    // 2. Check if Stripe is configured
-    const stripeKey = process.env.STRIPE_SECRET_KEY;
-    if (!stripeKey || stripeKey === "" || !stripe) {
-      console.warn("Stripe is not configured in environment. Creating mock completed order.");
+    // 2. Check Stripe Configuration dynamically
+    const stripeConfig = await getStripeConfig();
+    const activeStripe = stripeConfig.stripe || stripe;
+
+    if (!stripeConfig.enabled || !activeStripe) {
+      console.warn("Stripe is not configured or disabled in Admin Settings. Creating mock completed order.");
       
       if (!adminDb) {
         return Response.json({ error: "Firestore Admin is not configured" }, { status: 500 });
       }
 
-      // Directly place order as "completed" or "submitted" for local testing
-      const orderRef = adminDb.collection("orders").doc();
-      const mockOrder = {
+      const mainOrderId = adminDb.collection("orders").doc().id;
+      const baseOrder = {
         ...orderData,
-        id: orderRef.id,
+        id: mainOrderId,
         status: "submitted",
         paymentStatus: "paid",
         paymentMethod: "mock_stripe",
       };
-      await orderRef.set(mockOrder);
-      
-      // Send confirmation email
-      try {
-        await sendOrderConfirmationEmail(mockOrder);
-      } catch (emailErr) {
-        console.error("Failed to send order email:", emailErr);
+
+      // Split order on backend if mixed cart items (Print + Apparel)
+      const splitOrders = splitOrderIfNeeded(baseOrder);
+
+      for (const ord of splitOrders) {
+        await adminDb.collection("orders").doc(ord.id).set(ord);
+        try {
+          await sendOrderConfirmationEmail(ord);
+        } catch (emailErr) {
+          console.error("Failed to send order email:", emailErr);
+        }
       }
 
-      return Response.json({ url: `/checkout/success?orderId=${orderRef.id}` });
+      return Response.json({ url: `/checkout/success?orderId=${mainOrderId}` });
     }
 
     // 3. Create Pending Order in Firestore
@@ -134,7 +147,7 @@ export async function POST(req) {
       },
     ];
 
-    const session = await stripe.checkout.sessions.create({
+    const session = await activeStripe.checkout.sessions.create({
       payment_method_types: ["card"],
       line_items: lineItems,
       mode: "payment",

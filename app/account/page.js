@@ -42,16 +42,57 @@ export default function AccountDashboard() {
       const fetchOrders = async () => {
         setLoadingOrders(true);
         try {
-          const q = query(
-            collection(db, "orders"),
-            where("userId", "==", user.uid),
-            orderBy("createdAt", "desc")
-          );
-          const querySnapshot = await getDocs(q);
-          const orderList = [];
-          querySnapshot.forEach((doc) => {
-            orderList.push({ id: doc.id, ...doc.data() });
+          const orderMap = new Map();
+
+          // 1. Fetch from orders collection by userId
+          try {
+            const q1 = query(collection(db, "orders"), where("userId", "==", user.uid));
+            const snap1 = await getDocs(q1);
+            snap1.forEach((doc) => orderMap.set(doc.id, { id: doc.id, ...doc.data() }));
+          } catch (e1) {
+            console.error("Error fetching orders by userId:", e1);
+          }
+
+          // 2. Fetch from orders collection by user.email
+          if (user.email) {
+            try {
+              const q2 = query(collection(db, "orders"), where("shippingAddress.ShipEmail", "==", user.email));
+              const snap2 = await getDocs(q2);
+              snap2.forEach((doc) => orderMap.set(doc.id, { id: doc.id, ...doc.data() }));
+            } catch (e2) {
+              console.error("Error fetching orders by email:", e2);
+            }
+          }
+
+          // 3. Fetch from pendingOrders collection by userId
+          try {
+            const q3 = query(collection(db, "pendingOrders"), where("userId", "==", user.uid));
+            const snap3 = await getDocs(q3);
+            snap3.forEach((doc) => orderMap.set(doc.id, { id: doc.id, ...doc.data() }));
+          } catch (e3) {
+            console.error("Error fetching pendingOrders by userId:", e3);
+          }
+
+          // 4. Fetch from pendingOrders collection by user.email
+          if (user.email) {
+            try {
+              const q4 = query(collection(db, "pendingOrders"), where("shippingAddress.ShipEmail", "==", user.email));
+              const snap4 = await getDocs(q4);
+              snap4.forEach((doc) => orderMap.set(doc.id, { id: doc.id, ...doc.data() }));
+            } catch (e4) {
+              console.error("Error fetching pendingOrders by email:", e4);
+            }
+          }
+
+          const orderList = Array.from(orderMap.values());
+
+          // Sort orders by createdAt descending in JS
+          orderList.sort((a, b) => {
+            const timeA = a.createdAt?.seconds ? a.createdAt.seconds * 1000 : new Date(a.createdAt || 0).getTime();
+            const timeB = b.createdAt?.seconds ? b.createdAt.seconds * 1000 : new Date(b.createdAt || 0).getTime();
+            return timeB - timeA;
           });
+
           setOrders(orderList);
         } catch (error) {
           console.error("Error fetching orders:", error);
