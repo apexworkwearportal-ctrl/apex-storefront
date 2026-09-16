@@ -61,7 +61,7 @@ const MEGA_MENU_CATEGORIES = [
       { name: "Hats & Caps", href: "/products?category=apparel&type=caps", desc: "Snapbacks, beanies, embroidered caps" }
     ],
     spotlight: {
-      title: "Live Logo Apparel Builder",
+      title: "Apparel Designer & Mockup Builder",
       desc: "Upload your business logo and see real-time garment mockups with instant pricing.",
       cta: "Build Custom Apparel",
       href: "/products?category=apparel",
@@ -630,7 +630,7 @@ export default function Header() {
               }}
             >
               <Sparkles size={16} />
-              <span className="cta-btn-text">Logo Builder</span>
+              <span className="cta-btn-text">Mockup Builder</span>
             </Link>
 
             {/* Account Trigger */}

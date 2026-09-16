@@ -22,19 +22,30 @@ import {
   Check
 } from "lucide-react";
 
-export default function HomeClient({ categories }) {
+export default function HomeClient({ categories, featuredProducts = [] }) {
   const [searchVal, setSearchVal] = useState("");
   const [activeFaq, setActiveFaq] = useState(null);
   const [sliderIndex, setSliderIndex] = useState(0);
+  const [isPaused, setIsPaused] = useState(false);
 
   const sliderImages = ["/assets/1.webp", "/assets/2.webp", "/assets/3.webp", "/assets/4.webp"];
 
+  // Preload all slider images on initial render to prevent load flickers
   useEffect(() => {
+    sliderImages.forEach((src) => {
+      const img = new Image();
+      img.src = src;
+    });
+  }, []);
+
+  // Pause rotation on hover
+  useEffect(() => {
+    if (isPaused) return;
     const timer = setInterval(() => {
       setSliderIndex((prev) => (prev + 1) % sliderImages.length);
-    }, 4000);
+    }, 4500);
     return () => clearInterval(timer);
-  }, [sliderImages.length]);
+  }, [isPaused, sliderImages.length]);
 
   // Animation variants
   const containerVariants = {
@@ -95,7 +106,7 @@ export default function HomeClient({ categories }) {
   return (
     <div style={{ backgroundColor: "hsl(var(--background-hsl))" }}>
       <Header />
-      {/* 1. HERO SECTION (Image Slider Only) */}
+      {/* 1. HERO SECTION (Image Slider Only - Smooth Stacked Preloaded Crossfade) */}
       <section style={{
         position: "relative",
         padding: "0",
@@ -127,30 +138,65 @@ export default function HomeClient({ categories }) {
           pointerEvents: "none"
         }} />
 
-        <div style={{
-          position: "relative",
-          width: "100%",
-          maxWidth: "100%",
-          height: "auto",
-          margin: "0",
-          overflow: "hidden",
-          zIndex: 10
-        }}>
-          {/* Active Image */}
-          <motion.img
-            key={sliderIndex}
-            src={sliderImages[sliderIndex]}
-            alt={`Slider banner ${sliderIndex + 1}`}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.8 }}
-            style={{
-              width: "100%",
-              height: "auto",
-              display: "block"
-            }}
-          />
+        <div 
+          onMouseEnter={() => setIsPaused(true)}
+          onMouseLeave={() => setIsPaused(false)}
+          style={{
+            position: "relative",
+            width: "100%",
+            maxWidth: "100%",
+            aspectRatio: "16 / 6.5",
+            minHeight: "400px",
+            margin: "0",
+            overflow: "hidden",
+            zIndex: 10,
+            backgroundColor: "#0f172a"
+          }}
+        >
+          {/* Stacked Images - Crossfade Transition to prevent layout shift & unmount glitches */}
+          {sliderImages.map((src, idx) => (
+            <motion.img
+              key={src}
+              src={src}
+              alt={`Slider banner ${idx + 1}`}
+              initial={false}
+              animate={{ 
+                opacity: idx === sliderIndex ? 1 : 0
+              }}
+              transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                width: "100%",
+                height: "100%",
+                objectFit: "cover",
+                objectPosition: "center",
+                pointerEvents: idx === sliderIndex ? "auto" : "none",
+                zIndex: idx === sliderIndex ? 2 : 1
+              }}
+            />
+          ))}
+
+          {/* Optional Pause Pill on Hover */}
+          {isPaused && (
+            <div style={{
+              position: "absolute",
+              top: "1rem",
+              right: "1rem",
+              backgroundColor: "rgba(0,0,0,0.65)",
+              color: "white",
+              fontSize: "0.7rem",
+              fontWeight: 700,
+              padding: "0.25rem 0.65rem",
+              borderRadius: "20px",
+              backdropFilter: "blur(4px)",
+              zIndex: 35,
+              pointerEvents: "none"
+            }}>
+              Paused
+            </div>
+          )}
           
           {/* Dots navigation */}
           <div style={{
@@ -206,7 +252,8 @@ export default function HomeClient({ categories }) {
               backdropFilter: "blur(4px)",
               transition: "background-color 0.2s ease",
               fontSize: "1.25rem",
-              fontWeight: 700
+              fontWeight: 700,
+              zIndex: 30
             }}
             aria-label="Previous slide"
           >
@@ -232,7 +279,8 @@ export default function HomeClient({ categories }) {
               backdropFilter: "blur(4px)",
               transition: "background-color 0.2s ease",
               fontSize: "1.25rem",
-              fontWeight: 700
+              fontWeight: 700,
+              zIndex: 30
             }}
             aria-label="Next slide"
           >
@@ -447,7 +495,7 @@ export default function HomeClient({ categories }) {
             gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))",
             gap: "2rem"
           }}>
-            {trendingProducts.map((p) => (
+            {(featuredProducts && featuredProducts.length > 0 ? featuredProducts : trendingProducts).map((p) => (
               <div key={p.id} className="card card-hover" style={{ display: "flex", flexDirection: "column", padding: 0, overflow: "hidden", height: "100%", position: "relative", border: "1px solid hsl(var(--border-hsl))" }}>
                 {p.badge && (
                   <span style={{
@@ -487,9 +535,11 @@ export default function HomeClient({ categories }) {
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "auto", paddingTop: "0.5rem" }}>
                     <div>
                       <p style={{ fontSize: "0.6rem", color: "hsl(var(--muted-hsl))", textTransform: "uppercase", fontWeight: 600 }}>Starting from</p>
-                      <p style={{ fontWeight: 800, color: "hsl(var(--accent-hsl))", fontSize: "1rem" }}>{p.price} CAD</p>
+                      <p style={{ fontWeight: 800, color: "hsl(var(--accent-hsl))", fontSize: "1rem" }}>
+                        {p.price ? (p.price.includes("$") ? p.price : `$${p.price}`) : "$19.99"} CAD
+                      </p>
                     </div>
-                    <Link href={`/products/${p.id}`} className="btn btn-primary" style={{
+                    <Link href={p.href || `/products/${p.id}`} className="btn btn-primary" style={{
                       fontSize: "0.75rem",
                       padding: "0.4rem 0.8rem",
                       borderRadius: "var(--radius-sm)"

@@ -98,7 +98,8 @@ function ProductsContent() {
     longDescription: "",
     categoryId: "",
     startingPrice: "",
-    heroImage: "",
+    image: "",
+    images: "",
     isVisible: "",
     needsAttention: ""
   });
@@ -242,7 +243,8 @@ function ProductsContent() {
           longDescription: "",
           categoryId: "",
           startingPrice: "",
-          heroImage: "",
+          image: "",
+          images: "",
           isVisible: "",
           needsAttention: ""
         };
@@ -256,7 +258,8 @@ function ProductsContent() {
           else if (lowerH === 'longdescription' || lowerH === 'longdesc' || lowerH === 'description' || lowerH === 'specs' || lowerH === 'details') initialMapping.longDescription = h;
           else if (lowerH === 'category' || lowerH === 'categoryid' || lowerH === 'cat') initialMapping.categoryId = h;
           else if (lowerH === 'price' || lowerH === 'startingprice' || lowerH === 'baseprice') initialMapping.startingPrice = h;
-          else if (lowerH === 'heroimage' || lowerH === 'image' || lowerH === 'img' || lowerH === 'imageurl') initialMapping.heroImage = h;
+          else if (['images', 'gallery', 'productimages', 'imageurls', 'photos', 'galleryimages'].includes(lowerH)) initialMapping.images = h;
+          else if (['image', 'storefrontimage', 'mainimage', 'productimage', 'imageurl', 'img', 'photo', 'coverimage', 'thumbnail'].includes(lowerH)) initialMapping.image = h;
           else if (lowerH === 'isvisible' || lowerH === 'visible' || lowerH === 'active') initialMapping.isVisible = h;
           else if (lowerH === 'needsattention' || lowerH === 'attention') initialMapping.needsAttention = h;
         });
@@ -294,9 +297,30 @@ function ProductsContent() {
       const valLongDesc = columnMapping.longDescription ? String(row[columnMapping.longDescription] || '').trim() : '';
       const valCategory = columnMapping.categoryId ? String(row[columnMapping.categoryId] || '').trim() : '';
       const valPrice = columnMapping.startingPrice ? String(row[columnMapping.startingPrice] || '').trim() : '';
-      const valHeroImage = columnMapping.heroImage ? String(row[columnMapping.heroImage] || '').trim() : '';
+      const valImage = columnMapping.image ? String(row[columnMapping.image] || '').trim() : '';
+      const valImagesRaw = columnMapping.images ? String(row[columnMapping.images] || '').trim() : '';
       const valIsVisible = columnMapping.isVisible ? String(row[columnMapping.isVisible] || '').trim() : '';
       const valNeedsAttention = columnMapping.needsAttention ? String(row[columnMapping.needsAttention] || '').trim() : '';
+
+      // Parse gallery images list
+      let parsedImages = [];
+      if (valImagesRaw) {
+        if (valImagesRaw.startsWith("[") && valImagesRaw.endsWith("]")) {
+          try {
+            parsedImages = JSON.parse(valImagesRaw);
+          } catch (e) {
+            parsedImages = valImagesRaw.split(/[,;\n|]+/).map(s => s.trim()).filter(Boolean);
+          }
+        } else {
+          parsedImages = valImagesRaw.split(/[,;\n|]+/).map(s => s.trim()).filter(Boolean);
+        }
+      }
+
+      if (valImage && !parsedImages.includes(valImage)) {
+        parsedImages.unshift(valImage);
+      }
+
+      const mainImage = valImage || parsedImages[0] || "";
 
       const matchVal = matchColumn ? String(row[matchColumn] || '').trim() : '';
 
@@ -333,7 +357,14 @@ function ProductsContent() {
           if (valPrice !== '') {
             updatePayload["pricing.startingPriceOverride"] = parseFloat(valPrice) || 0;
           }
-          if (valHeroImage) updatePayload.heroImage = valHeroImage;
+          if (mainImage) {
+            updatePayload.image = mainImage;
+            updatePayload.imageUrl = mainImage;
+            updatePayload.storefrontImage = mainImage;
+          }
+          if (parsedImages.length > 0) {
+            updatePayload.images = parsedImages;
+          }
           if (valIsVisible !== '') {
             updatePayload.isVisible = valIsVisible === 'true' || valIsVisible === '1' || valIsVisible === 'yes';
           }
@@ -364,7 +395,10 @@ function ProductsContent() {
             pricing: {
               startingPrice: parseFloat(valPrice) || 0
             },
-            heroImage: valHeroImage || "",
+            image: mainImage,
+            imageUrl: mainImage,
+            storefrontImage: mainImage,
+            images: parsedImages.length > 0 ? parsedImages : (mainImage ? [mainImage] : []),
             isVisible: valIsVisible !== '' ? (valIsVisible === 'true' || valIsVisible === '1' || valIsVisible === 'yes') : true,
             needsAttention: valNeedsAttention !== '' ? (valNeedsAttention === 'true' || valNeedsAttention === '1' || valNeedsAttention === 'yes') : false,
             createdAt: new Date()
@@ -783,7 +817,8 @@ function ProductsContent() {
                       { key: "longDescription", label: "Long Description (Detailed Specs)" },
                       { key: "categoryId", label: "Category / Category ID" },
                       { key: "startingPrice", label: "Starting Base Price ($ CAD)" },
-                      { key: "heroImage", label: "Hero Image URL" },
+                      { key: "image", label: "Main Storefront Image URL" },
+                      { key: "images", label: "Gallery Images (Comma/Semicolon Separated URLs)" },
                       { key: "isVisible", label: "Is Visible (true/false/1/0)" },
                       { key: "needsAttention", label: "Needs Attention (true/false)" },
                       { key: "id", label: "Product Document ID" },
@@ -831,25 +866,39 @@ function ProductsContent() {
                       <tr style={{ backgroundColor: "hsl(var(--secondary-hsl) / 0.3)", borderBottom: "1px solid hsl(var(--border-hsl))" }}>
                         <th style={{ padding: "0.6rem 0.85rem" }}>Matching Key ({matchColumn})</th>
                         <th style={{ padding: "0.6rem 0.85rem" }}>Mapped Name</th>
+                        <th style={{ padding: "0.6rem 0.85rem" }}>Storefront Image</th>
                         <th style={{ padding: "0.6rem 0.85rem" }}>Short Description</th>
                         <th style={{ padding: "0.6rem 0.85rem" }}>Long Description</th>
                         <th style={{ padding: "0.6rem 0.85rem" }}>Price</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {fileRows.slice(0, 3).map((row, idx) => (
-                        <tr key={idx} style={{ borderBottom: "1px solid hsl(var(--border-hsl))" }}>
-                          <td style={{ padding: "0.6rem 0.85rem", fontWeight: 700 }}>{row[matchColumn] || <i>Empty</i>}</td>
-                          <td style={{ padding: "0.6rem 0.85rem" }}>{row[columnMapping.name] || <i>Unchanged</i>}</td>
-                          <td style={{ padding: "0.6rem 0.85rem", maxWidth: "150px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                            {row[columnMapping.shortDescription] || <i>Unchanged</i>}
-                          </td>
-                          <td style={{ padding: "0.6rem 0.85rem", maxWidth: "180px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                            {row[columnMapping.longDescription] || <i>Unchanged</i>}
-                          </td>
-                          <td style={{ padding: "0.6rem 0.85rem" }}>{row[columnMapping.startingPrice] ? `$${row[columnMapping.startingPrice]}` : <i>Unchanged</i>}</td>
-                        </tr>
-                      ))}
+                      {fileRows.slice(0, 3).map((row, idx) => {
+                        const imgUrl = columnMapping.image ? row[columnMapping.image] : (columnMapping.images ? row[columnMapping.images]?.split(/[,;\n|]+/)[0] : "");
+                        return (
+                          <tr key={idx} style={{ borderBottom: "1px solid hsl(var(--border-hsl))" }}>
+                            <td style={{ padding: "0.6rem 0.85rem", fontWeight: 700 }}>{row[matchColumn] || <i>Empty</i>}</td>
+                            <td style={{ padding: "0.6rem 0.85rem" }}>{row[columnMapping.name] || <i>Unchanged</i>}</td>
+                            <td style={{ padding: "0.6rem 0.85rem" }}>
+                              {imgUrl ? (
+                                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                                  <img src={imgUrl} alt="Preview" style={{ width: "24px", height: "24px", objectFit: "contain", borderRadius: "4px", backgroundColor: "#f8fafc" }} />
+                                  <span style={{ fontSize: "0.75rem", maxWidth: "120px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "hsl(var(--accent-hsl))" }}>{imgUrl}</span>
+                                </div>
+                              ) : (
+                                <i>No Image Mapped</i>
+                              )}
+                            </td>
+                            <td style={{ padding: "0.6rem 0.85rem", maxWidth: "150px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {row[columnMapping.shortDescription] || <i>Unchanged</i>}
+                            </td>
+                            <td style={{ padding: "0.6rem 0.85rem", maxWidth: "180px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {row[columnMapping.longDescription] || <i>Unchanged</i>}
+                            </td>
+                            <td style={{ padding: "0.6rem 0.85rem" }}>{row[columnMapping.startingPrice] ? `$${row[columnMapping.startingPrice]}` : <i>Unchanged</i>}</td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
