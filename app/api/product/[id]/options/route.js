@@ -27,7 +27,7 @@ export async function GET(req, { params }) {
 
     return Response.json({ optionGroups: groupedOptions });
   } catch (error) {
-    console.error(`Failed to load options for product ${id}:`, error);
-    return Response.json({ error: error.message }, { status: 500 });
+    console.error(`Failed to load options for product ${id}:`, error.message);
+    return Response.json({ error: "Failed to load product specifications. Please try again." }, { status: 500 });
   }
 }

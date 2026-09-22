@@ -334,7 +334,7 @@ export default function HomeClient({ categories, featuredProducts = [] }) {
               <ShieldCheck size={20} />
             </div>
             <div>
-              <p style={{ fontWeight: 700, fontSize: "0.9rem" }}>SinaLite Trade Prices</p>
+              <p style={{ fontWeight: 700, fontSize: "0.9rem" }}>Wholesale Trade Prices</p>
               <p style={{ fontSize: "0.75rem", color: "hsl(var(--muted-hsl))" }}>Wholesale print prices mapped dynamically</p>
             </div>
           </div>

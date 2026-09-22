@@ -80,7 +80,7 @@ export async function POST(req) {
       markupAmount: calculated.markupAmount
     });
   } catch (error) {
-    console.error("Live price query failed:", error);
-    return Response.json({ error: error.message }, { status: 500 });
+    console.error("Live price query failed:", error.message);
+    return Response.json({ error: "Unable to calculate pricing options. Please try again." }, { status: 500 });
   }
 }

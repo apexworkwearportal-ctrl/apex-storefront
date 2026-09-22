@@ -13,43 +13,56 @@ export async function POST(req) {
     console.log(`Calculating shipping estimate to ZIP: ${shipZip}`);
 
     const customItems = items.filter(item => item.isCustom || isNaN(parseInt(item.productId)));
-    const sinaliteItemsFiltered = items
+    const printItemsFiltered = items
       .filter(item => !item.isCustom && !isNaN(parseInt(item.productId)))
-      .map(item => ({
-        productId: parseInt(item.productId),
-        options: item.selectedOptionMap
-      }));
+      .map(item => {
+        let optionsArr = [];
+        if (Array.isArray(item.selectedOptionIds)) {
+          optionsArr = item.selectedOptionIds.map(id => parseInt(id)).filter(id => !isNaN(id));
+        } else if (item.selectedOptionMap && typeof item.selectedOptionMap === "object") {
+          optionsArr = Object.values(item.selectedOptionMap).map(id => parseInt(id)).filter(id => !isNaN(id));
+        } else if (Array.isArray(item.options)) {
+          optionsArr = item.options.map(id => parseInt(id)).filter(id => !isNaN(id));
+        }
+        return {
+          productId: parseInt(item.productId),
+          options: optionsArr
+        };
+      });
 
     let ratesList = [];
 
-    // Case A: Cart contains Print products (or Mixed Print + Apparel) -> Use ONLY SinaLite Print Shipping
-    if (sinaliteItemsFiltered.length > 0) {
+    // Case A: Cart contains Print products (or Mixed Print + Apparel) -> Fetch Print Shipping
+    if (printItemsFiltered.length > 0) {
       const shippingInfo = {
         ShipState: shippingAddress.ShipState || shippingAddress.state || "",
         ShipCountry: shippingAddress.ShipCountry || shippingAddress.country || "CA",
         ShipZip: shipZip
       };
 
-      const estimate = await getShippingEstimate(sinaliteItemsFiltered, shippingInfo);
+      try {
+        const estimate = await getShippingEstimate(printItemsFiltered, shippingInfo);
 
-      if (estimate && Array.isArray(estimate.body)) {
-        estimate.body.forEach((rateArr) => {
-          if (Array.isArray(rateArr) && rateArr.length >= 3) {
-            const [carrier, serviceName, price, deliveryDays] = rateArr;
-            
-            let cleanName = serviceName;
-            if (carrier && serviceName && !serviceName.toLowerCase().startsWith(carrier.toLowerCase())) {
-              cleanName = `${carrier} ${serviceName}`;
+        if (estimate && Array.isArray(estimate.body)) {
+          estimate.body.forEach((rateArr) => {
+            if (Array.isArray(rateArr) && rateArr.length >= 3) {
+              const [carrier, serviceName, price, deliveryDays] = rateArr;
+              
+              let cleanName = serviceName;
+              if (carrier && serviceName && !serviceName.toLowerCase().startsWith(carrier.toLowerCase())) {
+                cleanName = `${carrier} ${serviceName}`;
+              }
+
+              ratesList.push({
+                serviceName: cleanName || "Courier Shipping",
+                price: parseFloat(price || 0),
+                deliveryDays: deliveryDays ? deliveryDays.toString() : "3-5"
+              });
             }
-
-            // Return SinaLite shipping rate ONLY (No extra apparel charge added)
-            ratesList.push({
-              serviceName: cleanName || "Courier Shipping",
-              price: parseFloat(price || 0),
-              deliveryDays: deliveryDays ? deliveryDays.toString() : "3-5"
-            });
-          }
-        });
+          });
+        }
+      } catch (estimateErr) {
+        console.warn("External shipping calculation unavailable, applying default shipping rates:", estimateErr.message);
       }
     } else {
       // Case B: Cart contains ONLY Custom Apparel products -> Load Admin Apparel Shipping Classes
@@ -88,16 +101,21 @@ export async function POST(req) {
       }
     }
 
+    // Default Fallback Rates if ratesList is empty (prevents checkout failure)
     if (ratesList.length === 0) {
-      return Response.json([
-        { serviceName: "Standard Shipping", price: 14.99 * items.length, deliveryDays: "3-5" },
-        { serviceName: "Express Shipping", price: 29.99 * items.length, deliveryDays: "1-2" }
-      ]);
+      ratesList = [
+        { serviceName: "Standard Express Courier", price: parseFloat((14.99 + (2.50 * Math.max(0, items.length - 1))).toFixed(2)), deliveryDays: "3-5" },
+        { serviceName: "Priority Freight Shipping", price: parseFloat((29.99 + (4.50 * Math.max(0, items.length - 1))).toFixed(2)), deliveryDays: "1-2" }
+      ];
     }
 
     return Response.json(ratesList);
   } catch (error) {
-    console.error("Shipping lookup failed:", error);
-    return Response.json({ error: error.message }, { status: 500 });
+    console.error("Shipping lookup error caught:", error.message);
+    // Never fail with 500 or expose internal vendor error messages to client
+    return Response.json([
+      { serviceName: "Standard Courier Shipping", price: 14.99, deliveryDays: "3-5" },
+      { serviceName: "Priority Express Shipping", price: 29.99, deliveryDays: "1-2" }
+    ]);
   }
 }
