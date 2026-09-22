@@ -44,9 +44,54 @@ export default function AdminSettingsPage() {
   const [testResult, setTestResult] = useState(null);
   const [message, setMessage] = useState(null);
 
+  const [autoSubmitSinalite, setAutoSubmitSinalite] = useState(false);
+  const [loadingFulfillment, setLoadingFulfillment] = useState(true);
+  const [savingFulfillment, setSavingFulfillment] = useState(false);
+
   useEffect(() => {
     fetchStripeSettings();
+    fetchFulfillmentSettings();
   }, []);
+
+  const fetchFulfillmentSettings = async () => {
+    setLoadingFulfillment(true);
+    try {
+      const res = await fetch("/api/admin/fulfillment-settings");
+      const data = await res.json();
+      if (res.ok) {
+        setAutoSubmitSinalite(!!data.autoSubmitSinalite);
+      }
+    } catch (err) {
+      console.error("Error loading fulfillment settings:", err);
+    } finally {
+      setLoadingFulfillment(false);
+    }
+  };
+
+  const handleToggleAutoSubmit = async () => {
+    const nextVal = !autoSubmitSinalite;
+    setAutoSubmitSinalite(nextVal);
+    setSavingFulfillment(true);
+    try {
+      const res = await fetch("/api/admin/fulfillment-settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ autoSubmitSinalite: nextVal })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setMessage({ type: "success", text: data.message || "Fulfillment mode updated!" });
+      } else {
+        setAutoSubmitSinalite(!nextVal);
+        alert("Failed to update setting: " + data.error);
+      }
+    } catch (err) {
+      setAutoSubmitSinalite(!nextVal);
+      alert("Error saving setting: " + err.message);
+    } finally {
+      setSavingFulfillment(false);
+    }
+  };
 
   const fetchStripeSettings = async () => {
     setLoading(true);
@@ -461,6 +506,66 @@ export default function AdminSettingsPage() {
 
         {/* Custom Apparel Shipping Classes Manager */}
         <ApparelShippingManager />
+
+        {/* SinaLite Fulfillment Submission Mode Card */}
+        <div className="card" style={{ padding: "1.75rem", backgroundColor: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: "12px", display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+            <div>
+              <span style={{ fontSize: "0.75rem", fontWeight: 800, textTransform: "uppercase", color: "#2563EB", letterSpacing: "0.05em", display: "block", marginBottom: "0.25rem" }}>
+                Print Wholesale Fulfillment Settings
+              </span>
+              <h3 style={{ fontSize: "1.1rem", fontWeight: 800, color: "#0F172A", margin: 0 }}>
+                SinaLite API Submission Mode
+              </h3>
+              <p style={{ color: "#64748B", fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                Configure whether paid print orders automatically post to SinaLite API upon checkout, or stay held in <em>Pending Submission</em> for manual review by Admin.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleToggleAutoSubmit}
+              disabled={savingFulfillment || loadingFulfillment}
+              style={{
+                padding: "0.5rem 1.15rem",
+                borderRadius: "24px",
+                border: "none",
+                fontSize: "0.8rem",
+                fontWeight: 800,
+                cursor: savingFulfillment ? "wait" : "pointer",
+                backgroundColor: autoSubmitSinalite ? "#10B981" : "#F59E0B",
+                color: "white",
+                display: "flex",
+                alignItems: "center",
+                gap: "0.4rem",
+                boxShadow: "0 2px 6px rgba(0,0,0,0.08)",
+                transition: "all 0.2s ease"
+              }}
+            >
+              {autoSubmitSinalite ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
+              {autoSubmitSinalite ? "AUTOMATIC SUBMISSION (ENABLED)" : "MANUAL REVIEW MODE (DISABLED)"}
+            </button>
+          </div>
+
+          <div style={{
+            padding: "1rem",
+            backgroundColor: autoSubmitSinalite ? "#ECFDF5" : "#FFFBEB",
+            borderRadius: "8px",
+            border: autoSubmitSinalite ? "1px solid #A7F3D0" : "1px solid #FCD34D",
+            fontSize: "0.85rem",
+            color: autoSubmitSinalite ? "#065F46" : "#92400E"
+          }}>
+            {autoSubmitSinalite ? (
+              <p style={{ margin: 0, fontWeight: 600 }}>
+                ⚡ <strong>AUTOMATIC MODE ENABLED:</strong> Print orders will automatically post directly to SinaLite backend API upon checkout completion.
+              </p>
+            ) : (
+              <p style={{ margin: 0, fontWeight: 600 }}>
+                🛑 <strong>MANUAL REVIEW MODE (RECOMMENDED):</strong> Print orders will enter status <em>Pending Submission</em>. Admin can review product options and click <strong>"Send Order to SinaLite"</strong> in Admin Orders to transmit when ready.
+              </p>
+            )}
+          </div>
+        </div>
 
         {/* Save Settings Form Submit CTA */}
         <div style={{ display: "flex", justifyContent: "flex-end" }}>

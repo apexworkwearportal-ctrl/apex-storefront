@@ -47,27 +47,85 @@ export async function GET(req) {
       // Split into Print (SinaLite) & Apparel (Admin Internal) orders if mixed
       const splitOrders = splitOrderIfNeeded(baseOrder);
 
+      // Check auto-submission toggle setting in Firestore
+      let autoSubmitSinalite = false;
+      try {
+        const fulSnap = await adminDb.collection("settings").doc("fulfillment").get();
+        if (fulSnap.exists) {
+          autoSubmitSinalite = !!fulSnap.data().autoSubmitSinalite;
+        }
+      } catch (fErr) {
+        console.warn("Could not load fulfillment settings:", fErr.message);
+      }
+
       const confirmedList = [];
 
       for (const ord of splitOrders) {
         let sinaliteOrderId = null;
 
-        // If Print order, attempt automatic submission to SinaLite API
-        if (ord.fulfillmentType === "sinalite") {
+        // If Print order and auto-submit is ENABLED, submit to SinaLite
+        if (ord.fulfillmentType === "sinalite" && autoSubmitSinalite) {
           try {
-            const sinaliteRes = await placeOrder(ord.shippingAddress, ord.items);
-            if (sinaliteRes && sinaliteRes.orderId) {
-              sinaliteOrderId = sinaliteRes.orderId;
+            const sinaliteItems = (ord.items || [])
+              .filter(item => !item.isCustom && !isNaN(parseInt(item.productId)))
+              .map(item => {
+                let optionsArr = [];
+                if (Array.isArray(item.selectedOptionIds)) {
+                  optionsArr = item.selectedOptionIds.map(id => parseInt(id)).filter(id => !isNaN(id));
+                } else if (item.selectedOptionMap && typeof item.selectedOptionMap === "object") {
+                  optionsArr = Object.values(item.selectedOptionMap).map(id => parseInt(id)).filter(id => !isNaN(id));
+                } else if (Array.isArray(item.options)) {
+                  optionsArr = item.options.map(id => parseInt(id)).filter(id => !isNaN(id));
+                }
+
+                const files = [];
+                if (Array.isArray(item.artworkFiles)) {
+                  item.artworkFiles.forEach(f => { if (f.url) files.push(f.url); });
+                } else if (item.artworkUrl) {
+                  files.push(item.artworkUrl);
+                }
+
+                return {
+                  productId: parseInt(item.productId),
+                  options: optionsArr,
+                  ...(files.length > 0 ? { files } : {})
+                };
+              });
+
+            if (sinaliteItems.length > 0) {
+              const addr = ord.shippingAddress || {};
+              const shippingInfo = {
+                ShipName: addr.ShipName || addr.fullName || addr.name || "Customer",
+                ShipCompany: addr.ShipCompany || addr.companyName || "",
+                ShipAddress1: addr.ShipAddress1 || addr.address || "",
+                ShipAddress2: addr.ShipAddress2 || addr.apartment || "",
+                ShipCity: addr.ShipCity || addr.city || "",
+                ShipState: addr.ShipState || addr.state || "ON",
+                ShipZip: addr.ShipZip || addr.zip || "",
+                ShipCountry: addr.ShipCountry || addr.country || "CA",
+                ShipPhone: addr.ShipPhone || addr.phone || "4165550199"
+              };
+              const billingInfo = { ...shippingInfo };
+              const notes = ord.notes || `Order ${ord.id} placed via Apex Storefront`;
+
+              // Correct parameter sequence: items, shippingInfo, billingInfo, notes
+              const sinaliteRes = await placeOrder(sinaliteItems, shippingInfo, billingInfo, notes);
+              if (sinaliteRes && (sinaliteRes.orderId || sinaliteRes.order_id || sinaliteRes.id)) {
+                sinaliteOrderId = String(sinaliteRes.orderId || sinaliteRes.order_id || sinaliteRes.id);
+              }
             }
           } catch (err) {
-            console.error("SinaLite order placement failed for split order:", err.message);
+            console.error("SinaLite automatic order placement failed:", err.message);
           }
         }
 
         const finalizedDoc = {
           ...ord,
-          status: ord.fulfillmentType === "sinalite" ? (sinaliteOrderId ? "submitted" : "submitted") : "pending_apparel_fulfillment",
-          sinaliteOrderId
+          status: ord.fulfillmentType === "sinalite"
+            ? (sinaliteOrderId ? "submitted" : (autoSubmitSinalite ? "pending_submission" : "pending_submission"))
+            : "pending_apparel_fulfillment",
+          sinaliteOrderId,
+          autoSubmitEnabled: autoSubmitSinalite
         };
 
         await adminDb.collection("orders").doc(finalizedDoc.id).set(finalizedDoc);

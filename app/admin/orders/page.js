@@ -9,6 +9,31 @@ export default function AdminOrdersPage() {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedOrder, setSelectedOrder] = useState(null);
+  const [submittingSinalite, setSubmittingSinalite] = useState(false);
+
+  const handleManualSubmitSinalite = async (orderId) => {
+    if (!orderId) return;
+    setSubmittingSinalite(true);
+    try {
+      const res = await fetch("/api/admin/orders/submit-sinalite", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        alert(data.message || `Order successfully transmitted to SinaLite! Ref ID: #${data.sinaliteOrderId}`);
+        setSelectedOrder(prev => prev ? ({ ...prev, sinaliteOrderId: data.sinaliteOrderId, status: "submitted" }) : null);
+        fetchOrders();
+      } else {
+        alert(`Failed to submit to SinaLite: ${data.error || "Unknown error"}`);
+      }
+    } catch (err) {
+      alert(`Error submitting to SinaLite: ${err.message}`);
+    } finally {
+      setSubmittingSinalite(false);
+    }
+  };
 
   const fetchOrders = async () => {
     setLoading(true);
@@ -217,6 +242,53 @@ export default function AdminOrdersPage() {
                 )}
               </div>
 
+              {/* Manual SinaLite Submission Banner for unsubmitted print orders */}
+              {(selectedOrder.fulfillmentType === "sinalite" || selectedOrder.orderType === "print" || selectedOrder.id?.includes("PRINT")) && !selectedOrder.sinaliteOrderId && (
+                <div style={{
+                  padding: "1rem 1.25rem",
+                  backgroundColor: "#FFFBEB",
+                  borderRadius: "8px",
+                  border: "1px solid #FCD34D",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "0.6rem"
+                }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ fontSize: "0.8rem", fontWeight: 800, color: "#92400E" }}>
+                      ⚠️ Print Order Awaiting Transmission to SinaLite
+                    </span>
+                    <span style={{ fontSize: "0.7rem", fontWeight: 800, padding: "0.2rem 0.5rem", borderRadius: "4px", backgroundColor: "#F59E0B", color: "white" }}>
+                      MANUAL TRANSMIT READY
+                    </span>
+                  </div>
+                  <p style={{ fontSize: "0.75rem", color: "#B45309", margin: 0, lineHeight: "1.4" }}>
+                    Click below to send item specs, product option IDs, uploaded artwork files, and delivery address to SinaLite API.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => handleManualSubmitSinalite(selectedOrder.id)}
+                    disabled={submittingSinalite}
+                    className="btn btn-primary"
+                    style={{
+                      backgroundColor: "#2563EB",
+                      color: "white",
+                      padding: "0.6rem 1rem",
+                      fontSize: "0.85rem",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: "0.5rem",
+                      marginTop: "0.25rem",
+                      borderRadius: "6px",
+                      cursor: submittingSinalite ? "not-allowed" : "pointer",
+                      opacity: submittingSinalite ? 0.7 : 1
+                    }}
+                  >
+                    {submittingSinalite ? "Transmitting to SinaLite API..." : "🚀 Send Order to SinaLite Backend Now"}
+                  </button>
+                </div>
+              )}
+
               {/* SinaLite Proof & Webhook Info Card */}
               {(selectedOrder.sinaliteReviewURL || selectedOrder.sinaliteOrderId || selectedOrder.sinaliteTrackingNumber) && (
                 <div style={{
@@ -368,8 +440,8 @@ export default function AdminOrdersPage() {
                         <p style={{ fontWeight: 800, fontSize: "0.95rem", color: "#2563EB", margin: 0 }}>${parseFloat(item.price || 0).toFixed(2)} CAD</p>
                       </div>
 
-                      {/* Render Visual Garment Mockup if Custom Apparel */}
-                      {(item.isCustom || item.mockupLayers || item.logoUrl || (item.artworkFiles && item.artworkFiles.length > 0)) && (
+                      {/* Render Visual Garment Mockup ONLY if actual Custom Apparel */}
+                      {(item.isApparel || (item.isCustom && (item.mockupLayers || item.garmentColor || item.selectedSide))) && (
                         <AdminApparelMockupRender item={item} />
                       )}
 
