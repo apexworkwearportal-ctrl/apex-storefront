@@ -122,7 +122,7 @@ export default function AdminLayout({ children }) {
       title: "SYSTEM & INTEGRATIONS",
       items: [
         { label: "Dashboard Overview", href: "/admin", icon: LayoutDashboard },
-        { label: "Stripe & Payments", href: "/admin/settings", icon: CreditCard },
+        { label: "Admin Settings", href: "/admin/settings", icon: CreditCard },
         { label: "SinaLite API Sync", href: "/admin/sync", icon: RefreshCw },
       ]
     }

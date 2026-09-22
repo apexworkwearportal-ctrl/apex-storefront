@@ -133,16 +133,6 @@ export default function AdminOrdersPage() {
                 {orders.map(order => (
                   <tr key={order.id} style={{ borderBottom: "1px solid hsl(var(--border-hsl))", backgroundColor: selectedOrder?.id === order.id ? "hsl(var(--secondary-hsl) / 0.3)" : "transparent" }}>
                     <td style={{ padding: "1.25rem 1.5rem", fontWeight: 600 }}>
-                      {order.id.slice(0, 8)}...
-                    </td>
-                    <td style={{ padding: "1.25rem 1.5rem" }}>
-                      <p style={{ fontWeight: 500 }}>{order.shippingAddress?.ShipFName} {order.shippingAddress?.ShipLName}</p>
-                      <p style={{ fontSize: "0.8rem", color: "hsl(var(--muted-hsl))" }}>{order.shippingAddress?.ShipEmail}</p>
-                    </td>
-                    <td style={{ padding: "1.25rem 1.5rem" }}>
-                      {new Date(order.createdAt?.seconds * 1000 || order.createdAt).toLocaleDateString()}
-                    </td>
-                    <td style={{ padding: "1.25rem 1.5rem", fontWeight: 600 }}>
                       <div>
                         <p style={{ margin: 0 }}>{order.id.slice(0, 10)}</p>
                         {order.sinaliteOrderId && (

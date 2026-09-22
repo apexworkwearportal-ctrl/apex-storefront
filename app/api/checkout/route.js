@@ -147,8 +147,11 @@ export async function POST(req) {
       },
     ];
 
+    const customerEmail = shippingAddress.ShipEmail || shippingAddress.email || undefined;
+
     const session = await activeStripe.checkout.sessions.create({
       payment_method_types: ["card"],
+      customer_email: customerEmail,
       line_items: lineItems,
       mode: "payment",
       success_url: `${origin}/checkout/success?session_id={CHECKOUT_SESSION_ID}&orderId=${pendingRef.id}`,

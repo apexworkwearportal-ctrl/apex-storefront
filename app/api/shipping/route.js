@@ -1,5 +1,6 @@
 import { getShippingEstimate } from "@/lib/sinalite";
 import { adminDb } from "@/lib/firebase-admin";
+import { normalizeCountryCode, normalizeStateCode } from "@/lib/location-data";
 
 export async function POST(req) {
   try {
@@ -34,9 +35,12 @@ export async function POST(req) {
 
     // Case A: Cart contains Print products (or Mixed Print + Apparel) -> Fetch Print Shipping
     if (printItemsFiltered.length > 0) {
+      const shipCountry = normalizeCountryCode(shippingAddress.ShipCountry || shippingAddress.country || "CA");
+      const shipState = normalizeStateCode(shippingAddress.ShipState || shippingAddress.state || "ON", shipCountry);
+
       const shippingInfo = {
-        ShipState: shippingAddress.ShipState || shippingAddress.state || "",
-        ShipCountry: shippingAddress.ShipCountry || shippingAddress.country || "CA",
+        ShipState: shipState,
+        ShipCountry: shipCountry,
         ShipZip: shipZip
       };
 

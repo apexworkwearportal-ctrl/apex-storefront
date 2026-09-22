@@ -10,6 +10,8 @@ import Link from "next/link";
 import { Trash2, Upload, AlertCircle, ShoppingCart, Loader2, ArrowRight, MapPin, DollarSign, FileText } from "lucide-react";
 import { motion } from "framer-motion";
 
+import { COUNTRIES, CANADIAN_PROVINCES, US_STATES, normalizeCountryCode, normalizeStateCode } from "@/lib/location-data";
+
 export default function CartPage() {
   const { cart, updateQuantity, removeFromCart, cartCount } = useCart();
   const { user, userData } = useAuth();
@@ -23,7 +25,7 @@ export default function CartPage() {
   const [address, setAddress] = useState("");
   const [suite, setSuite] = useState("");
   const [city, setCity] = useState("");
-  const [state, setState] = useState("");
+  const [state, setState] = useState("ON");
   const [zip, setZip] = useState("");
   const [country, setCountry] = useState("CA");
 
@@ -59,9 +61,10 @@ export default function CartPage() {
       setAddress(selected.addressLine1 || "");
       setSuite(selected.addressLine2 || "");
       setCity(selected.city || "");
-      setState(selected.state || "");
+      const normCountry = normalizeCountryCode(selected.country);
+      setCountry(normCountry);
+      setState(normalizeStateCode(selected.state, normCountry));
       setZip(selected.zip || "");
-      setCountry(selected.country || "CA");
     }
   };
 
@@ -405,18 +408,51 @@ export default function CartPage() {
                   <input className="input" placeholder="Suite 100" value={suite} onChange={(e) => setSuite(e.target.value)} />
                 </div>
 
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "1rem" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
+                  <div>
+                    <label className="label">Country</label>
+                    <select
+                      className="input"
+                      value={country}
+                      onChange={(e) => {
+                        const newC = e.target.value;
+                        setCountry(newC);
+                        setState(newC === "CA" ? "ON" : "NY");
+                      }}
+                      required
+                    >
+                      {COUNTRIES.map((c) => (
+                        <option key={c.code} value={c.code}>
+                          {c.name} ({c.code})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                   <div>
                     <label className="label">City</label>
-                    <input className="input" value={city} onChange={(e) => setCity(e.target.value)} required />
+                    <input className="input" placeholder="Toronto" value={city} onChange={(e) => setCity(e.target.value)} required />
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
+                  <div>
+                    <label className="label">{country === "CA" ? "Province" : "State"}</label>
+                    <select
+                      className="input"
+                      value={state}
+                      onChange={(e) => setState(e.target.value)}
+                      required
+                    >
+                      {(country === "CA" ? CANADIAN_PROVINCES : US_STATES).map((st) => (
+                        <option key={st.code} value={st.code}>
+                          {st.code} - {st.name}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                   <div>
-                    <label className="label">Province/State</label>
-                    <input className="input" placeholder="ON" value={state} onChange={(e) => setState(e.target.value)} required />
-                  </div>
-                  <div>
-                    <label className="label">Postal/ZIP Code</label>
-                    <input className="input" placeholder="M5V 1A1" value={zip} onChange={(e) => setZip(e.target.value)} required />
+                    <label className="label">Postal / ZIP Code</label>
+                    <input className="input" placeholder={country === "CA" ? "M5V 1A1" : "90210"} value={zip} onChange={(e) => setZip(e.target.value)} required />
                   </div>
                 </div>
 
