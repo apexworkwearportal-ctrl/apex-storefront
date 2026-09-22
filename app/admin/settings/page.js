@@ -48,6 +48,10 @@ export default function AdminSettingsPage() {
   const [loadingFulfillment, setLoadingFulfillment] = useState(true);
   const [savingFulfillment, setSavingFulfillment] = useState(false);
 
+  const [sinaliteClientId, setSinaliteClientId] = useState("");
+  const [sinaliteClientSecret, setSinaliteClientSecret] = useState("");
+  const [sinaliteUseLive, setSinaliteUseLive] = useState(false);
+
   useEffect(() => {
     fetchStripeSettings();
     fetchFulfillmentSettings();
@@ -60,6 +64,9 @@ export default function AdminSettingsPage() {
       const data = await res.json();
       if (res.ok) {
         setAutoSubmitSinalite(!!data.autoSubmitSinalite);
+        setSinaliteClientId(data.clientId || "");
+        setSinaliteClientSecret(data.clientSecretMasked || "");
+        setSinaliteUseLive(!!data.useLiveApi);
       }
     } catch (err) {
       console.error("Error loading fulfillment settings:", err);
@@ -76,7 +83,12 @@ export default function AdminSettingsPage() {
       const res = await fetch("/api/admin/fulfillment-settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ autoSubmitSinalite: nextVal })
+        body: JSON.stringify({
+          autoSubmitSinalite: nextVal,
+          clientId: sinaliteClientId,
+          clientSecret: sinaliteClientSecret,
+          useLiveApi: sinaliteUseLive
+        })
       });
       const data = await res.json();
       if (res.ok) {
@@ -88,6 +100,34 @@ export default function AdminSettingsPage() {
     } catch (err) {
       setAutoSubmitSinalite(!nextVal);
       alert("Error saving setting: " + err.message);
+    } finally {
+      setSavingFulfillment(false);
+    }
+  };
+
+  const handleSaveFulfillmentCredentials = async (e) => {
+    if (e) e.preventDefault();
+    setSavingFulfillment(true);
+    try {
+      const res = await fetch("/api/admin/fulfillment-settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          autoSubmitSinalite,
+          clientId: sinaliteClientId,
+          clientSecret: sinaliteClientSecret,
+          useLiveApi: sinaliteUseLive
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setMessage({ type: "success", text: "SinaLite API credentials and settings saved!" });
+        fetchFulfillmentSettings();
+      } else {
+        alert("Failed to save SinaLite credentials: " + data.error);
+      }
+    } catch (err) {
+      alert("Error saving credentials: " + err.message);
     } finally {
       setSavingFulfillment(false);
     }
@@ -564,6 +604,71 @@ export default function AdminSettingsPage() {
                 🛑 <strong>MANUAL REVIEW MODE (RECOMMENDED):</strong> Print orders will enter status <em>Pending Submission</em>. Admin can review product options and click <strong>"Send Order to SinaLite"</strong> in Admin Orders to transmit when ready.
               </p>
             )}
+          </div>
+
+          {/* SinaLite OAuth API Credentials Form */}
+          <div style={{ borderTop: "1px solid #E2E8F0", paddingTop: "1rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
+            <h4 style={{ fontSize: "0.95rem", fontWeight: 800, color: "#0F172A", margin: 0 }}>
+              🔑 SinaLite API Access Keys (OAuth Credentials)
+            </h4>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
+              <div>
+                <label className="label">SinaLite Client ID</label>
+                <input
+                  type="text"
+                  className="input"
+                  placeholder="e.g. 5f89a... or Client ID"
+                  value={sinaliteClientId}
+                  onChange={(e) => setSinaliteClientId(e.target.value)}
+                  style={{ fontSize: "0.85rem", fontFamily: "monospace" }}
+                />
+              </div>
+
+              <div>
+                <label className="label">SinaLite Client Secret</label>
+                <input
+                  type="password"
+                  className="input"
+                  placeholder="e.g. 64-character secret key"
+                  value={sinaliteClientSecret}
+                  onChange={(e) => setSinaliteClientSecret(e.target.value)}
+                  style={{ fontSize: "0.85rem", fontFamily: "monospace" }}
+                />
+              </div>
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: "0.5rem" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <span style={{ fontSize: "0.85rem", fontWeight: 700, color: "#0F172A" }}>API Endpoint Target:</span>
+                <button
+                  type="button"
+                  onClick={() => setSinaliteUseLive(!sinaliteUseLive)}
+                  style={{
+                    padding: "0.3rem 0.75rem",
+                    borderRadius: "6px",
+                    border: "1px solid #CBD5E1",
+                    fontSize: "0.75rem",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    backgroundColor: sinaliteUseLive ? "#EF4444" : "#3B82F6",
+                    color: "white"
+                  }}
+                >
+                  {sinaliteUseLive ? "🔴 LIVE API (liveapi.sinalite.com)" : "🧪 TEST SANDBOX (api.sinaliteuppy.com)"}
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleSaveFulfillmentCredentials}
+                disabled={savingFulfillment}
+                className="btn btn-primary"
+                style={{ padding: "0.5rem 1.25rem", fontSize: "0.85rem", backgroundColor: "#2563EB", color: "white" }}
+              >
+                {savingFulfillment ? "Saving Credentials..." : "Save SinaLite Credentials"}
+              </button>
+            </div>
           </div>
         </div>
 
