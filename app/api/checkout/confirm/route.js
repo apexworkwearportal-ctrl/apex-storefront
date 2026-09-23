@@ -2,7 +2,7 @@ import { adminDb } from "@/lib/firebase-admin";
 import { placeOrder } from "@/lib/sinalite";
 import { sendOrderConfirmationEmail } from "@/lib/emails";
 import { splitOrderIfNeeded } from "@/lib/order-splitter";
-import { normalizeCountryCode, normalizeStateCode } from "@/lib/location-data";
+import { normalizeCountryCode, normalizeStateCode, formatPostalCode, getSinaliteBillingInfo } from "@/lib/location-data";
 
 function formatSinaliteOrderPayload(ord) {
   // 1. Format Items
@@ -47,7 +47,7 @@ function formatSinaliteOrderPayload(ord) {
       };
     });
 
-  // 2. Format Shipping Info
+  // 2. Format Shipping Info (Provided dynamically by Customer)
   const addr = ord.shippingAddress || {};
   const fullName = addr.ShipName || addr.fullName || addr.name || "Customer";
   const nameParts = fullName.trim().split(" ");
@@ -56,45 +56,31 @@ function formatSinaliteOrderPayload(ord) {
 
   const shipCountry = normalizeCountryCode(addr.ShipCountry || addr.country || "CA");
   const shipState = normalizeStateCode(addr.ShipState || addr.state || "ON", shipCountry);
+  const shipZip = formatPostalCode(addr.ShipZip || addr.zip || "L4W 4K1", shipCountry);
+
+  let shipMethod = ord.shippingMethod || addr.ShipMethod || "UPS Standard";
+  if (!shipMethod || shipMethod.includes("Courier") || shipMethod.includes("Standard Express")) {
+    shipMethod = "UPS Standard";
+  }
 
   const shippingInfo = {
     ShipFName: shipFName,
     ShipLName: shipLName,
     ShipEmail: addr.ShipEmail || addr.email || ord.userEmail || "customer@apexworkwear.com",
-    ShipAddr: addr.ShipAddr || addr.ShipAddress1 || addr.address || "335 Steelcase W",
+    ShipAddr: addr.ShipAddr || addr.ShipAddress1 || addr.address || "1515 Britannia Rd E Unit 14-15",
     ShipAddr2: addr.ShipAddr2 || addr.apartment || "",
-    ShipCity: addr.ShipCity || addr.city || "Markham",
+    ShipCity: addr.ShipCity || addr.city || "Mississauga",
     ShipState: shipState,
-    ShipZip: addr.ShipZip || addr.zip || "L3R 1G3",
+    ShipZip: shipZip,
     ShipCountry: shipCountry,
     ShipPhone: addr.ShipPhone || addr.phone || "4165550199",
-    ShipMethod: ord.shippingMethod || addr.ShipMethod || "UPS Standard"
+    ShipMethod: shipMethod
   };
 
-  // 3. Format Billing Info
-  const billAddr = ord.billingAddress || {};
-  const billFullName = billAddr.BillName || billAddr.fullName || billAddr.name || fullName;
-  const billParts = billFullName.trim().split(" ");
-  const billFName = billAddr.BillFName || billParts[0] || shipFName;
-  const billLName = billAddr.BillLName || billParts.slice(1).join(" ") || shipLName;
+  // 3. Format Billing Info (Hardcoded Store Admin / Company Billing Info for SinaLite Invoices)
+  const billingInfo = getSinaliteBillingInfo(ord.adminBillingInfo || null);
 
-  const billCountry = normalizeCountryCode(billAddr.BillCountry || billAddr.country || shippingInfo.ShipCountry);
-  const billState = normalizeStateCode(billAddr.BillState || billAddr.state || shippingInfo.ShipState, billCountry);
-
-  const billingInfo = {
-    BillFName: billFName,
-    BillLName: billLName,
-    BillEmail: billAddr.BillEmail || billAddr.email || shippingInfo.ShipEmail,
-    BillAddr: billAddr.BillAddr || billAddr.BillAddress1 || billAddr.address || shippingInfo.ShipAddr,
-    BillAddr2: billAddr.BillAddr2 || billAddr.apartment || shippingInfo.ShipAddr2,
-    BillCity: billAddr.BillCity || billAddr.city || shippingInfo.ShipCity,
-    BillState: billState,
-    BillZip: billAddr.BillZip || billAddr.zip || shippingInfo.ShipZip,
-    BillCountry: billCountry,
-    BillPhone: billAddr.BillPhone || billAddr.phone || shippingInfo.ShipPhone
-  };
-
-  const notes = ord.notes || `Order ${ord.id} placed via Apex Storefront`;
+  const notes = ord.notes || `Order ${ord.id}`;
 
   return { items, shippingInfo, billingInfo, notes };
 }
