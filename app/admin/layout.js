@@ -30,6 +30,7 @@ export default function AdminLayout({ children }) {
   const isAdmin = user && (
     userData?.role === "admin" || 
     user.email === "admin@apexworkwear.ca" ||
+    user.email === "apexworkwearportal@gmail.com" ||
     user.email?.endsWith("@apexworkwear.ca")
   );
 

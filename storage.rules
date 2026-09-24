@@ -1,0 +1,43 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.admin == true ||
+        request.auth.token.email == 'apexworkwearportal@gmail.com' ||
+        request.auth.token.email.matches('.*@apexworkwear\\.ca$')
+      );
+    }
+
+    // Catalog Product Images & Assets: Public read, Admin upload/delete
+    match /products/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Category Images: Public read, Admin write
+    match /categories/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Customer Artwork Uploads (T-Shirts, Hoodies, Custom Prints):
+    // Public/Customer upload allowed for customized order files. Admin delete.
+    match /artwork/{allPaths=**} {
+      allow read: if true;
+      allow create, update: if true;
+      allow delete: if isAdmin();
+    }
+
+    // General Store Uploads
+    match /uploads/{allPaths=**} {
+      allow read: if true;
+      allow write: if isSignedIn() || isAdmin();
+    }
+  }
+}
