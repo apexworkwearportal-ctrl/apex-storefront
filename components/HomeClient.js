@@ -141,17 +141,7 @@ export default function HomeClient({ categories, featuredProducts = [] }) {
         <div 
           onMouseEnter={() => setIsPaused(true)}
           onMouseLeave={() => setIsPaused(false)}
-          style={{
-            position: "relative",
-            width: "100%",
-            maxWidth: "100%",
-            aspectRatio: "16 / 6.5",
-            minHeight: "400px",
-            margin: "0",
-            overflow: "hidden",
-            zIndex: 10,
-            backgroundColor: "#0f172a"
-          }}
+          className="hero-slider-wrapper"
         >
           {/* Stacked Images - Crossfade Transition to prevent layout shift & unmount glitches */}
           {sliderImages.map((src, idx) => (
@@ -160,18 +150,12 @@ export default function HomeClient({ categories, featuredProducts = [] }) {
               src={src}
               alt={`Slider banner ${idx + 1}`}
               initial={false}
+              className="hero-slider-img"
               animate={{ 
                 opacity: idx === sliderIndex ? 1 : 0
               }}
               transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
               style={{
-                position: "absolute",
-                top: 0,
-                left: 0,
-                width: "100%",
-                height: "100%",
-                objectFit: "cover",
-                objectPosition: "center",
                 pointerEvents: idx === sliderIndex ? "auto" : "none",
                 zIndex: idx === sliderIndex ? 2 : 1
               }}
@@ -199,19 +183,22 @@ export default function HomeClient({ categories, featuredProducts = [] }) {
           )}
           
           {/* Dots navigation */}
-          <div style={{
-            position: "absolute",
-            bottom: "1.5rem",
-            left: "50%",
-            transform: "translateX(-50%)",
-            display: "flex",
-            gap: "0.75rem",
-            zIndex: 30,
-            backgroundColor: "rgba(0,0,0,0.5)",
-            padding: "0.5rem 1rem",
-            borderRadius: "40px",
-            backdropFilter: "blur(4px)"
-          }}>
+          <div 
+            className="hero-slider-dots"
+            style={{
+              position: "absolute",
+              bottom: "1.5rem",
+              left: "50%",
+              transform: "translateX(-50%)",
+              display: "flex",
+              gap: "0.75rem",
+              zIndex: 30,
+              backgroundColor: "rgba(0,0,0,0.5)",
+              padding: "0.5rem 1rem",
+              borderRadius: "40px",
+              backdropFilter: "blur(4px)"
+            }}
+          >
             {sliderImages.map((_, idx) => (
               <button
                 key={idx}
@@ -234,6 +221,7 @@ export default function HomeClient({ categories, featuredProducts = [] }) {
           {/* Left & Right arrow controls */}
           <button
             onClick={() => setSliderIndex((prev) => (prev - 1 + sliderImages.length) % sliderImages.length)}
+            className="hero-slider-arrow"
             style={{
               position: "absolute",
               left: "1rem",
@@ -261,6 +249,7 @@ export default function HomeClient({ categories, featuredProducts = [] }) {
           </button>
           <button
             onClick={() => setSliderIndex((prev) => (prev + 1) % sliderImages.length)}
+            className="hero-slider-arrow hero-slider-arrow-right"
             style={{
               position: "absolute",
               right: "1rem",

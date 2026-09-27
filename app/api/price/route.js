@@ -29,10 +29,11 @@ export async function POST(req) {
       baseCost = parseFloat(rawPriceData.price.price || rawPriceData.price.amount || 0);
     }
 
-    // Fetch Sitewise settings, Product doc, and Category doc from Firestore
+    // Fetch Sitewise settings, Product doc, and Category docs from Firestore
     const sitewiseSettings = await getSitewisePricingSettings();
     let productDoc = null;
     let categoryDoc = null;
+    let parentCategoryDoc = null;
 
     if (adminDb) {
       try {
@@ -59,6 +60,14 @@ export async function POST(req) {
             categoryDoc = nameQuery.docs[0].data();
           }
         }
+
+        // Fetch parent category if category has parentId
+        if (categoryDoc && categoryDoc.parentId) {
+          const parentSnap = await adminDb.collection("categories").doc(categoryDoc.parentId).get();
+          if (parentSnap.exists) {
+            parentCategoryDoc = parentSnap.data();
+          }
+        }
       } catch (dbErr) {
         console.warn("Failed to fetch product/category for pricing lookup:", dbErr);
       }
@@ -69,6 +78,7 @@ export async function POST(req) {
       quantity: quantity || 1,
       product: productDoc,
       category: categoryDoc,
+      parentCategory: parentCategoryDoc,
       sitewiseSettings
     });
 

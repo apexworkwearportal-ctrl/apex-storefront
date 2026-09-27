@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { db } from "@/lib/firebase";
 import { collection, getDocs, doc, getDoc, setDoc, updateDoc, query, orderBy } from "firebase/firestore";
-import { Save, Upload, Edit, Trash2, ArrowRight, Loader2, AlertCircle, Plus } from "lucide-react";
+import { Save, Upload, Edit, Trash2, ArrowRight, Loader2, AlertCircle, Plus, Percent, DollarSign, Sliders } from "lucide-react";
 
 export default function AdminCategoriesPage() {
   const { user } = useAuth();
@@ -22,7 +22,15 @@ export default function AdminCategoriesPage() {
   const [homeOrder, setHomeOrder] = useState(0);
   const [parentId, setParentId] = useState("");
   const [useCustomMarkup, setUseCustomMarkup] = useState(false);
+  const [markupType, setMarkupType] = useState("percentage"); // "percentage" or "tiers"
   const [markupPercent, setMarkupPercent] = useState(30);
+  const [setupCharge, setSetupCharge] = useState(0);
+  const [quantityTiers, setQuantityTiers] = useState([
+    { minQty: 1, maxQty: 25, markupPercent: 45 },
+    { minQty: 26, maxQty: 100, markupPercent: 35 },
+    { minQty: 101, maxQty: 500, markupPercent: 25 },
+    { minQty: 501, maxQty: 99999, markupPercent: 20 }
+  ]);
 
   // Create form states
   const [newId, setNewId] = useState("");
@@ -34,7 +42,15 @@ export default function AdminCategoriesPage() {
   const [newHomeOrder, setNewHomeOrder] = useState(0);
   const [newParentId, setNewParentId] = useState("");
   const [newUseCustomMarkup, setNewUseCustomMarkup] = useState(false);
+  const [newMarkupType, setNewMarkupType] = useState("percentage");
   const [newMarkupPercent, setNewMarkupPercent] = useState(30);
+  const [newSetupCharge, setNewSetupCharge] = useState(0);
+  const [newQuantityTiers, setNewQuantityTiers] = useState([
+    { minQty: 1, maxQty: 25, markupPercent: 45 },
+    { minQty: 26, maxQty: 100, markupPercent: 35 },
+    { minQty: 101, maxQty: 500, markupPercent: 25 },
+    { minQty: 501, maxQty: 99999, markupPercent: 20 }
+  ]);
   
   const [saving, setSaving] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -43,42 +59,35 @@ export default function AdminCategoriesPage() {
   const [faqs, setFaqs] = useState([]);
   const [newFaqs, setNewFaqs] = useState([]);
 
-  // FAQ Handlers for Editing Form
-  const handleAddFaq = () => {
-    setFaqs([...faqs, { question: "", answer: "" }]);
+  // FAQ Handlers
+  const handleAddFaq = () => setFaqs([...faqs, { question: "", answer: "" }]);
+  const handleUpdateFaq = (index, field, value) => setFaqs(faqs.map((f, i) => i === index ? { ...f, [field]: value } : f));
+  const handleRemoveFaq = (index) => setFaqs(faqs.filter((_, i) => i !== index));
+
+  const handleAddNewFaq = () => setNewFaqs([...newFaqs, { question: "", answer: "" }]);
+  const handleUpdateNewFaq = (index, field, value) => setNewFaqs(newFaqs.map((f, i) => i === index ? { ...f, [field]: value } : f));
+  const handleRemoveNewFaq = (index) => setNewFaqs(newFaqs.filter((_, i) => i !== index));
+
+  // Tier Handlers
+  const handleAddTier = (isNew = false) => {
+    const list = isNew ? newQuantityTiers : quantityTiers;
+    const last = list[list.length - 1];
+    const newMin = last ? last.maxQty + 1 : 1;
+    const item = { minQty: newMin, maxQty: newMin + 50, markupPercent: 20 };
+    if (isNew) setNewQuantityTiers([...list, item]);
+    else setQuantityTiers([...list, item]);
   };
 
-  const handleUpdateFaq = (index, field, value) => {
-    const updated = faqs.map((f, idx) => {
-      if (idx === index) {
-        return { ...f, [field]: value };
-      }
-      return f;
-    });
-    setFaqs(updated);
+  const handleRemoveTier = (idx, isNew = false) => {
+    if (isNew) setNewQuantityTiers(newQuantityTiers.filter((_, i) => i !== idx));
+    else setQuantityTiers(quantityTiers.filter((_, i) => i !== idx));
   };
 
-  const handleRemoveFaq = (index) => {
-    setFaqs(faqs.filter((_, idx) => idx !== index));
-  };
-
-  // FAQ Handlers for Creation Form
-  const handleAddNewFaq = () => {
-    setNewFaqs([...newFaqs, { question: "", answer: "" }]);
-  };
-
-  const handleUpdateNewFaq = (index, field, value) => {
-    const updated = newFaqs.map((f, idx) => {
-      if (idx === index) {
-        return { ...f, [field]: value };
-      }
-      return f;
-    });
-    setNewFaqs(updated);
-  };
-
-  const handleRemoveNewFaq = (index) => {
-    setNewFaqs(newFaqs.filter((_, idx) => idx !== index));
+  const handleTierChange = (idx, field, value, isNew = false) => {
+    const list = isNew ? newQuantityTiers : quantityTiers;
+    const updated = list.map((t, i) => i === idx ? { ...t, [field]: parseFloat(value) || 0 } : t);
+    if (isNew) setNewQuantityTiers(updated);
+    else setQuantityTiers(updated);
   };
 
   const fetchCategories = async () => {
@@ -112,6 +121,16 @@ export default function AdminCategoriesPage() {
     setHomeOrder(cat.homeOrder !== undefined ? cat.homeOrder : (cat.displayOrder || 0));
     setParentId(cat.parentId || "");
     setFaqs(cat.faqs || []);
+    setUseCustomMarkup(Boolean(cat.useCustomMarkup));
+    setMarkupType(cat.markupType || "percentage");
+    setMarkupPercent(cat.markupPercent !== undefined ? cat.markupPercent : 30);
+    setSetupCharge(cat.setupCharge || 0);
+    setQuantityTiers(cat.quantityTiers || [
+      { minQty: 1, maxQty: 25, markupPercent: 45 },
+      { minQty: 26, maxQty: 100, markupPercent: 35 },
+      { minQty: 101, maxQty: 500, markupPercent: 25 },
+      { minQty: 501, maxQty: 99999, markupPercent: 20 }
+    ]);
     setError("");
   };
 
@@ -129,22 +148,15 @@ export default function AdminCategoriesPage() {
 
       const res = await fetch("/api/admin/upload", {
         method: "POST",
-        headers: {
-          "Authorization": `Bearer ${idToken}`,
-        },
+        headers: { "Authorization": `Bearer ${idToken}` },
         body: formData,
       });
 
       const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to upload hero image.");
-      }
+      if (!res.ok) throw new Error(data.error || "Failed to upload hero image.");
 
-      if (isNewForm) {
-        setNewHeroImage(data.url);
-      } else {
-        setHeroImage(data.url);
-      }
+      if (isNewForm) setNewHeroImage(data.url);
+      else setHeroImage(data.url);
     } catch (err) {
       console.error(err);
       setError(err.message || "Upload failed.");
@@ -170,7 +182,10 @@ export default function AdminCategoriesPage() {
         parentId: parentId || null,
         faqs: faqs || [],
         useCustomMarkup: Boolean(useCustomMarkup),
-        markupPercent: parseFloat(markupPercent) || 0
+        markupType,
+        markupPercent: parseFloat(markupPercent) || 0,
+        setupCharge: parseFloat(setupCharge) || 0,
+        quantityTiers: quantityTiers || []
       });
       
       setEditingId(null);
@@ -214,7 +229,10 @@ export default function AdminCategoriesPage() {
         parentId: newParentId || null,
         faqs: newFaqs || [],
         useCustomMarkup: Boolean(newUseCustomMarkup),
-        markupPercent: parseFloat(newMarkupPercent) || 0
+        markupType: newMarkupType,
+        markupPercent: parseFloat(newMarkupPercent) || 0,
+        setupCharge: parseFloat(newSetupCharge) || 0,
+        quantityTiers: newQuantityTiers || []
       });
 
       // Reset form states
@@ -228,7 +246,9 @@ export default function AdminCategoriesPage() {
       setNewParentId("");
       setNewFaqs([]);
       setNewUseCustomMarkup(false);
+      setNewMarkupType("percentage");
       setNewMarkupPercent(30);
+      setNewSetupCharge(0);
       setShowCreateForm(false);
 
       await fetchCategories();
@@ -245,9 +265,9 @@ export default function AdminCategoriesPage() {
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "2rem", flexWrap: "wrap", gap: "1rem" }}>
         <div>
-          <h1 style={{ fontSize: "2rem", marginBottom: "0.25rem" }}>Category Management</h1>
+          <h1 style={{ fontSize: "2rem", marginBottom: "0.25rem" }}>Category Management & Pricing Rules</h1>
           <p style={{ color: "hsl(var(--muted-hsl))", fontSize: "0.95rem" }}>
-            Edit storefront names, parent categories, hero images, descriptions, home page visibility, and custom display sorting.
+            Edit category hierarchy, hero images, description, home visibility, and category-level custom markup overrides.
           </p>
         </div>
         <button
@@ -319,6 +339,68 @@ export default function AdminCategoriesPage() {
                 <label htmlFor="newShowOnHome" style={{ fontWeight: 600, fontSize: "0.9rem", cursor: "pointer", userSelect: "none" }}>
                   Show on Home Page
                 </label>
+              </div>
+
+              {/* Category Markup Rule Box */}
+              <div style={{ padding: "1rem", backgroundColor: "hsl(var(--secondary-hsl) / 0.25)", borderRadius: "var(--radius-md)", border: "1px solid hsl(var(--border-hsl))" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.75rem" }}>
+                  <input 
+                    type="checkbox" 
+                    id="newUseCustomMarkup" 
+                    checked={newUseCustomMarkup} 
+                    onChange={(e) => setNewUseCustomMarkup(e.target.checked)}
+                    style={{ width: "18px", height: "18px", cursor: "pointer" }}
+                  />
+                  <label htmlFor="newUseCustomMarkup" style={{ fontWeight: 800, fontSize: "0.95rem", cursor: "pointer", userSelect: "none", color: "hsl(var(--primary-hsl))" }}>
+                    Enable Category-Specific Custom Markup
+                  </label>
+                </div>
+
+                {newUseCustomMarkup && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "1rem", marginTop: "0.5rem" }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
+                      <div>
+                        <label className="label">Markup Type</label>
+                        <select className="input" value={newMarkupType} onChange={(e) => setNewMarkupType(e.target.value)}>
+                          <option value="percentage">Flat Percentage (%)</option>
+                          <option value="tiers">Quantity Tiers</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="label">Category Markup %</label>
+                        <input type="number" step="0.1" className="input" value={newMarkupPercent} onChange={(e) => setNewMarkupPercent(e.target.value)} required />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="label">Setup Charge ($ CAD)</label>
+                      <input type="number" step="0.01" className="input" value={newSetupCharge} onChange={(e) => setNewSetupCharge(e.target.value)} />
+                    </div>
+
+                    {newMarkupType === "tiers" && (
+                      <div style={{ marginTop: "0.5rem" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
+                          <span style={{ fontSize: "0.85rem", fontWeight: 700 }}>Quantity Tier Table</span>
+                          <button type="button" onClick={() => handleAddTier(true)} className="btn btn-outline" style={{ padding: "0.25rem 0.5rem", fontSize: "0.75rem" }}>
+                            + Add Tier
+                          </button>
+                        </div>
+                        {newQuantityTiers.map((t, idx) => (
+                          <div key={idx} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr auto", gap: "0.5rem", marginBottom: "0.5rem", alignItems: "center" }}>
+                            <input type="number" className="input" placeholder="Min" value={t.minQty} onChange={(e) => handleTierChange(idx, "minQty", e.target.value, true)} />
+                            <input type="number" className="input" placeholder="Max" value={t.maxQty} onChange={(e) => handleTierChange(idx, "maxQty", e.target.value, true)} />
+                            <input type="number" step="0.1" className="input" placeholder="%" value={t.markupPercent} onChange={(e) => handleTierChange(idx, "markupPercent", e.target.value, true)} />
+                            {newQuantityTiers.length > 1 && (
+                              <button type="button" onClick={() => handleRemoveTier(idx, true)} className="btn" style={{ color: "hsl(var(--destructive-hsl))", padding: "0.25rem" }}>
+                                <Trash2 size={14} />
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div>
@@ -516,6 +598,68 @@ export default function AdminCategoriesPage() {
                         </label>
                       </div>
 
+                      {/* Category Markup Rule Box */}
+                      <div style={{ padding: "1rem", backgroundColor: "hsl(var(--secondary-hsl) / 0.25)", borderRadius: "var(--radius-md)", border: "1px solid hsl(var(--border-hsl))" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.75rem" }}>
+                          <input 
+                            type="checkbox" 
+                            id="useCustomMarkup" 
+                            checked={useCustomMarkup} 
+                            onChange={(e) => setUseCustomMarkup(e.target.checked)}
+                            style={{ width: "18px", height: "18px", cursor: "pointer" }}
+                          />
+                          <label htmlFor="useCustomMarkup" style={{ fontWeight: 800, fontSize: "0.95rem", cursor: "pointer", userSelect: "none", color: "hsl(var(--primary-hsl))" }}>
+                            Enable Category-Specific Custom Markup
+                          </label>
+                        </div>
+
+                        {useCustomMarkup && (
+                          <div style={{ display: "flex", flexDirection: "column", gap: "1rem", marginTop: "0.5rem" }}>
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
+                              <div>
+                                <label className="label">Markup Type</label>
+                                <select className="input" value={markupType} onChange={(e) => setMarkupType(e.target.value)}>
+                                  <option value="percentage">Flat Percentage (%)</option>
+                                  <option value="tiers">Quantity Tiers</option>
+                                </select>
+                              </div>
+                              <div>
+                                <label className="label">Category Markup %</label>
+                                <input type="number" step="0.1" className="input" value={markupPercent} onChange={(e) => setMarkupPercent(e.target.value)} required />
+                              </div>
+                            </div>
+
+                            <div>
+                              <label className="label">Setup Charge ($ CAD)</label>
+                              <input type="number" step="0.01" className="input" value={setupCharge} onChange={(e) => setSetupCharge(e.target.value)} />
+                            </div>
+
+                            {markupType === "tiers" && (
+                              <div style={{ marginTop: "0.5rem" }}>
+                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
+                                  <span style={{ fontSize: "0.85rem", fontWeight: 700 }}>Quantity Tier Table</span>
+                                  <button type="button" onClick={() => handleAddTier(false)} className="btn btn-outline" style={{ padding: "0.25rem 0.5rem", fontSize: "0.75rem" }}>
+                                    + Add Tier
+                                  </button>
+                                </div>
+                                {quantityTiers.map((t, idx) => (
+                                  <div key={idx} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr auto", gap: "0.5rem", marginBottom: "0.5rem", alignItems: "center" }}>
+                                    <input type="number" className="input" placeholder="Min" value={t.minQty} onChange={(e) => handleTierChange(idx, "minQty", e.target.value, false)} />
+                                    <input type="number" className="input" placeholder="Max" value={t.maxQty} onChange={(e) => handleTierChange(idx, "maxQty", e.target.value, false)} />
+                                    <input type="number" step="0.1" className="input" placeholder="%" value={t.markupPercent} onChange={(e) => handleTierChange(idx, "markupPercent", e.target.value, false)} />
+                                    {quantityTiers.length > 1 && (
+                                      <button type="button" onClick={() => handleRemoveTier(idx, false)} className="btn" style={{ color: "hsl(var(--destructive-hsl))", padding: "0.25rem" }}>
+                                        <Trash2 size={14} />
+                                      </button>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
                       <div>
                         <label className="label">Category Description</label>
                         <textarea className="input" value={description} onChange={(e) => setDescription(e.target.value)} rows={4} placeholder="Enter a promotional description..." />
@@ -523,7 +667,7 @@ export default function AdminCategoriesPage() {
                       <div style={{ display: "flex", gap: "1rem", marginTop: "0.5rem" }}>
                         <button type="submit" className="btn btn-primary" style={{ padding: "0.5rem 1.5rem" }} disabled={saving}>
                           {saving ? <Loader2 size={16} className="animate-spin" style={{ animation: "spin 1s linear infinite" }} /> : <Save size={16} />}
-                          Save
+                          Save Category
                         </button>
                         <button type="button" onClick={() => setEditingId(null)} className="btn btn-secondary" style={{ padding: "0.5rem 1.5rem" }}>
                           Cancel
@@ -668,9 +812,6 @@ export default function AdminCategoriesPage() {
                         <span style={{ fontSize: "0.75rem", fontWeight: 700, padding: "0.1rem 0.4rem", backgroundColor: "hsl(var(--secondary-hsl))", color: "hsl(var(--muted-hsl))", borderRadius: "4px" }}>
                           Catalog Order: {cat.displayOrder || 0}
                         </span>
-                        <span style={{ fontSize: "0.75rem", fontWeight: 700, padding: "0.1rem 0.4rem", backgroundColor: "hsl(var(--secondary-hsl))", color: "hsl(var(--muted-hsl))", borderRadius: "4px" }}>
-                          Home Order: {cat.homeOrder !== undefined ? cat.homeOrder : (cat.displayOrder || 0)}
-                        </span>
                         <span style={{ 
                           fontSize: "0.75rem", 
                           fontWeight: 700, 
@@ -681,8 +822,17 @@ export default function AdminCategoriesPage() {
                         }}>
                           {cat.showOnHome !== false ? "Visible on Home" : "Hidden on Home"}
                         </span>
+                        {cat.useCustomMarkup ? (
+                          <span style={{ fontSize: "0.75rem", fontWeight: 700, padding: "0.15rem 0.5rem", backgroundColor: "hsl(var(--accent-hsl) / 0.15)", color: "hsl(var(--accent-hsl))", borderRadius: "4px", display: "inline-flex", alignItems: "center", gap: "0.25rem" }}>
+                            <Sliders size={12} /> Category Markup: {cat.markupPercent || 0}% {cat.markupType === "tiers" ? "(Tiers)" : "(Flat)"}
+                          </span>
+                        ) : (
+                          <span style={{ fontSize: "0.75rem", fontWeight: 600, padding: "0.15rem 0.5rem", backgroundColor: "hsl(var(--muted-hsl) / 0.15)", color: "hsl(var(--muted-hsl))", borderRadius: "4px" }}>
+                            Using Sitewise Default Markup
+                          </span>
+                        )}
                         {cat.faqs && cat.faqs.length > 0 && (
-                          <span style={{ fontSize: "0.75rem", fontWeight: 700, padding: "0.1rem 0.4rem", backgroundColor: "hsl(var(--accent-hsl) / 0.1)", color: "hsl(var(--accent-hsl))", borderRadius: "4px" }}>
+                          <span style={{ fontSize: "0.75rem", fontWeight: 700, padding: "0.1rem 0.4rem", backgroundColor: "hsl(var(--primary-hsl) / 0.1)", color: "hsl(var(--primary-hsl))", borderRadius: "4px" }}>
                             FAQs: {cat.faqs.length}
                           </span>
                         )}

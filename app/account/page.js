@@ -5,7 +5,8 @@ import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { useAuth } from "@/lib/auth-context";
 import { useRouter } from "next/navigation";
-import { db } from "@/lib/firebase";
+import { auth, db } from "@/lib/firebase";
+import { updatePassword } from "firebase/auth";
 import { doc, updateDoc, collection, query, where, getDocs } from "firebase/firestore";
 import { 
   User, 
@@ -53,6 +54,51 @@ export default function AccountDashboard() {
   const [editCompany, setEditCompany] = useState("");
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileSuccess, setProfileSuccess] = useState(false);
+  
+  // Password Change states
+  const [newPasswordVal, setNewPasswordVal] = useState("");
+  const [confirmPasswordVal, setConfirmPasswordVal] = useState("");
+  const [updatingPassword, setUpdatingPassword] = useState(false);
+  const [passwordSuccess, setPasswordSuccess] = useState(false);
+  const [passwordError, setPasswordError] = useState("");
+
+  const handleChangePassword = async (e) => {
+    e.preventDefault();
+    setPasswordError("");
+    setPasswordSuccess(false);
+
+    if (newPasswordVal !== confirmPasswordVal) {
+      setPasswordError("New passwords do not match.");
+      return;
+    }
+
+    if (newPasswordVal.length < 6) {
+      setPasswordError("Password must be at least 6 characters long.");
+      return;
+    }
+
+    setUpdatingPassword(true);
+    try {
+      if (auth.currentUser) {
+        await updatePassword(auth.currentUser, newPasswordVal);
+        setPasswordSuccess(true);
+        setNewPasswordVal("");
+        setConfirmPasswordVal("");
+        setTimeout(() => setPasswordSuccess(false), 4000);
+      } else {
+        throw new Error("User session expired. Please log in again.");
+      }
+    } catch (err) {
+      console.error("Error updating password:", err);
+      if (err.code === "auth/requires-recent-login") {
+        setPasswordError("For security reasons, please log out and log in again before changing your password.");
+      } else {
+        setPasswordError(err.message || "Failed to update password.");
+      }
+    } finally {
+      setUpdatingPassword(false);
+    }
+  };
   
   // Address form states
   const [showAddressForm, setShowAddressForm] = useState(false);
@@ -1012,6 +1058,60 @@ export default function AccountDashboard() {
                     </div>
                   </div>
                 )}
+
+                {/* Change Password Security Section */}
+                <div style={{ marginTop: "2.5rem", paddingTop: "2rem", borderTop: "1px solid hsl(var(--border-hsl))" }}>
+                  <h3 style={{ fontSize: "1.15rem", fontWeight: 800, marginBottom: "0.25rem", color: "hsl(var(--primary-hsl))" }}>
+                    Security & Change Password
+                  </h3>
+                  <p style={{ fontSize: "0.825rem", color: "hsl(var(--muted-hsl))", marginBottom: "1.25rem" }}>
+                    Update your account password. Ensure your new password is at least 6 characters long.
+                  </p>
+
+                  {passwordSuccess && (
+                    <div style={{ padding: "0.85rem 1.25rem", backgroundColor: "hsl(var(--success-hsl) / 0.15)", color: "hsl(var(--success-hsl))", borderRadius: "var(--radius-md)", fontSize: "0.875rem", fontWeight: 700, display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "1.25rem" }}>
+                      <CheckCircle2 size={18} /> Password changed successfully!
+                    </div>
+                  )}
+
+                  {passwordError && (
+                    <div style={{ padding: "0.85rem 1.25rem", backgroundColor: "hsl(var(--destructive-hsl) / 0.1)", color: "hsl(var(--destructive-hsl))", borderRadius: "var(--radius-md)", fontSize: "0.875rem", fontWeight: 600, display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "1.25rem" }}>
+                      <AlertCircle size={18} /> {passwordError}
+                    </div>
+                  )}
+
+                  <form onSubmit={handleChangePassword} style={{ maxWidth: "480px", display: "flex", flexDirection: "column", gap: "1rem" }}>
+                    <div>
+                      <label className="label">New Password</label>
+                      <input
+                        type="password"
+                        className="input"
+                        placeholder="Enter new password (min 6 chars)"
+                        value={newPasswordVal}
+                        onChange={(e) => setNewPasswordVal(e.target.value)}
+                        required
+                        minLength={6}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="label">Confirm New Password</label>
+                      <input
+                        type="password"
+                        className="input"
+                        placeholder="Re-enter new password"
+                        value={confirmPasswordVal}
+                        onChange={(e) => setConfirmPasswordVal(e.target.value)}
+                        required
+                        minLength={6}
+                      />
+                    </div>
+
+                    <button type="submit" className="btn btn-primary" disabled={updatingPassword} style={{ width: "fit-content", padding: "0.6rem 1.5rem", marginTop: "0.25rem" }}>
+                      {updatingPassword ? <><RefreshCw size={16} style={{ animation: "spin 1s linear infinite" }} /> Updating Password...</> : "Update Password"}
+                    </button>
+                  </form>
+                </div>
               </div>
             )}
           </div>

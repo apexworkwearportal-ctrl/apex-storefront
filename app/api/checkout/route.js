@@ -10,6 +10,45 @@ function calculateTaxRate(province) {
   return 0.05; // Standard GST for other provinces
 }
 
+async function saveAddressToUserIfNeeded(userId, shippingAddress) {
+  if (!userId || userId === "guest" || !adminDb) return;
+  try {
+    const userRef = adminDb.collection("users").doc(userId);
+    const userDoc = await userRef.get();
+    let addresses = [];
+    if (userDoc.exists && Array.isArray(userDoc.data()?.addresses)) {
+      addresses = userDoc.data().addresses;
+    }
+
+    const addrStr = `${shippingAddress.ShipAddr} ${shippingAddress.ShipCity} ${shippingAddress.ShipZip}`.toLowerCase().trim().replace(/\s+/g, "");
+    const exists = addresses.some(a => {
+      const existingStr = `${a.addressLine1} ${a.city} ${a.zip}`.toLowerCase().trim().replace(/\s+/g, "");
+      return existingStr === addrStr;
+    });
+
+    if (!exists) {
+      const newAddress = {
+        id: "addr_" + Date.now(),
+        name: `${shippingAddress.ShipFName || ""} ${shippingAddress.ShipLName || ""}`.trim() || "Saved Shipping Address",
+        addressLine1: shippingAddress.ShipAddr,
+        addressLine2: shippingAddress.ShipAddr2 || "",
+        city: shippingAddress.ShipCity,
+        state: shippingAddress.ShipState,
+        zip: shippingAddress.ShipZip,
+        country: shippingAddress.ShipCountry || "CA",
+        phone: shippingAddress.ShipPhone || "",
+        isDefault: addresses.length === 0
+      };
+
+      addresses.push(newAddress);
+      await userRef.set({ addresses, updatedAt: new Date() }, { merge: true });
+      console.log(`✓ Auto-saved address '${newAddress.name}' for user ${userId}`);
+    }
+  } catch (err) {
+    console.warn("Failed to auto-save address to user profile:", err);
+  }
+}
+
 export async function POST(req) {
   try {
     const { items, shippingAddress, selectedShippingRate, userId } = await req.json();
@@ -17,6 +56,9 @@ export async function POST(req) {
     if (!items || items.length === 0 || !shippingAddress || !selectedShippingRate) {
       return Response.json({ error: "Missing required checkout fields" }, { status: 400 });
     }
+
+    // Auto-save shipping address into user document if logged in
+    await saveAddressToUserIfNeeded(userId, shippingAddress);
 
     // 1. Calculate Totals
     const subtotal = items.reduce((acc, item) => acc + (parseFloat(item.price) * parseInt(item.quantity)), 0);
@@ -112,7 +154,6 @@ export async function POST(req) {
     const origin = req.nextUrl.origin;
     
     // Construct Line Items for Stripe
-    // To make it simple and avoid decimals errors, we send subtotal, shipping, and tax as individual line items
     const lineItems = [
       {
         price_data: {

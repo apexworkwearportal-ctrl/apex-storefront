@@ -18,7 +18,8 @@ import {
   Search,
   CheckCircle2,
   Sliders,
-  CreditCard
+  CreditCard,
+  Users
 } from "lucide-react";
 
 export default function AdminLayout({ children }) {
@@ -123,6 +124,7 @@ export default function AdminLayout({ children }) {
       title: "SYSTEM & INTEGRATIONS",
       items: [
         { label: "Dashboard Overview", href: "/admin", icon: LayoutDashboard },
+        { label: "Users & Admin Access", href: "/admin/users", icon: Users },
         { label: "Admin Settings", href: "/admin/settings", icon: CreditCard },
         { label: "SinaLite API Sync", href: "/admin/sync", icon: RefreshCw },
       ]
