@@ -1,8 +1,8 @@
 "use client";
 
 import { useAuth } from "@/lib/auth-context";
-import { useRouter, usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
+import { useEffect, useState, Suspense } from "react";
 import Link from "next/link";
 import { 
   LayoutDashboard, 
@@ -21,6 +21,86 @@ import {
   CreditCard,
   Users
 } from "lucide-react";
+
+function AdminNavList({ pathname, navSections }) {
+  const searchParams = useSearchParams();
+  const currentTab = searchParams.get("tab");
+
+  const isItemActive = (href) => {
+    if (href === "/admin") return pathname === "/admin";
+
+    // Handle pricing tabs
+    if (href.startsWith("/admin/pricing")) {
+      if (pathname !== "/admin/pricing") return false;
+      const targetTab = href.includes("tab=markups") ? "markups" : "calculator";
+      if (targetTab === "markups") {
+        return currentTab === "markups";
+      }
+      return !currentTab || currentTab === "calculator";
+    }
+
+    // Handle orders tabs
+    if (href.startsWith("/admin/orders")) {
+      if (pathname !== "/admin/orders") return false;
+      const isProofs = href.includes("tab=proofs");
+      if (isProofs) {
+        return currentTab === "proofs";
+      }
+      return !currentTab || currentTab === "all" || currentTab === "unsubmitted" || currentTab === "shipped";
+    }
+
+    const basePath = href.split("?")[0].split("#")[0];
+    return pathname.startsWith(basePath);
+  };
+
+  return (
+    <nav style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+      {navSections.map((section, idx) => (
+        <div key={idx} style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
+          <span style={{
+            fontSize: "0.65rem",
+            fontWeight: 800,
+            color: "#64748B",
+            letterSpacing: "0.08em",
+            paddingLeft: "0.5rem",
+            marginBottom: "0.1rem"
+          }}>
+            {section.title}
+          </span>
+
+          {section.items.map(item => {
+            const Icon = item.icon;
+            const active = isItemActive(item.href);
+
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.75rem",
+                  padding: "0.6rem 0.75rem",
+                  borderRadius: "8px",
+                  fontSize: "0.85rem",
+                  fontWeight: active ? 700 : 550,
+                  backgroundColor: active ? "#1E293B" : "transparent",
+                  color: active ? "#60A5FA" : "#94A3B8",
+                  borderLeft: active ? "3px solid #3B82F6" : "3px solid transparent",
+                  textDecoration: "none",
+                  transition: "all 0.15s ease"
+                }}
+              >
+                <Icon size={16} style={{ color: active ? "#3B82F6" : "#64748B" }} />
+                {item.label}
+              </Link>
+            );
+          })}
+        </div>
+      ))}
+    </nav>
+  );
+}
 
 export default function AdminLayout({ children }) {
   const { user, userData, loading, logout } = useAuth();
@@ -101,8 +181,8 @@ export default function AdminLayout({ children }) {
     {
       title: "PRICE CALCULATOR",
       items: [
-        { label: "Calculator & Formulas", href: "/admin/pricing", icon: Calculator },
-        { label: "Site & Category Markups", href: "/admin/pricing#markups", icon: Sliders },
+        { label: "Calculator & Formulas", href: "/admin/pricing?tab=calculator", icon: Calculator },
+        { label: "Site & Category Markups", href: "/admin/pricing?tab=markups", icon: Sliders },
       ]
     },
     {
@@ -116,7 +196,7 @@ export default function AdminLayout({ children }) {
     {
       title: "ORDERS & FULFILLMENT",
       items: [
-        { label: "Order Manager", href: "/admin/orders", icon: ShoppingBag },
+        { label: "Order Manager", href: "/admin/orders?tab=all", icon: ShoppingBag },
         { label: "Print Proof Review", href: "/admin/orders?tab=proofs", icon: Printer },
       ]
     },
@@ -176,53 +256,13 @@ export default function AdminLayout({ children }) {
           </div>
 
           {/* Grouped Nav Sections */}
-          <nav style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
-            {navSections.map((section, idx) => (
-              <div key={idx} style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
-                <span style={{
-                  fontSize: "0.65rem",
-                  fontWeight: 800,
-                  color: "#64748B",
-                  letterSpacing: "0.08em",
-                  paddingLeft: "0.5rem",
-                  marginBottom: "0.1rem"
-                }}>
-                  {section.title}
-                </span>
-
-                {section.items.map(item => {
-                  const Icon = item.icon;
-                  const active = item.href === "/admin" 
-                    ? pathname === "/admin" 
-                    : pathname.startsWith(item.href.split("#")[0]);
-
-                  return (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "0.75rem",
-                        padding: "0.6rem 0.75rem",
-                        borderRadius: "8px",
-                        fontSize: "0.85rem",
-                        fontWeight: active ? 700 : 550,
-                        backgroundColor: active ? "#1E293B" : "transparent",
-                        color: active ? "#60A5FA" : "#94A3B8",
-                        borderLeft: active ? "3px solid #3B82F6" : "3px solid transparent",
-                        textDecoration: "none",
-                        transition: "all 0.15s ease"
-                      }}
-                    >
-                      <Icon size={16} style={{ color: active ? "#3B82F6" : "#64748B" }} />
-                      {item.label}
-                    </Link>
-                  );
-                })}
-              </div>
-            ))}
-          </nav>
+          <Suspense fallback={
+            <div style={{ color: "#64748B", fontSize: "0.8rem", padding: "1rem" }}>
+              Loading navigation...
+            </div>
+          }>
+            <AdminNavList pathname={pathname} navSections={navSections} />
+          </Suspense>
         </div>
 
         {/* Footer Admin User Badge */}

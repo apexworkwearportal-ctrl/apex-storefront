@@ -54,6 +54,10 @@ export default function ProductDetailPage({ params: paramsPromise }) {
   const handleAddToCart = () => {
     if (!product || !priceData || !allSelected) return;
 
+    // Guard: never add a $0.00 item — this combination is unavailable
+    const resolvedPrice = parseFloat(priceData.price || priceData.price?.price || 0);
+    if (resolvedPrice <= 0) return;
+
     // Print Proof Enforcement
     if (artworkFiles.length > 0 && !proofApproved) {
       setProofModalOpen(true);
@@ -542,6 +546,27 @@ export default function ProductDetailPage({ params: paramsPromise }) {
                       <span style={{ fontSize: "0.95rem", fontWeight: 600, color: "hsl(var(--muted-hsl))" }}>
                         Select all options above to view price
                       </span>
+                    ) : priceData && parseFloat(priceData.price || priceData.price?.price || 0) <= 0 ? (
+                      <div style={{
+                        display: "flex",
+                        alignItems: "flex-start",
+                        gap: "0.6rem",
+                        padding: "0.75rem 1rem",
+                        backgroundColor: "hsl(var(--destructive-hsl) / 0.06)",
+                        border: "1px solid hsl(var(--destructive-hsl) / 0.25)",
+                        borderRadius: "var(--radius-sm)",
+                        width: "100%"
+                      }}>
+                        <span style={{ fontSize: "1.1rem", lineHeight: 1, marginTop: "0.05rem" }}>⚠️</span>
+                        <div>
+                          <p style={{ fontWeight: 800, fontSize: "0.9rem", color: "hsl(var(--destructive-hsl))", marginBottom: "0.2rem" }}>
+                            This combination is not available
+                          </p>
+                          <p style={{ fontSize: "0.8rem", color: "hsl(var(--muted-hsl))", lineHeight: 1.4 }}>
+                            This option selection is currently unavailable for ordering. Please try a different combination of options above.
+                          </p>
+                        </div>
+                      </div>
                     ) : (
                       <span style={{ fontSize: "2rem", fontWeight: 900, color: "hsl(var(--accent-hsl))" }}>
                         ${priceData ? parseFloat(priceData.price || priceData.price?.price || 0).toFixed(2) : "0.00"}
@@ -725,14 +750,32 @@ export default function ProductDetailPage({ params: paramsPromise }) {
               </div>
 
               {/* Add to Cart CTA */}
-              <button
-                onClick={handleAddToCart}
-                disabled={calculatingPrice || !priceData || loadingOptions || !allSelected || uploadingFile}
-                className="btn btn-primary"
-                style={{ width: "100%", padding: "0.85rem", fontSize: "1rem" }}
-              >
-                <ShoppingBag size={18} /> {artworkFiles.length > 0 && !proofApproved ? "Review Proof & Add to Cart" : "Add to Cart"}
-              </button>
+              {(() => {
+                const currentPrice = priceData ? parseFloat(priceData.price || priceData.price?.price || 0) : null;
+                const priceIsZero = allSelected && priceData && currentPrice <= 0;
+                const isDisabled = calculatingPrice || !priceData || loadingOptions || !allSelected || uploadingFile || priceIsZero;
+                return (
+                  <button
+                    onClick={handleAddToCart}
+                    disabled={isDisabled}
+                    className="btn btn-primary"
+                    style={{
+                      width: "100%",
+                      padding: "0.85rem",
+                      fontSize: "1rem",
+                      opacity: priceIsZero ? 0.45 : 1,
+                      cursor: priceIsZero ? "not-allowed" : undefined
+                    }}
+                  >
+                    <ShoppingBag size={18} />
+                    {priceIsZero
+                      ? "Unavailable — Select Different Options"
+                      : artworkFiles.length > 0 && !proofApproved
+                        ? "Review Proof & Add to Cart"
+                        : "Add to Cart"}
+                  </button>
+                );
+              })()}
             </div>
             
             {/* Guarantee Signal */}
