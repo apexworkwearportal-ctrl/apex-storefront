@@ -28,21 +28,64 @@ async function verifyAdmin(req) {
 }
 
 function pickMinimalOptions(productDetails) {
-  const groups =
-    productDetails?.optionGroups ||
-    productDetails?.options ||
-    productDetails?.productOptions ||
-    productDetails?.groups ||
-    [];
+  if (!productDetails) return null;
 
-  if (!Array.isArray(groups) || groups.length === 0) return null;
+  // Flatten array if wrapped like [[ {...}, {...} ]] or [{...}]
+  let list = [];
+  if (Array.isArray(productDetails)) {
+    if (productDetails.length > 0 && Array.isArray(productDetails[0])) {
+      list = productDetails[0];
+    } else {
+      list = productDetails;
+    }
+  } else if (typeof productDetails === "object") {
+    list =
+      productDetails.optionGroups ||
+      productDetails.options ||
+      productDetails.productOptions ||
+      productDetails.groups ||
+      [];
+  }
 
+  if (!Array.isArray(list) || list.length === 0) return null;
+
+  // If list contains option objects with .group / .hidden properties (SinaLite standard format)
+  const firstItem = list[0];
+  if (firstItem && typeof firstItem === "object" && ("group" in firstItem || "name" in firstItem || "id" in firstItem)) {
+    const grouped = {};
+    for (const opt of list) {
+      if (!opt) continue;
+      // Skip hidden options
+      if (opt.hidden === 1) continue;
+
+      const groupName = opt.group || "Default";
+      if (!grouped[groupName]) grouped[groupName] = [];
+      grouped[groupName].push(opt);
+    }
+
+    const selected = [];
+    for (const groupName of Object.keys(grouped)) {
+      const opts = grouped[groupName];
+      if (opts.length > 0) {
+        const firstOpt = opts[0];
+        const optId = firstOpt.id ?? firstOpt.optionId ?? firstOpt.value;
+        if (optId !== undefined && optId !== null) {
+          selected.push(optId);
+        }
+      }
+    }
+
+    if (selected.length > 0) return selected;
+  }
+
+  // Fallback: If list is an array of group objects { name, options: [...] }
   const selected = [];
-  for (const group of groups) {
-    const opts = group.options || group.items || group.values || [];
+  for (const group of list) {
+    if (!group) continue;
+    const opts = group.options || group.items || group.values || (Array.isArray(group) ? group : []);
     if (!Array.isArray(opts) || opts.length === 0) continue;
     const first = opts[0];
-    const id = first?.id ?? first?.optionId ?? first?.value ?? first;
+    const id = first?.id ?? first?.optionId ?? first?.value ?? (typeof first === "number" || typeof first === "string" ? first : null);
     if (id !== undefined && id !== null) selected.push(id);
   }
 
