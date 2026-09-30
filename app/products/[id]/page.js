@@ -137,7 +137,10 @@ export default function ProductDetailPage({ params: paramsPromise }) {
 
           const groups = optData.optionGroups || {};
           setOptionGroups(groups);
-          setSelectedOptions({});
+          // Pre-select the cheapest "starting from" options:
+          // quantity groups → smallest qty, turnaround → slowest/cheapest, others → first
+          const preSelected = optData.defaultSelections || {};
+          setSelectedOptions(preSelected);
           setLoadingOptions(false);
         }
       } catch (err) {

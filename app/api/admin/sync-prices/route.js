@@ -27,6 +27,57 @@ async function verifyAdmin(req) {
   }
 }
 
+/**
+ * Detect the type of an option group from its name.
+ * Returns: "quantity" | "turnaround" | "default"
+ */
+function classifyGroup(groupName) {
+  const lower = groupName.toLowerCase();
+  if (lower.includes("qty") || lower.includes("quantity") || lower.includes("copies") || lower.includes("pieces") || lower.includes("units")) {
+    return "quantity";
+  }
+  if (lower.includes("turnaround") || lower.includes("delivery") || lower.includes("rush") || lower.includes("business day") || lower.includes("days")) {
+    return "turnaround";
+  }
+  return "default";
+}
+
+/**
+ * Parse a numeric quantity from an option name like "100", "100 pieces", "1,000 copies", etc.
+ * Returns Infinity if no number can be parsed.
+ */
+function parseQtyFromName(name) {
+  if (!name) return Infinity;
+  const cleaned = name.replace(/,/g, "");
+  const match = cleaned.match(/\d+/);
+  return match ? parseInt(match[0], 10) : Infinity;
+}
+
+/**
+ * Given a list of visible options for a group, pick the best one for "starting from" price:
+ *  - quantity:   sort ascending by parsed qty, pick the FIRST (smallest qty = floor price)
+ *  - turnaround: pick the LAST option (slowest = cheapest)
+ *  - default:    pick the FIRST option
+ */
+function pickBestOption(groupName, opts) {
+  if (!opts || opts.length === 0) return null;
+  const type = classifyGroup(groupName);
+
+  if (type === "quantity") {
+    // Sort ascending by numeric quantity in the name, pick smallest
+    const sorted = [...opts].sort((a, b) => parseQtyFromName(a.name) - parseQtyFromName(b.name));
+    return sorted[0];
+  }
+
+  if (type === "turnaround") {
+    // Last option = slowest turnaround = cheapest
+    return opts[opts.length - 1];
+  }
+
+  // Default: first visible option
+  return opts[0];
+}
+
 function pickMinimalOptions(productDetails) {
   if (!productDetails) return null;
 
@@ -66,9 +117,9 @@ function pickMinimalOptions(productDetails) {
     const selected = [];
     for (const groupName of Object.keys(grouped)) {
       const opts = grouped[groupName];
-      if (opts.length > 0) {
-        const firstOpt = opts[0];
-        const optId = firstOpt.id ?? firstOpt.optionId ?? firstOpt.value;
+      const chosenOpt = pickBestOption(groupName, opts);
+      if (chosenOpt) {
+        const optId = chosenOpt.id ?? chosenOpt.optionId ?? chosenOpt.value;
         if (optId !== undefined && optId !== null) {
           selected.push(optId);
         }
@@ -84,8 +135,9 @@ function pickMinimalOptions(productDetails) {
     if (!group) continue;
     const opts = group.options || group.items || group.values || (Array.isArray(group) ? group : []);
     if (!Array.isArray(opts) || opts.length === 0) continue;
-    const first = opts[0];
-    const id = first?.id ?? first?.optionId ?? first?.value ?? (typeof first === "number" || typeof first === "string" ? first : null);
+    const groupName = group.name || group.group || "";
+    const chosen = pickBestOption(groupName, opts);
+    const id = chosen?.id ?? chosen?.optionId ?? chosen?.value ?? (typeof chosen === "number" || typeof chosen === "string" ? chosen : null);
     if (id !== undefined && id !== null) selected.push(id);
   }
 
