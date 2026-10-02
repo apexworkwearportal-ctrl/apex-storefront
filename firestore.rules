@@ -83,5 +83,17 @@ service cloud.firestore {
     match /syncLogs/{logId} {
       allow read, write: if isAdmin();
     }
+
+    // Promo Codes: Public read for code validation; Admin write
+    match /promoCodes/{promoId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Promo Usages: Admin full access; User can read their own usages
+    match /promoUsages/{usageId} {
+      allow read: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow write: if isAdmin();
+    }
   }
 }

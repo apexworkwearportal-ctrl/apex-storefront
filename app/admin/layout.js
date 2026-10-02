@@ -19,7 +19,8 @@ import {
   CheckCircle2,
   Sliders,
   CreditCard,
-  Users
+  Users,
+  Ticket
 } from "lucide-react";
 
 function AdminNavList({ pathname, navSections }) {
@@ -198,6 +199,12 @@ export default function AdminLayout({ children }) {
       items: [
         { label: "Order Manager", href: "/admin/orders?tab=all", icon: ShoppingBag },
         { label: "Print Proof Review", href: "/admin/orders?tab=proofs", icon: Printer },
+      ]
+    },
+    {
+      title: "MARKETING & PROMOTIONS",
+      items: [
+        { label: "Promo Codes & Discounts", href: "/admin/promos", icon: Ticket },
       ]
     },
     {

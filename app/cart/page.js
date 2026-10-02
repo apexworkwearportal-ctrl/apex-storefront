@@ -7,7 +7,7 @@ import { useCart } from "@/lib/cart-context";
 import { useAuth } from "@/lib/auth-context";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Trash2, Upload, AlertCircle, ShoppingCart, Loader2, ArrowRight, MapPin, DollarSign, FileText } from "lucide-react";
+import { Trash2, Upload, AlertCircle, ShoppingCart, Loader2, ArrowRight, MapPin, DollarSign, FileText, Ticket, Tag, Check, X, CheckCircle2 } from "lucide-react";
 import { motion } from "framer-motion";
 
 import { COUNTRIES, CANADIAN_PROVINCES, US_STATES, normalizeCountryCode, normalizeStateCode } from "@/lib/location-data";
@@ -38,6 +38,13 @@ export default function CartPage() {
   const [uploadingItemIds, setUploadingItemIds] = useState({}); // { [itemId]: boolean }
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [checkoutError, setCheckoutError] = useState("");
+
+  // Promo Code states
+  const [promoCodeInput, setPromoCodeInput] = useState("");
+  const [appliedPromo, setAppliedPromo] = useState(null);
+  const [promoLoading, setPromoLoading] = useState(false);
+  const [promoError, setPromoError] = useState("");
+  const [promoSuccess, setPromoSuccess] = useState("");
 
   // Pre-fill email from auth on load
   useEffect(() => {
@@ -162,13 +169,59 @@ export default function CartPage() {
     }
   };
 
+  // Promo code apply & remove handlers
+  const handleApplyPromo = async (e) => {
+    if (e) e.preventDefault();
+    if (!promoCodeInput.trim()) return;
+
+    setPromoLoading(true);
+    setPromoError("");
+    setPromoSuccess("");
+
+    try {
+      const res = await fetch("/api/promo/validate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          code: promoCodeInput.trim(),
+          items: cart,
+          subtotal: subtotal,
+          email: email || user?.email || "",
+          userId: user ? user.uid : null,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.valid) {
+        throw new Error(data.error || "Invalid promo code");
+      }
+
+      setAppliedPromo(data.promo);
+      setPromoSuccess(data.message || `Promo code "${data.promo.code}" applied!`);
+    } catch (err) {
+      setPromoError(err.message);
+      setAppliedPromo(null);
+    } finally {
+      setPromoLoading(false);
+    }
+  };
+
+  const handleRemovePromo = () => {
+    setAppliedPromo(null);
+    setPromoCodeInput("");
+    setPromoError("");
+    setPromoSuccess("");
+  };
+
   // Math totals
   const subtotal = cart.reduce((acc, item) => acc + (parseFloat(item.price) * item.quantity), 0);
+  const discountAmount = appliedPromo ? parseFloat(appliedPromo.discountAmount || 0) : 0;
+  const discountedSubtotal = Math.max(0, subtotal - discountAmount);
   const shipping = selectedRate ? parseFloat(selectedRate.price) : 0;
   
   const taxRate = state ? (["ON", "ONTARIO"].includes(state.toUpperCase().trim()) ? 0.13 : (["NS", "NOVA SCOTIA", "NB", "NEW BRUNSWICK", "NL", "NEWFOUNDLAND", "PE", "PRINCE EDWARD ISLAND"].includes(state.toUpperCase().trim()) ? 0.15 : 0.05)) : 0;
-  const tax = (subtotal + shipping) * taxRate;
-  const grandTotal = subtotal + shipping + tax;
+  const tax = (discountedSubtotal + shipping) * taxRate;
+  const grandTotal = discountedSubtotal + shipping + tax;
 
   const handleCheckout = async () => {
     if (cart.some(item => !item.artworkFiles || item.artworkFiles.length === 0)) {
@@ -204,6 +257,7 @@ export default function CartPage() {
           },
           selectedShippingRate: selectedRate,
           userId: user ? user.uid : null,
+          promoCode: appliedPromo || null,
         }),
       });
 
@@ -532,11 +586,98 @@ export default function CartPage() {
                 Order Summary
               </h3>
 
+              {/* Promo Code Input & Apply Box */}
+              <div style={{ marginBottom: "1.25rem", paddingBottom: "1.25rem", borderBottom: "1px dashed hsl(var(--border-hsl))" }}>
+                <label style={{ display: "flex", alignItems: "center", gap: "0.35rem", fontSize: "0.85rem", fontWeight: 700, marginBottom: "0.5rem", color: "hsl(var(--foreground-hsl))" }}>
+                  <Ticket size={15} style={{ color: "hsl(var(--accent-hsl))" }} /> Promo or Discount Code
+                </label>
+
+                {!appliedPromo ? (
+                  <form onSubmit={handleApplyPromo} style={{ display: "flex", gap: "0.5rem" }}>
+                    <input
+                      type="text"
+                      className="input"
+                      placeholder="e.g. SAVE20"
+                      value={promoCodeInput}
+                      onChange={(e) => setPromoCodeInput(e.target.value.toUpperCase())}
+                      style={{
+                        flex: 1,
+                        textTransform: "uppercase",
+                        fontFamily: "monospace",
+                        fontWeight: 700,
+                        fontSize: "0.9rem",
+                        padding: "0.45rem 0.75rem"
+                      }}
+                    />
+                    <button
+                      type="submit"
+                      disabled={promoLoading || !promoCodeInput.trim()}
+                      className="btn btn-secondary"
+                      style={{ padding: "0.45rem 0.9rem", fontSize: "0.85rem", whiteSpace: "nowrap" }}
+                    >
+                      {promoLoading ? <Loader2 size={14} className="animate-spin" /> : "Apply"}
+                    </button>
+                  </form>
+                ) : (
+                  <div style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    backgroundColor: "hsl(var(--success-hsl, 142 76% 36%) / 0.1)",
+                    border: "1px solid hsl(var(--success-hsl, 142 76% 36%) / 0.3)",
+                    padding: "0.5rem 0.75rem",
+                    borderRadius: "6px"
+                  }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                      <CheckCircle2 size={16} style={{ color: "#16A34A" }} />
+                      <div>
+                        <span style={{ fontWeight: 800, fontFamily: "monospace", fontSize: "0.9rem", color: "#15803D" }}>
+                          {appliedPromo.code}
+                        </span>
+                        <span style={{ fontSize: "0.75rem", color: "#166534", marginLeft: "0.4rem" }}>
+                          ({appliedPromo.discountType === "percentage" ? `${appliedPromo.discountValue}% OFF` : `$${appliedPromo.discountValue} OFF`})
+                        </span>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleRemovePromo}
+                      style={{ background: "none", border: "none", cursor: "pointer", color: "#991B1B", padding: "0.2rem" }}
+                      title="Remove promo code"
+                    >
+                      <X size={15} />
+                    </button>
+                  </div>
+                )}
+
+                {promoSuccess && !appliedPromo && (
+                  <p style={{ fontSize: "0.8rem", color: "#16A34A", marginTop: "0.4rem", fontWeight: 600 }}>
+                    {promoSuccess}
+                  </p>
+                )}
+
+                {promoError && (
+                  <p style={{ fontSize: "0.8rem", color: "#DC2626", marginTop: "0.4rem", fontWeight: 500 }}>
+                    {promoError}
+                  </p>
+                )}
+              </div>
+
               <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", fontSize: "0.95rem" }}>
                 <div style={{ display: "flex", justifyContent: "space-between" }}>
                   <span style={{ color: "hsl(var(--muted-hsl))" }}>Subtotal</span>
                   <span style={{ fontWeight: 600 }}>${subtotal.toFixed(2)} CAD</span>
                 </div>
+
+                {appliedPromo && discountAmount > 0 && (
+                  <div style={{ display: "flex", justifyContent: "space-between", color: "#16A34A" }}>
+                    <span style={{ display: "flex", alignItems: "center", gap: "0.3rem", fontWeight: 600 }}>
+                      <Tag size={14} /> Discount ({appliedPromo.code})
+                    </span>
+                    <span style={{ fontWeight: 700 }}>-${discountAmount.toFixed(2)} CAD</span>
+                  </div>
+                )}
                 
                 <div style={{ display: "flex", justifyContent: "space-between" }}>
                   <span style={{ color: "hsl(var(--muted-hsl))" }}>Shipping</span>

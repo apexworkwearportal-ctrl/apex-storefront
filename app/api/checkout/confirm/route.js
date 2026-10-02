@@ -1,8 +1,56 @@
 import { adminDb } from "@/lib/firebase-admin";
+import { FieldValue } from "firebase-admin/firestore";
 import { placeOrder } from "@/lib/sinalite";
 import { sendOrderConfirmationEmail } from "@/lib/emails";
 import { splitOrderIfNeeded } from "@/lib/order-splitter";
 import { normalizeCountryCode, normalizeStateCode, formatPostalCode, getSinaliteBillingInfo } from "@/lib/location-data";
+
+async function recordPromoUsage(order) {
+  if (!order.promoCode || !order.promoCode.code || !adminDb) return;
+  try {
+    const promoCode = String(order.promoCode.code).trim().toUpperCase();
+    const promoId = order.promoCode.id;
+    const customerEmail = (order.shippingAddress?.ShipEmail || order.shippingAddress?.email || order.userEmail || "").trim().toLowerCase();
+    const userId = order.userId && order.userId !== "guest" ? order.userId : null;
+
+    // Check if usage already recorded for this orderId to avoid duplicate counting
+    const existing = await adminDb.collection("promoUsages")
+      .where("orderId", "==", order.id)
+      .limit(1)
+      .get();
+
+    if (existing.empty) {
+      await adminDb.collection("promoUsages").add({
+        promoCodeId: promoId || null,
+        promoCode: promoCode,
+        orderId: order.id,
+        userId: userId,
+        customerEmail: customerEmail,
+        discountAmount: parseFloat(order.promoCode.discountAmount || 0),
+        usedAt: new Date()
+      });
+
+      // Increment usedCount on promoCode document
+      if (promoId) {
+        await adminDb.collection("promoCodes").doc(promoId).update({
+          usedCount: FieldValue.increment(1),
+          updatedAt: new Date().toISOString()
+        });
+      } else {
+        const pQuery = await adminDb.collection("promoCodes").where("code", "==", promoCode).limit(1).get();
+        if (!pQuery.empty) {
+          await pQuery.docs[0].ref.update({
+            usedCount: FieldValue.increment(1),
+            updatedAt: new Date().toISOString()
+          });
+        }
+      }
+      console.log(`✓ Recorded promo usage for ${promoCode} on order ${order.id}`);
+    }
+  } catch (err) {
+    console.warn("Could not record promo usage:", err.message);
+  }
+}
 
 function formatSinaliteOrderPayload(ord) {
   // 1. Format Items
@@ -185,6 +233,9 @@ export async function GET(req) {
       } catch (delErr) {
         console.warn("Could not delete pending order ref:", delErr.message);
       }
+
+      // Record promo code usage
+      await recordPromoUsage(baseOrder);
 
       return Response.json({ success: true, orders: confirmedList, order: confirmedList[0] });
     }

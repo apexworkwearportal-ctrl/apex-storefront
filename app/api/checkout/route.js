@@ -1,7 +1,53 @@
 import stripe, { getStripeConfig } from "@/lib/stripe";
 import { adminDb } from "@/lib/firebase-admin";
+import { FieldValue } from "firebase-admin/firestore";
 import { sendOrderConfirmationEmail } from "@/lib/emails";
 import { splitOrderIfNeeded } from "@/lib/order-splitter";
+
+async function recordPromoUsage(order) {
+  if (!order.promoCode || !order.promoCode.code || !adminDb) return;
+  try {
+    const promoCode = String(order.promoCode.code).trim().toUpperCase();
+    const promoId = order.promoCode.id;
+    const customerEmail = (order.shippingAddress?.ShipEmail || order.shippingAddress?.email || order.userEmail || "").trim().toLowerCase();
+    const userId = order.userId && order.userId !== "guest" ? order.userId : null;
+
+    const existing = await adminDb.collection("promoUsages")
+      .where("orderId", "==", order.id)
+      .limit(1)
+      .get();
+
+    if (existing.empty) {
+      await adminDb.collection("promoUsages").add({
+        promoCodeId: promoId || null,
+        promoCode: promoCode,
+        orderId: order.id,
+        userId: userId,
+        customerEmail: customerEmail,
+        discountAmount: parseFloat(order.promoCode.discountAmount || 0),
+        usedAt: new Date()
+      });
+
+      if (promoId) {
+        await adminDb.collection("promoCodes").doc(promoId).update({
+          usedCount: FieldValue.increment(1),
+          updatedAt: new Date().toISOString()
+        });
+      } else {
+        const pQuery = await adminDb.collection("promoCodes").where("code", "==", promoCode).limit(1).get();
+        if (!pQuery.empty) {
+          await pQuery.docs[0].ref.update({
+            usedCount: FieldValue.increment(1),
+            updatedAt: new Date().toISOString()
+          });
+        }
+      }
+      console.log(`✓ Recorded promo usage for ${promoCode} on order ${order.id}`);
+    }
+  } catch (err) {
+    console.warn("Could not record promo usage:", err.message);
+  }
+}
 
 function calculateTaxRate(province) {
   const p = province ? province.toUpperCase().trim() : "";
@@ -51,7 +97,7 @@ async function saveAddressToUserIfNeeded(userId, shippingAddress) {
 
 export async function POST(req) {
   try {
-    const { items, shippingAddress, selectedShippingRate, userId } = await req.json();
+    const { items, shippingAddress, selectedShippingRate, userId, promoCode } = await req.json();
 
     if (!items || items.length === 0 || !shippingAddress || !selectedShippingRate) {
       return Response.json({ error: "Missing required checkout fields" }, { status: 400 });
@@ -62,10 +108,13 @@ export async function POST(req) {
 
     // 1. Calculate Totals
     const subtotal = items.reduce((acc, item) => acc + (parseFloat(item.price) * parseInt(item.quantity)), 0);
+    const discountAmount = promoCode && promoCode.discountAmount ? parseFloat(promoCode.discountAmount) : 0;
+    const discountedSubtotal = Math.max(0, subtotal - discountAmount);
+
     const shipping = parseFloat(selectedShippingRate.price || 0);
     const taxRate = calculateTaxRate(shippingAddress.ShipState);
-    const tax = (subtotal + shipping) * taxRate;
-    const grandTotal = subtotal + shipping + tax;
+    const tax = (discountedSubtotal + shipping) * taxRate;
+    const grandTotal = discountedSubtotal + shipping + tax;
 
     const orderData = {
       userId: userId || "guest",
@@ -75,6 +124,7 @@ export async function POST(req) {
         name: i.name,
         isCustom: Boolean(i.isCustom),
         images: i.images || [],
+        categoryId: i.categoryId || null,
         optionSummary: i.optionSummary || "",
         selectedOptionMap: i.selectedOptionMap || null,
         price: parseFloat(i.price || 0),
@@ -99,8 +149,18 @@ export async function POST(req) {
         ShipCountry: shippingAddress.ShipCountry,
         ShipMethod: selectedShippingRate.serviceName,
       },
+      promoCode: promoCode ? {
+        id: promoCode.id || null,
+        code: promoCode.code,
+        discountType: promoCode.discountType,
+        discountValue: promoCode.discountValue,
+        discountAmount: discountAmount,
+        scope: promoCode.scope || "site",
+      } : null,
       totals: {
         subtotal: subtotal.toFixed(2),
+        discount: discountAmount.toFixed(2),
+        discountedSubtotal: discountedSubtotal.toFixed(2),
         shipping: shipping.toFixed(2),
         tax: tax.toFixed(2),
         grandTotal: grandTotal.toFixed(2),
@@ -140,6 +200,9 @@ export async function POST(req) {
         }
       }
 
+      // Record promo code usage
+      await recordPromoUsage(baseOrder);
+
       return Response.json({ url: `/checkout/success?orderId=${mainOrderId}` });
     }
 
@@ -159,10 +222,10 @@ export async function POST(req) {
         price_data: {
           currency: "cad",
           product_data: {
-            name: "Print Order Subtotal",
-            description: items.map(i => `${i.name} (x${i.quantity})`).join(", "),
+            name: promoCode ? `Print Order Subtotal (${promoCode.code} Applied)` : "Print Order Subtotal",
+            description: items.map(i => `${i.name} (x${i.quantity})`).join(", ") + (promoCode && discountAmount > 0 ? ` [Discount: -$${discountAmount.toFixed(2)}]` : ""),
           },
-          unit_amount: Math.round(subtotal * 100),
+          unit_amount: Math.round(discountedSubtotal * 100),
         },
         quantity: 1,
       },
@@ -200,6 +263,7 @@ export async function POST(req) {
       metadata: {
         pendingOrderId: pendingRef.id,
         userId: userId || "guest",
+        promoCode: promoCode ? promoCode.code : "",
       },
     });
 

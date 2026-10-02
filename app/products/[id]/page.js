@@ -44,6 +44,7 @@ export default function ProductDetailPage({ params: paramsPromise }) {
       productId: product.isCustom ? productId : parseInt(productId),
       name: product.name || product.sinalite?.name,
       images: product.images || [],
+      categoryId: product.categoryId || product.category || null,
       ...mockupCartPayload,
       isCustom: !!product.isCustom,
       isApparel: true
@@ -78,6 +79,7 @@ export default function ProductDetailPage({ params: paramsPromise }) {
       productId: product.isCustom ? productId : parseInt(productId),
       name: product.name || product.sinalite?.name,
       images: product.images || [],
+      categoryId: product.categoryId || product.category || null,
       selectedOptionMap: selectedOptions,
       selectedOptionIds: product.isCustom ? Object.values(selectedOptions) : Object.values(selectedOptions).map(id => parseInt(id)),
       optionSummary: optionSummaries.join(" | "),
