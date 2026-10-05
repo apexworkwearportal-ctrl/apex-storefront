@@ -37,7 +37,7 @@ export default function RefundsPage() {
 
       <h2>Reporting an Issue</h2>
       <p>
-        1. Contact us within 7 days of delivery at <strong>info@apexworkwear.ca</strong> or <strong>(647) 570-1249</strong><br />
+        1. Contact us within 7 days of delivery at <strong>support@apexworkwear.ca</strong> or <strong>(647) 570-1249</strong><br />
         2. Include your order number and photos showing the issue<br />
         3. We'll review and respond within 2 business days
       </p>
@@ -62,7 +62,7 @@ export default function RefundsPage() {
 
       <h2>Contact Us</h2>
       <p>
-        Email: <strong>info@apexworkwear.ca</strong><br />
+        Email: <strong>support@apexworkwear.ca</strong><br />
         Phone: <strong>(647) 570-1249</strong><br />
         Hours: Monday to Friday, 9:00 AM to 8:30 PM
       </p>

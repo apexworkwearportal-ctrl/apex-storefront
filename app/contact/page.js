@@ -142,8 +142,8 @@ export default function ContactPage() {
               </div>
               <div>
                 <h4 style={{ fontWeight: 700, fontSize: "0.95rem", color: "hsl(var(--foreground-hsl))" }}>Email Address</h4>
-                <a href="mailto:info@apexworkwear.ca" style={{ color: "hsl(var(--foreground-hsl) / 0.8)", fontSize: "0.9rem", display: "inline-block", marginTop: "0.25rem", textDecoration: "none", fontWeight: 500 }}>
-                  info@apexworkwear.ca
+                <a href="mailto:support@apexworkwear.ca" style={{ color: "hsl(var(--foreground-hsl) / 0.8)", fontSize: "0.9rem", display: "inline-block", marginTop: "0.25rem", textDecoration: "none", fontWeight: 500 }}>
+                  support@apexworkwear.ca
                 </a>
               </div>
             </div>

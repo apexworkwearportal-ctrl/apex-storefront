@@ -22,10 +22,12 @@ export async function POST(req) {
       });
     }
 
+    const fromEmail = process.env.RESEND_FROM_EMAIL || "info@notification.apexworkwear.ca";
+
     // Send email using Resend
     const emailRes = await resend.emails.send({
-      from: "Apex Storefront <onboarding@resend.dev>", // Or verified sender from resend
-      to: "info@apexworkwear.ca",
+      from: `Apex Workwear <${fromEmail}>`,
+      to: "support@apexworkwear.ca",
       reply_to: email,
       subject: `[Contact Form] ${subject} - from ${name}`,
       text: `You have received a new contact inquiry from the Apex Storefront.

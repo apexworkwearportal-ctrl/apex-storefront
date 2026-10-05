@@ -311,12 +311,12 @@ export default function Header() {
           {/* Left: Contact Info */}
           <div style={{ display: "flex", alignItems: "center", gap: "1.25rem" }} className="header-top-left">
             <a 
-              href="tel:18662074955" 
+              href="tel:6475701249" 
               style={{ display: "flex", alignItems: "center", gap: "0.35rem", color: "#e2e8f0", textDecoration: "none" }}
               className="top-bar-link"
             >
               <Phone size={13} style={{ color: "hsl(var(--accent-hsl))" }} />
-              <span style={{ fontWeight: 600 }}>1.866.207.4955</span>
+              <span style={{ fontWeight: 600 }}>(647) 570-1249</span>
             </a>
             <span style={{ opacity: 0.3 }}>|</span>
             <Link href="/contact" style={{ color: "#cbd5e1", textDecoration: "none" }} className="top-bar-link">
@@ -1218,8 +1218,8 @@ export default function Header() {
 
             {/* Mobile Footer */}
             <div style={{ padding: "1.25rem", backgroundColor: "hsl(var(--secondary-hsl))", borderTop: "1px solid hsl(var(--border-hsl))" }}>
-              <a href="tel:18662074955" style={{ display: "flex", alignItems: "center", justifyCenter: "center", gap: "0.5rem", fontWeight: 700, color: "hsl(var(--primary-hsl))", textDecoration: "none", fontSize: "0.9rem" }}>
-                <Phone size={16} /> Call 1.866.207.4955
+              <a href="tel:6475701249" style={{ display: "flex", alignItems: "center", justifyCenter: "center", gap: "0.5rem", fontWeight: 700, color: "hsl(var(--primary-hsl))", textDecoration: "none", fontSize: "0.9rem" }}>
+                <Phone size={16} /> Call (647) 570-1249
               </a>
             </div>
           </div>

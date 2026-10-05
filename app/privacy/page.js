@@ -53,7 +53,7 @@ export default function PrivacyPage() {
 
       <h2>Your Rights</h2>
       <p>
-        Under PIPEDA, you have the right to access the personal information we hold about you, request corrections, and withdraw consent for marketing communications at any time. Contact us at <strong>info@apexworkwear.ca</strong> to make a request.
+        Under PIPEDA, you have the right to access the personal information we hold about you, request corrections, and withdraw consent for marketing communications at any time. Contact us at <strong>support@apexworkwear.ca</strong> to make a request.
       </p>
 
       <h2>Security</h2>
@@ -74,7 +74,7 @@ export default function PrivacyPage() {
       <h2>Contact Us</h2>
       <p>
         For privacy questions or requests:<br />
-        Email: <strong>info@apexworkwear.ca</strong><br />
+        Email: <strong>support@apexworkwear.ca</strong><br />
         Phone: <strong>(647) 570-1249</strong><br />
         Address: 1515 Britannia Rd E, Unit 14-15, Mississauga, ON L4W 4K1
       </p>

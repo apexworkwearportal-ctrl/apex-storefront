@@ -75,8 +75,8 @@ export default function Footer() {
             <a href="tel:6475701249" style={{ display: "flex", alignItems: "center", gap: "0.5rem" }} className="footer-link">
               <Phone size={16} /> (647) 570-1249
             </a>
-            <a href="mailto:info@apexworkwear.ca" style={{ display: "flex", alignItems: "center", gap: "0.5rem" }} className="footer-link">
-              <Mail size={16} /> info@apexworkwear.ca
+            <a href="mailto:support@apexworkwear.ca" style={{ display: "flex", alignItems: "center", gap: "0.5rem" }} className="footer-link">
+              <Mail size={16} /> support@apexworkwear.ca
             </a>
             <div style={{ display: "flex", alignItems: "flex-start", gap: "0.5rem" }}>
               <MapPin size={16} style={{ marginTop: "0.2rem", shrink: 0 }} />

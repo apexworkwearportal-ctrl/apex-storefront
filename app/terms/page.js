@@ -79,7 +79,7 @@ export default function TermsPage() {
 
       <h2>13. Contact Us</h2>
       <p>
-        Email: <strong>info@apexworkwear.ca</strong><br />
+        Email: <strong>support@apexworkwear.ca</strong><br />
         Phone: <strong>(647) 570-1249</strong><br />
         Address: 1515 Britannia Rd E, Unit 14-15, Mississauga, ON L4W 4K1
       </p>

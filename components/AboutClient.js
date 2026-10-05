@@ -391,8 +391,8 @@ export default function AboutClient() {
                 </div>
                 <div>
                   <p style={{ fontSize: "0.7rem", color: "hsl(var(--muted-hsl))", fontWeight: 700, textTransform: "uppercase" }}>Email</p>
-                  <a href="mailto:info@apexworkwear.ca" style={{ fontSize: "0.9rem", fontWeight: 600 }}>
-                    info@apexworkwear.ca
+                  <a href="mailto:support@apexworkwear.ca" style={{ fontSize: "0.9rem", fontWeight: 600 }}>
+                    support@apexworkwear.ca
                   </a>
                 </div>
               </div>

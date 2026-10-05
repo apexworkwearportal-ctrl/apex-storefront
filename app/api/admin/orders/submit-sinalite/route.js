@@ -64,7 +64,7 @@ function formatSinaliteOrderPayload(ord) {
   const shippingInfo = {
     ShipFName: shipFName,
     ShipLName: shipLName,
-    ShipEmail: addr.ShipEmail || addr.email || ord.userEmail || "customer@apexworkwear.com",
+    ShipEmail: addr.ShipEmail || addr.email || ord.userEmail || "support@apexworkwear.ca",
     ShipAddr: addr.ShipAddr || addr.ShipAddress1 || addr.address || "1515 Britannia Rd E Unit 14-15",
     ShipAddr2: addr.ShipAddr2 || addr.apartment || "",
     ShipCity: addr.ShipCity || addr.city || "Mississauga",
