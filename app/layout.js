@@ -1,6 +1,7 @@
 import "./globals.css";
 import { AuthProvider } from "@/lib/auth-context";
 import { CartProvider } from "@/lib/cart-context";
+import Script from "next/script";
 
 export const metadata = {
   title: "Apex Workwear | Custom Printing Storefront",
@@ -27,6 +28,17 @@ export default function RootLayout({ children }) {
         <link rel="icon" href="/favicon.ico" sizes="any" />
       </head>
       <body>
+        {/* Google Tag Manager */}
+        <Script
+          src="https://www.googletagmanager.com/gtag/js?id=GT-578B9MQH"
+          strategy="afterInteractive"
+        />
+        <Script id="gtag-init" strategy="afterInteractive">{`
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){dataLayer.push(arguments);}
+          gtag('js', new Date());
+          gtag('config', 'GT-578B9MQH');
+        `}</Script>
         <AuthProvider>
           <CartProvider>
             {children}
