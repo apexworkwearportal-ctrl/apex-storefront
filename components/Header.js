@@ -36,146 +36,15 @@ import {
   BadgeCheck
 } from "lucide-react";
 
+import { DEFAULT_MEGA_MENU, getMegaMenuIcon, buildMegaMenuFromCategories } from "@/lib/mega-menu";
+import { doc, getDoc } from "firebase/firestore";
+
 // Announcement messages
 const ANNOUNCEMENTS = [
   "🚚 FREE SHIPPING on Custom Apparel orders over $150 | Use code APEXFREE",
   "⚡ INSTANT LOGO PREVIEW: Upload your logo and build apparel live",
   "✨ BULK SAVINGS: Save up to 40% on high-volume print orders",
   "🛡️ 100% Quality Guarantee on all custom print & apparel products"
-];
-
-// Rich Mega-Menu Default Categories Structure
-const MEGA_MENU_CATEGORIES = [
-  {
-    id: "apparel",
-    name: "Custom Apparel",
-    badge: "HOT",
-    icon: Shirt,
-    href: "/products?category=apparel-promotional-wear",
-    subcategories: [
-      { name: "T-Shirts & Tees", href: "/products?category=apparel-promotional-wear&type=t-shirts", desc: "Short sleeve, long sleeve, performance tees" },
-      { name: "Hoodies & Sweatshirts", href: "/products?category=apparel-promotional-wear&type=hoodies", desc: "Fleece, zip-ups, pullover hoodies" },
-      { name: "Polo Shirts", href: "/products?category=apparel-promotional-wear&type=polos", desc: "Corporate embroiderable polo shirts" },
-      { name: "Work Jackets & Outerwear", href: "/products?category=apparel-promotional-wear&type=jackets", desc: "Heavy duty softshell & winter workwear" },
-      { name: "Safety Vests & High-Vis", href: "/products?category=apparel-promotional-wear&type=safety", desc: "ANSI compliant safety gear & vests" },
-      { name: "Hats & Caps", href: "/products?category=apparel-promotional-wear&type=caps", desc: "Snapbacks, beanies, embroidered caps" }
-    ],
-    spotlight: {
-      title: "Apparel Designer & Mockup Builder",
-      desc: "Upload your business logo and see real-time garment mockups with instant pricing.",
-      cta: "Build Custom Apparel",
-      href: "/products?category=apparel-promotional-wear",
-      bgGradient: "linear-gradient(135deg, #1e293b 0%, #0f172a 100%)",
-      accentColor: "#f97316"
-    }
-  },
-  {
-    id: "business-cards",
-    name: "Business Cards",
-    badge: "POPULAR",
-    icon: CreditCard,
-    href: "/products?category=business-cards",
-    subcategories: [
-      { name: "Standard Business Cards", href: "/products?category=business-cards", desc: "14pt & 16pt premium cardstock" },
-      { name: "Velvet Soft-Touch", href: "/products?category=business-cards", desc: "Luxurious matte suede finish" },
-      { name: "Gold & Silver Foil", href: "/products?category=business-cards", desc: "Metallic foil stamped details" },
-      { name: "Spot UV Gloss", href: "/products?category=business-cards", desc: "Raised glossy textured accent" },
-      { name: "Triple-Layer Heavyweight", href: "/products?category=business-cards", desc: "Ultra-thick color core cards" },
-      { name: "Plastic & Clear Cards", href: "/products?category=business-cards", desc: "Durable waterproof plastic" }
-    ],
-    spotlight: {
-      title: "Premium Soft-Touch Cards",
-      desc: "Make an unforgettably tactile impression with 16pt velvet touch finish.",
-      cta: "Explore Business Cards",
-      href: "/products?category=business-cards",
-      bgGradient: "linear-gradient(135deg, #0284c7 0%, #0369a1 100%)",
-      accentColor: "#38bdf8"
-    }
-  },
-  {
-    id: "postcards-flyers",
-    name: "Postcards & Marketing",
-    icon: FileText,
-    href: "/products?category=postcards-flyers",
-    subcategories: [
-      { name: "Postcards", href: "/products?category=postcards-flyers", desc: "Direct mail & promotional mailers" },
-      { name: "Flyers & Leaflets", href: "/products?category=postcards-flyers", desc: "Full-color sales distribution flyers" },
-      { name: "Brochures & Catalogs", href: "/products?category=postcards-flyers", desc: "Tri-fold, z-fold & bi-fold booklets" },
-      { name: "Door Hangers", href: "/products?category=postcards-flyers", desc: "Local neighborhood marketing" },
-      { name: "Rack Cards", href: "/products?category=postcards-flyers", desc: "Tourism & counter display cards" },
-      { name: "Presentation Folders", href: "/products?category=postcards-flyers", desc: "Custom branded pocket folders" }
-    ],
-    spotlight: {
-      title: "Direct Mail Postcards",
-      desc: "High volume promotional prints delivered with crisp full-color offset quality.",
-      cta: "View Print Products",
-      href: "/products?category=postcards-flyers",
-      bgGradient: "linear-gradient(135deg, #4f46e5 0%, #3730a3 100%)",
-      accentColor: "#818cf8"
-    }
-  },
-  {
-    id: "signs-banners",
-    name: "Signs & Banners",
-    icon: Flag,
-    href: "/products?category=signs-banners",
-    subcategories: [
-      { name: "Vinyl Banners", href: "/products?category=signs-banners", desc: "13oz outdoor heavy duty vinyl" },
-      { name: "Retractable Banner Stands", href: "/products?category=signs-banners", desc: "Pull-up tradeshow roll banners" },
-      { name: "Yard & Coroplast Signs", href: "/products?category=signs-banners", desc: "Lawn signs with H-stakes" },
-      { name: "Foam Board Signs", href: "/products?category=signs-banners", desc: "Smooth indoor event posters" },
-      { name: "Car Magnets", href: "/products?category=signs-banners", desc: "Vehicle door marketing magnets" },
-      { name: "Window Decals & Clings", href: "/products?category=signs-banners", desc: "Storefront adhesive graphics" }
-    ],
-    spotlight: {
-      title: "Tradeshow Pull-Up Banners",
-      desc: "Portable display banners ready to set up in under 30 seconds with carrying case.",
-      cta: "Shop Banners & Signs",
-      href: "/products?category=signs-banners",
-      bgGradient: "linear-gradient(135deg, #059669 0%, #047857 100%)",
-      accentColor: "#34d399"
-    }
-  },
-  {
-    id: "labels-stickers",
-    name: "Labels & Packaging",
-    icon: Box,
-    href: "/products?category=labels-stickers",
-    subcategories: [
-      { name: "Roll Labels", href: "/products?category=labels-stickers", desc: "Automatic application product labels" },
-      { name: "Die-Cut Custom Stickers", href: "/products?category=labels-stickers", desc: "Individual vinyl logo stickers" },
-      { name: "Product Packaging Boxes", href: "/products?category=labels-stickers", desc: "Custom printed folding cartons" },
-      { name: "Poly Mailers & Envelopes", href: "/products?category=labels-stickers", desc: "Branded shipping mailers" }
-    ],
-    spotlight: {
-      title: "Custom Roll Labels",
-      desc: "Waterproof, oil-resistant product labels printed with vibrant die-cut shapes.",
-      cta: "Explore Packaging",
-      href: "/products?category=labels-stickers",
-      bgGradient: "linear-gradient(135deg, #d97706 0%, #b45309 100%)",
-      accentColor: "#fbbf24"
-    }
-  },
-  {
-    id: "promotional",
-    name: "Promotional Swag",
-    icon: Gift,
-    href: "/products?category=promotional",
-    subcategories: [
-      { name: "Mugs & Drinkware", href: "/products?category=promotional", desc: "Ceramic mugs, tumblers & bottles" },
-      { name: "Branded Pens & Stationery", href: "/products?category=promotional", desc: "Engraved metal & gel pens" },
-      { name: "Tote Bags & Backpacks", href: "/products?category=promotional", desc: "Canvas totes & drawstring bags" },
-      { name: "Lanyards & Badges", href: "/products?category=promotional", desc: "Event passes & custom lanyards" }
-    ],
-    spotlight: {
-      title: "Corporate Swag Packages",
-      desc: "Build lasting customer loyalty with custom laser-engraved promotional goods.",
-      cta: "View Promo Items",
-      href: "/products?category=promotional",
-      bgGradient: "linear-gradient(135deg, #db2777 0%, #be185d 100%)",
-      accentColor: "#f472b6"
-    }
-  }
 ];
 
 export default function Header() {
@@ -186,6 +55,7 @@ export default function Header() {
   // State
   const [categories, setCategories] = useState([]);
   const [products, setProducts] = useState([]);
+  const [megaMenu, setMegaMenu] = useState(DEFAULT_MEGA_MENU);
   const [activeAnnouncement, setActiveAnnouncement] = useState(0);
   
   // Menus & Overlays
@@ -210,7 +80,7 @@ export default function Header() {
     return () => clearInterval(timer);
   }, []);
 
-  // Fetch Firestore categories and products for live autocompletion
+  // Fetch Firestore categories, mega menu settings, and products for live autocompletion
   useEffect(() => {
     const fetchCatalogData = async () => {
       try {
@@ -219,6 +89,20 @@ export default function Header() {
         const catList = [];
         catSnap.forEach(doc => catList.push({ id: doc.id, ...doc.data() }));
         setCategories(catList);
+
+        // Fetch custom mega-menu settings from Firestore if customized by admin
+        try {
+          const menuDoc = await getDoc(doc(db, "settings", "megaMenu"));
+          if (menuDoc.exists() && Array.isArray(menuDoc.data().items) && menuDoc.data().items.length > 0) {
+            setMegaMenu(menuDoc.data().items.filter(i => i.enabled !== false));
+          } else if (catList.length > 0) {
+            // If no custom settings, use the verified DEFAULT_MEGA_MENU
+            setMegaMenu(DEFAULT_MEGA_MENU);
+          }
+        } catch (menuErr) {
+          console.warn("Could not fetch mega menu settings, using default:", menuErr);
+          setMegaMenu(DEFAULT_MEGA_MENU);
+        }
 
         const prodSnap = await getDocs(collection(db, "products"));
         const prodList = [];
@@ -417,7 +301,7 @@ export default function Header() {
                 }}
               >
                 <option value="all">All Categories</option>
-                {MEGA_MENU_CATEGORIES.map(c => (
+                {megaMenu.map(c => (
                   <option key={c.id} value={c.id}>{c.name}</option>
                 ))}
               </select>
@@ -924,8 +808,8 @@ export default function Header() {
           gap: "0.25rem",
           padding: "0 1.5rem"
         }}>
-          {MEGA_MENU_CATEGORIES.map((cat) => {
-            const Icon = cat.icon;
+          {megaMenu.map((cat) => {
+            const Icon = getMegaMenuIcon(cat.iconName || cat.icon);
             const isHovered = activeMegaMenu === cat.id;
 
             return (
@@ -936,7 +820,7 @@ export default function Header() {
                 style={{ position: "static" }}
               >
                 <Link
-                  href={cat.href}
+                  href={cat.href || `/products?category=${cat.id}`}
                   style={{
                     display: "flex",
                     alignItems: "center",
@@ -991,15 +875,15 @@ export default function Header() {
                     }}>
                       {/* Left: Subcategories Grid */}
                       <div>
-                        <div style={{ display: "flex", alignItems: "center", justifyBetween: "space-between", marginBottom: "1.25rem" }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1.25rem" }}>
                           <h3 style={{ fontSize: "1.05rem", fontWeight: 800 }}>Explore {cat.name}</h3>
-                          <Link href={cat.href} style={{ fontSize: "0.825rem", color: "hsl(var(--accent-hsl))", fontWeight: 700, display: "flex", alignItems: "center", gap: "0.25rem" }}>
+                          <Link href={cat.href || `/products?category=${cat.id}`} style={{ fontSize: "0.825rem", color: "hsl(var(--accent-hsl))", fontWeight: 700, display: "flex", alignItems: "center", gap: "0.25rem" }}>
                             View All Products <ArrowRight size={14} />
                           </Link>
                         </div>
 
                         <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "1rem" }}>
-                          {cat.subcategories.map((sub, sIdx) => (
+                          {cat.subcategories?.map((sub, sIdx) => (
                             <Link
                               key={sIdx}
                               href={sub.href}
@@ -1029,7 +913,7 @@ export default function Header() {
                       {/* Right: Category Spotlight Feature */}
                       {cat.spotlight && (
                         <div style={{
-                          background: cat.spotlight.bgGradient,
+                          background: cat.spotlight.bgGradient || "linear-gradient(135deg, #1e293b 0%, #0f172a 100%)",
                           borderRadius: "var(--radius-lg)",
                           padding: "1.75rem",
                           color: "#ffffff",
@@ -1042,7 +926,7 @@ export default function Header() {
                           <div style={{ position: "relative", zIndex: 1 }}>
                             <span style={{
                               backgroundColor: "rgba(255, 255, 255, 0.15)",
-                              color: cat.spotlight.accentColor,
+                              color: cat.spotlight.accentColor || "#f97316",
                               fontSize: "0.725rem",
                               fontWeight: 800,
                               padding: "0.25rem 0.6rem",
@@ -1062,13 +946,13 @@ export default function Header() {
 
                           <div style={{ marginTop: "1.5rem", position: "relative", zIndex: 1 }}>
                             <Link
-                              href={cat.spotlight.href}
+                              href={cat.spotlight.href || `/products?category=${cat.id}`}
                               onClick={() => setActiveMegaMenu(null)}
                               style={{
                                 display: "inline-flex",
                                 alignItems: "center",
                                 gap: "0.4rem",
-                                backgroundColor: cat.spotlight.accentColor,
+                                backgroundColor: cat.spotlight.accentColor || "#f97316",
                                 color: "#ffffff",
                                 padding: "0.6rem 1.25rem",
                                 borderRadius: "var(--radius-md)",
@@ -1078,7 +962,7 @@ export default function Header() {
                               }}
                               className="spotlight-cta-hover"
                             >
-                              {cat.spotlight.cta} <ArrowRight size={16} />
+                              {cat.spotlight.cta || "Explore Now"} <ArrowRight size={16} />
                             </Link>
                           </div>
                         </div>
@@ -1191,10 +1075,10 @@ export default function Header() {
                   Product Categories
                 </p>
                 <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", paddingLeft: "0.5rem" }}>
-                  {MEGA_MENU_CATEGORIES.map(cat => (
+                  {megaMenu.map(cat => (
                     <Link
                       key={cat.id}
-                      href={cat.href}
+                      href={cat.href || `/products?category=${cat.id}`}
                       onClick={() => setMenuOpen(false)}
                       style={{ fontWeight: 600, fontSize: "0.925rem", color: "hsl(var(--foreground-hsl))", textDecoration: "none", display: "flex", alignItems: "center", justifyContent: "space-between" }}
                     >

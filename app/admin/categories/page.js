@@ -1,13 +1,34 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { db } from "@/lib/firebase";
 import { collection, getDocs, doc, getDoc, setDoc, updateDoc, query, orderBy } from "firebase/firestore";
-import { Save, Upload, Edit, Trash2, ArrowRight, Loader2, AlertCircle, Plus, Percent, DollarSign, Sliders } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import AdminMegaMenuManager from "@/components/admin/AdminMegaMenuManager";
+import { 
+  Save, 
+  Upload, 
+  Edit, 
+  Trash2, 
+  ArrowRight, 
+  Loader2, 
+  AlertCircle, 
+  Plus, 
+  Percent, 
+  DollarSign, 
+  Sliders,
+  FolderTree,
+  Layers,
+  Sparkles
+} from "lucide-react";
 
-export default function AdminCategoriesPage() {
+function AdminCategoriesContent() {
   const { user } = useAuth();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const currentTab = searchParams.get("tab") === "megamenu" ? "megamenu" : "taxonomy";
+
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState(null);
@@ -263,24 +284,100 @@ export default function AdminCategoriesPage() {
   return (
     <div>
       {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "2rem", flexWrap: "wrap", gap: "1rem" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.5rem", flexWrap: "wrap", gap: "1rem" }}>
         <div>
-          <h1 style={{ fontSize: "2rem", marginBottom: "0.25rem" }}>Category Management & Pricing Rules</h1>
+          <h1 style={{ fontSize: "2rem", marginBottom: "0.25rem" }}>
+            {currentTab === "megamenu" ? "Header Mega Menu Navigation" : "Categories Taxonomy & Pricing Rules"}
+          </h1>
           <p style={{ color: "hsl(var(--muted-hsl))", fontSize: "0.95rem" }}>
-            Edit category hierarchy, hero images, description, home visibility, and category-level custom markup overrides.
+            {currentTab === "megamenu"
+              ? "Customize the top navbar categories, dropdown subcategories, badges, icons, and spotlight feature banners."
+              : "Edit catalog hierarchy, hero images, descriptions, home visibility, and category-level markup overrides."}
           </p>
         </div>
+        {currentTab === "taxonomy" && (
+          <button
+            onClick={() => {
+              setShowCreateForm(!showCreateForm);
+              setError("");
+            }}
+            className="btn btn-primary"
+            style={{ padding: "0.6rem 1.25rem", fontSize: "0.85rem", display: "flex", alignItems: "center", gap: "0.5rem" }}
+          >
+            <Plus size={16} /> Create Category
+          </button>
+        )}
+      </div>
+
+      {/* Tabs Navigation */}
+      <div style={{
+        display: "flex",
+        gap: "0.5rem",
+        borderBottom: "1px solid #E2E8F0",
+        marginBottom: "2rem"
+      }}>
         <button
-          onClick={() => {
-            setShowCreateForm(!showCreateForm);
-            setError("");
+          onClick={() => router.push("/admin/categories?tab=taxonomy")}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "0.5rem",
+            padding: "0.75rem 1.25rem",
+            fontSize: "0.9rem",
+            fontWeight: currentTab === "taxonomy" ? 700 : 500,
+            color: currentTab === "taxonomy" ? "#2563EB" : "#64748B",
+            borderBottom: currentTab === "taxonomy" ? "2px solid #2563EB" : "2px solid transparent",
+            background: "none",
+            borderTop: "none",
+            borderLeft: "none",
+            borderRight: "none",
+            cursor: "pointer",
+            transition: "all 0.15s ease"
           }}
-          className="btn btn-primary"
-          style={{ padding: "0.6rem 1.25rem", fontSize: "0.85rem", display: "flex", alignItems: "center", gap: "0.5rem" }}
         >
-          <Plus size={16} /> Create Category
+          <FolderTree size={16} />
+          Categories Taxonomy ({categories.length})
+        </button>
+
+        <button
+          onClick={() => router.push("/admin/categories?tab=megamenu")}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "0.5rem",
+            padding: "0.75rem 1.25rem",
+            fontSize: "0.9rem",
+            fontWeight: currentTab === "megamenu" ? 700 : 500,
+            color: currentTab === "megamenu" ? "#2563EB" : "#64748B",
+            borderBottom: currentTab === "megamenu" ? "2px solid #2563EB" : "2px solid transparent",
+            background: "none",
+            borderTop: "none",
+            borderLeft: "none",
+            borderRight: "none",
+            cursor: "pointer",
+            transition: "all 0.15s ease"
+          }}
+        >
+          <Layers size={16} />
+          Header Mega Menu
+          <span style={{
+            backgroundColor: "#EFF6FF",
+            color: "#2563EB",
+            fontSize: "0.7rem",
+            fontWeight: 800,
+            padding: "0.1rem 0.4rem",
+            borderRadius: "10px",
+            border: "1px solid #BFDBFE"
+          }}>
+            Live
+          </span>
         </button>
       </div>
+
+      {currentTab === "megamenu" ? (
+        <AdminMegaMenuManager categories={categories} onCategoriesUpdated={fetchCategories} />
+      ) : (
+        <>
 
       {error && (
         <div className="card" style={{ borderColor: "hsl(var(--destructive-hsl))", backgroundColor: "hsl(var(--destructive-hsl) / 0.05)", padding: "1rem", marginBottom: "1.5rem", color: "hsl(var(--destructive-hsl))", display: "flex", alignItems: "center", gap: "0.5rem", fontWeight: 600 }}>
@@ -860,6 +957,16 @@ export default function AdminCategoriesPage() {
           })}
         </div>
       )}
+        </>
+      )}
     </div>
+  );
+}
+
+export default function AdminCategoriesPage() {
+  return (
+    <Suspense fallback={<div style={{ padding: "3rem", textAlign: "center", color: "#64748B" }}>Loading Categories...</div>}>
+      <AdminCategoriesContent />
+    </Suspense>
   );
 }

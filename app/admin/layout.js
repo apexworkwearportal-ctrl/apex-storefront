@@ -8,6 +8,7 @@ import {
   LayoutDashboard, 
   RefreshCw, 
   FolderEdit, 
+  Layers,
   ShoppingBag, 
   ShieldAlert,
   LogOut,
@@ -38,6 +39,16 @@ function AdminNavList({ pathname, navSections }) {
         return currentTab === "markups";
       }
       return !currentTab || currentTab === "calculator";
+    }
+
+    // Handle categories tabs
+    if (href.startsWith("/admin/categories")) {
+      if (pathname !== "/admin/categories") return false;
+      const isMega = href.includes("tab=megamenu");
+      if (isMega) {
+        return currentTab === "megamenu";
+      }
+      return !currentTab || currentTab === "taxonomy";
     }
 
     // Handle orders tabs
@@ -190,7 +201,8 @@ export default function AdminLayout({ children }) {
       title: "CATALOG & PRODUCTS",
       items: [
         { label: "Products Catalog", href: "/admin/products", icon: Package },
-        { label: "Categories Taxonomy", href: "/admin/categories", icon: FolderEdit },
+        { label: "Categories Taxonomy", href: "/admin/categories?tab=taxonomy", icon: FolderEdit },
+        { label: "Header Mega Menu", href: "/admin/categories?tab=megamenu", icon: Layers },
         { label: "Add Custom Product", href: "/admin/products/new", icon: Plus },
       ]
     },
