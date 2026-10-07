@@ -572,7 +572,7 @@ export default function AccountDashboard() {
                       Upload corporate logos, position front/back artwork, and configure volume tiers.
                     </p>
                   </div>
-                  <Link href="/products?category=apparel" className="btn btn-primary" style={{ padding: "0.6rem 1.25rem", fontSize: "0.85rem" }}>
+                  <Link href="/products?category=apparel-promotional-wear" className="btn btn-primary" style={{ padding: "0.6rem 1.25rem", fontSize: "0.85rem" }}>
                     Launch Apparel Designer <ChevronRight size={16} />
                   </Link>
                 </div>

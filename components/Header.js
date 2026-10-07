@@ -51,20 +51,20 @@ const MEGA_MENU_CATEGORIES = [
     name: "Custom Apparel",
     badge: "HOT",
     icon: Shirt,
-    href: "/products?category=apparel",
+    href: "/products?category=apparel-promotional-wear",
     subcategories: [
-      { name: "T-Shirts & Tees", href: "/products?category=apparel&type=t-shirts", desc: "Short sleeve, long sleeve, performance tees" },
-      { name: "Hoodies & Sweatshirts", href: "/products?category=apparel&type=hoodies", desc: "Fleece, zip-ups, pullover hoodies" },
-      { name: "Polo Shirts", href: "/products?category=apparel&type=polos", desc: "Corporate embroiderable polo shirts" },
-      { name: "Work Jackets & Outerwear", href: "/products?category=apparel&type=jackets", desc: "Heavy duty softshell & winter workwear" },
-      { name: "Safety Vests & High-Vis", href: "/products?category=apparel&type=safety", desc: "ANSI compliant safety gear & vests" },
-      { name: "Hats & Caps", href: "/products?category=apparel&type=caps", desc: "Snapbacks, beanies, embroidered caps" }
+      { name: "T-Shirts & Tees", href: "/products?category=apparel-promotional-wear&type=t-shirts", desc: "Short sleeve, long sleeve, performance tees" },
+      { name: "Hoodies & Sweatshirts", href: "/products?category=apparel-promotional-wear&type=hoodies", desc: "Fleece, zip-ups, pullover hoodies" },
+      { name: "Polo Shirts", href: "/products?category=apparel-promotional-wear&type=polos", desc: "Corporate embroiderable polo shirts" },
+      { name: "Work Jackets & Outerwear", href: "/products?category=apparel-promotional-wear&type=jackets", desc: "Heavy duty softshell & winter workwear" },
+      { name: "Safety Vests & High-Vis", href: "/products?category=apparel-promotional-wear&type=safety", desc: "ANSI compliant safety gear & vests" },
+      { name: "Hats & Caps", href: "/products?category=apparel-promotional-wear&type=caps", desc: "Snapbacks, beanies, embroidered caps" }
     ],
     spotlight: {
       title: "Apparel Designer & Mockup Builder",
       desc: "Upload your business logo and see real-time garment mockups with instant pricing.",
       cta: "Build Custom Apparel",
-      href: "/products?category=apparel",
+      href: "/products?category=apparel-promotional-wear",
       bgGradient: "linear-gradient(135deg, #1e293b 0%, #0f172a 100%)",
       accentColor: "#f97316"
     }
@@ -617,7 +617,7 @@ export default function Header() {
           <div style={{ display: "flex", alignItems: "center", gap: "1.25rem" }}>
             {/* Custom Apparel Builder CTA */}
             <Link
-              href="/products?category=apparel"
+              href="/products?category=apparel-promotional-wear"
               className="btn btn-primary"
               style={{
                 padding: "0.55rem 1.15rem",
@@ -1092,7 +1092,7 @@ export default function Header() {
 
           {/* Quick Contact & Deals pill */}
           <Link
-            href="/products?sort=deals"
+            href="/products?category=3-hour-printing"
             style={{
               marginLeft: "auto",
               display: "flex",
@@ -1107,7 +1107,7 @@ export default function Header() {
               textDecoration: "none"
             }}
           >
-            <Tag size={14} /> Clearances & Deals
+            <Tag size={14} /> 3 Hour Printing
           </Link>
         </div>
       </nav>
@@ -1182,7 +1182,7 @@ export default function Header() {
                 Home
               </Link>
               
-              <Link href="/products?category=apparel" onClick={() => setMenuOpen(false)} style={{ fontWeight: 700, fontSize: "1rem", color: "hsl(var(--accent-hsl))", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              <Link href="/products?category=apparel-promotional-wear" onClick={() => setMenuOpen(false)} style={{ fontWeight: 700, fontSize: "1rem", color: "hsl(var(--accent-hsl))", display: "flex", alignItems: "center", gap: "0.5rem" }}>
                 <Sparkles size={18} /> Design Custom Apparel
               </Link>
 
