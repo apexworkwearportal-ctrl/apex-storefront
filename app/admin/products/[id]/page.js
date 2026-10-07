@@ -100,7 +100,9 @@ export default function AdminProductEditPage({ params: paramsPromise }) {
             setPriceOverride(data.pricing?.startingPrice || "");
             setOptionGroups(data.options || []);
           } else {
-            // API product overrides
+            // API product overrides & custom editable name
+            setName(data.name || data.sinalite?.name || "");
+            setSku(data.sku || data.sinalite?.sku || "");
             setCategoryId(data.categoryOverride || "");
             setPriceOverride(data.pricing?.startingPriceOverride || "");
 
@@ -330,6 +332,7 @@ export default function AdminProductEditPage({ params: paramsPromise }) {
         const priceVal = priceOverride !== "" ? parseFloat(priceOverride) : null;
         
         const updateData = {
+          name: name.trim() || null,
           shortDescription,
           longDescription,
           description: longDescription || shortDescription,
@@ -377,7 +380,7 @@ export default function AdminProductEditPage({ params: paramsPromise }) {
         <AlertCircle size={40} style={{ color: "hsl(var(--destructive-hsl))", marginBottom: "1rem" }} />
         <h2>Error</h2>
         <p>{error}</p>
-        <Link href="/admin" className="btn btn-secondary" style={{ marginTop: "1rem", display: "inline-flex" }}>
+        <Link href="/admin/products" className="btn btn-secondary" style={{ marginTop: "1rem", display: "inline-flex" }}>
           Back to Catalog
         </Link>
       </div>
@@ -388,8 +391,8 @@ export default function AdminProductEditPage({ params: paramsPromise }) {
     <div>
       {/* Breadcrumb */}
       <div style={{ marginBottom: "1.5rem" }}>
-        <Link href="/admin" style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem", color: "hsl(var(--muted-hsl))", fontSize: "0.9rem", fontWeight: 600 }}>
-          <ArrowLeft size={16} /> Back to Catalog
+        <Link href={product?.isCustom ? "/admin/products?type=custom" : "/admin/products?type=synced"} style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem", color: "hsl(var(--muted-hsl))", fontSize: "0.9rem", fontWeight: 600 }}>
+          <ArrowLeft size={16} /> Back to {product?.isCustom ? "Custom Products" : "Product Catalog"}
         </Link>
       </div>
 
@@ -401,12 +404,12 @@ export default function AdminProductEditPage({ params: paramsPromise }) {
             {product?.isCustom ? (
               <>
                 <span style={{ fontSize: "0.85rem", padding: "0.2rem 0.5rem", marginRight: "0.5rem", backgroundColor: "hsl(var(--primary-hsl) / 0.15)", color: "hsl(var(--primary-hsl))", borderRadius: "4px", fontWeight: 700 }}>Custom Product</span>
-                {name} <span style={{ fontSize: "0.8rem", padding: "0.1rem 0.4rem", backgroundColor: "hsl(var(--secondary-hsl))", borderRadius: "4px" }}>SKU: {sku}</span>
+                {name || "Untitled Product"} <span style={{ fontSize: "0.8rem", padding: "0.1rem 0.4rem", backgroundColor: "hsl(var(--secondary-hsl))", borderRadius: "4px" }}>SKU: {sku || "N/A"}</span>
               </>
             ) : (
               <>
-                <span style={{ fontSize: "0.85rem", padding: "0.2rem 0.5rem", marginRight: "0.5rem", backgroundColor: "hsl(var(--success-hsl) / 0.15)", color: "hsl(var(--success-hsl))", borderRadius: "4px", fontWeight: 700 }}>API Product</span>
-                {product?.sinalite?.name} <span style={{ fontSize: "0.8rem", padding: "0.1rem 0.4rem", backgroundColor: "hsl(var(--secondary-hsl))", borderRadius: "4px" }}>SKU: {product?.sinalite?.sku}</span>
+                <span style={{ fontSize: "0.85rem", padding: "0.2rem 0.5rem", marginRight: "0.5rem", backgroundColor: "hsl(var(--success-hsl) / 0.15)", color: "hsl(var(--success-hsl))", borderRadius: "4px", fontWeight: 700 }}>Synced API Product</span>
+                {name || product?.sinalite?.name} <span style={{ fontSize: "0.8rem", padding: "0.1rem 0.4rem", backgroundColor: "hsl(var(--secondary-hsl))", borderRadius: "4px" }}>SKU: {product?.sinalite?.sku || product?.sku || "N/A"}</span>
               </>
             )}
           </p>
@@ -438,20 +441,62 @@ export default function AdminProductEditPage({ params: paramsPromise }) {
         {/* Left column: Content details */}
         <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
           
-          {/* Custom specifications if product is custom */}
-          {product?.isCustom && (
-            <div className="card" style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-              <h2 style={{ fontSize: "1.2rem", marginBottom: "0.5rem" }}>Product Details</h2>
-              <div>
-                <label className="label">Product Name</label>
-                <input className="input" value={name} onChange={(e) => setName(e.target.value)} required />
-              </div>
+          {/* Product Name & Specifications Card (Available for ALL products) */}
+          <div className="card" style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <h2 style={{ fontSize: "1.2rem", margin: 0 }}>Product Information</h2>
+              <span style={{
+                fontSize: "0.75rem",
+                fontWeight: 700,
+                padding: "0.2rem 0.55rem",
+                borderRadius: "4px",
+                backgroundColor: product?.isCustom ? "hsl(var(--primary-hsl) / 0.12)" : "hsl(var(--success-hsl) / 0.12)",
+                color: product?.isCustom ? "hsl(var(--primary-hsl))" : "hsl(var(--success-hsl))"
+              }}>
+                {product?.isCustom ? "Custom In-House Product" : "SinaLite Synced Product"}
+              </span>
+            </div>
+
+            <div>
+              <label className="label">
+                Product Name {product?.isCustom ? "(Required)" : "(Storefront Title Override)"}
+              </label>
+              <input
+                className="input"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder={product?.isCustom ? "e.g. Premium Custom Workwear Jacket" : (product?.sinalite?.name || "Product Name")}
+                required={product?.isCustom}
+              />
+              {!product?.isCustom && product?.sinalite?.name && (
+                <p style={{ fontSize: "0.75rem", color: "hsl(var(--muted-hsl))", marginTop: "0.35rem" }}>
+                  Original SinaLite Name: <strong>{product.sinalite.name}</strong> (Customize this title to change how it is displayed across the customer storefront).
+                </p>
+              )}
+            </div>
+
+            {product?.isCustom ? (
               <div>
                 <label className="label">SKU</label>
                 <input className="input" value={sku} onChange={(e) => setSku(e.target.value)} required />
               </div>
-            </div>
-          )}
+            ) : (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "1.5rem", padding: "0.75rem 1rem", backgroundColor: "hsl(var(--secondary-hsl) / 0.2)", borderRadius: "var(--radius-sm)", fontSize: "0.825rem" }}>
+                <div>
+                  <span style={{ color: "hsl(var(--muted-hsl))" }}>API SKU: </span>
+                  <strong style={{ fontFamily: "monospace" }}>{product?.sinalite?.sku || product?.sku || "N/A"}</strong>
+                </div>
+                <div>
+                  <span style={{ color: "hsl(var(--muted-hsl))" }}>API Category: </span>
+                  <strong>{product?.sinalite?.category || "N/A"}</strong>
+                </div>
+                <div>
+                  <span style={{ color: "hsl(var(--muted-hsl))" }}>Live Options: </span>
+                  <strong>{optionGroupsCount} groups</strong>
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* Description Card */}
           <div className="card" style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>

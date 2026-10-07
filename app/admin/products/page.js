@@ -2,10 +2,10 @@
 
 import { useEffect, useState, Suspense } from "react";
 import { db } from "@/lib/firebase";
-import { collection, getDocs, updateDoc, setDoc, doc } from "firebase/firestore";
-import { AlertCircle, Eye, EyeOff, Search, Edit3, CheckCircle2, Download, Upload, Plus, Filter, X, ArrowRight, Table, Settings, Play, RefreshCw } from "lucide-react";
+import { collection, getDocs, updateDoc, setDoc, doc, deleteDoc } from "firebase/firestore";
+import { AlertCircle, Eye, EyeOff, Search, Edit3, CheckCircle2, Download, Upload, Plus, Filter, X, ArrowRight, Table, Settings, Play, RefreshCw, Trash2, Sparkles, Package, Layers, Sliders } from "lucide-react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 
 // Utility CSV parser with full support for quotes, commas, and escapes
 function parseCSV(text) {
@@ -68,14 +68,30 @@ function parseCSV(text) {
 
 function ProductsContent() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const initialAttention = searchParams.get("attention") === "true";
+  const initialType = searchParams.get("type") || "synced";
 
+  const [activeTab, setActiveTab] = useState(initialType);
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterAttention, setFilterAttention] = useState(initialAttention);
   const [filterCategory, setFilterCategory] = useState("all");
   const [categories, setCategories] = useState([]);
+
+  // Sync activeTab with URL param
+  useEffect(() => {
+    const type = searchParams.get("type");
+    if (type && (type === "synced" || type === "custom" || type === "all")) {
+      setActiveTab(type);
+    }
+  }, [searchParams]);
+
+  const handleTabChange = (tab) => {
+    setActiveTab(tab);
+    router.push(`/admin/products?type=${tab}`);
+  };
 
   // Advanced Import Modal States
   const [showImportModal, setShowImportModal] = useState(false);
@@ -154,8 +170,31 @@ function ProductsContent() {
     }
   };
 
-  // Filter products
+  const handleDeleteCustomProduct = async (productId, productName) => {
+    if (!confirm(`Are you sure you want to delete custom product "${productName}"? This action cannot be undone.`)) {
+      return;
+    }
+    try {
+      await deleteDoc(doc(db, "products", productId));
+      setProducts(prev => prev.filter(p => p.id !== productId));
+    } catch (err) {
+      console.error("Failed to delete product:", err);
+      alert("Failed to delete product: " + err.message);
+    }
+  };
+
+  // Section Counts
+  const syncedCount = products.filter(p => !p.isCustom).length;
+  const customCount = products.filter(p => p.isCustom === true).length;
+  const totalCount = products.length;
+
+  // Filter products by activeTab and search criteria
   const filteredProducts = products.filter(p => {
+    // 1. Tab Section filter
+    if (activeTab === "synced" && p.isCustom) return false;
+    if (activeTab === "custom" && !p.isCustom) return false;
+
+    // 2. Search query filter
     const nameLower = (p.name || p.sinalite?.name || "").toLowerCase();
     const skuLower = (p.sku || p.sinalite?.sku || "").toLowerCase();
     const shortDescLower = (p.shortDescription || "").toLowerCase();
@@ -435,17 +474,25 @@ function ProductsContent() {
 
   return (
     <div>
-      {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "2rem", flexWrap: "wrap", gap: "1rem" }}>
+      {/* Top Header */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.5rem", flexWrap: "wrap", gap: "1rem" }}>
         <div>
           <span style={{ fontSize: "0.75rem", fontWeight: 800, textTransform: "uppercase", color: "hsl(var(--accent-hsl))", letterSpacing: "0.05em", display: "block", marginBottom: "0.25rem" }}>
-            Store Catalog
+            Store Catalog Management
           </span>
           <h1 style={{ fontSize: "2rem", fontWeight: 900, marginBottom: "0.25rem", color: "hsl(var(--primary-hsl))", letterSpacing: "-0.02em" }}>
-            Product Catalog List
+            {activeTab === "custom" 
+              ? "Custom In-House Products" 
+              : activeTab === "synced" 
+                ? "Synced Catalog (API)" 
+                : "All Store Products"}
           </h1>
           <p style={{ color: "hsl(var(--muted-hsl))", fontSize: "0.95rem", fontWeight: 500 }}>
-            Manage synced items, configure short & long descriptions, and edit visibility toggles.
+            {activeTab === "custom"
+              ? "Manage custom created print items, apparel garments, option variant matrices, and in-house products."
+              : activeTab === "synced"
+                ? "Manage SinaLite API products, custom storefront titles, starting price markups, and descriptions."
+                : "Master catalog containing both SinaLite API synced items and custom in-house products."}
           </p>
         </div>
         <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
@@ -455,14 +502,119 @@ function ProductsContent() {
           <button onClick={handleExport} className="btn btn-outline" style={{ padding: "0.6rem 1.25rem", fontSize: "0.85rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
             <Download size={16} /> Export
           </button>
-          <button 
-            onClick={() => setShowImportModal(true)} 
-            className="btn btn-outline" 
-            style={{ padding: "0.6rem 1.25rem", fontSize: "0.85rem", display: "inline-flex", alignItems: "center", gap: "0.5rem" }}
-          >
-            <Upload size={16} /> Advanced Import
-          </button>
+          {activeTab !== "custom" && (
+            <button 
+              onClick={() => setShowImportModal(true)} 
+              className="btn btn-outline" 
+              style={{ padding: "0.6rem 1.25rem", fontSize: "0.85rem", display: "inline-flex", alignItems: "center", gap: "0.5rem" }}
+            >
+              <Upload size={16} /> Advanced Import
+            </button>
+          )}
         </div>
+      </div>
+
+      {/* Section Tabs Switcher */}
+      <div style={{
+        display: "flex",
+        gap: "0.5rem",
+        marginBottom: "1.75rem",
+        borderBottom: "1px solid hsl(var(--border-hsl))",
+        paddingBottom: "0.5rem",
+        overflowX: "auto"
+      }}>
+        <button
+          onClick={() => handleTabChange("synced")}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "0.5rem",
+            padding: "0.6rem 1.15rem",
+            borderRadius: "8px",
+            border: "none",
+            cursor: "pointer",
+            fontSize: "0.875rem",
+            fontWeight: activeTab === "synced" ? 800 : 600,
+            backgroundColor: activeTab === "synced" ? "hsl(var(--primary-hsl))" : "transparent",
+            color: activeTab === "synced" ? "#ffffff" : "hsl(var(--muted-hsl))",
+            transition: "all 0.15s ease"
+          }}
+        >
+          <Package size={16} />
+          Synced API Products
+          <span style={{
+            fontSize: "0.75rem",
+            fontWeight: 700,
+            padding: "0.15rem 0.5rem",
+            borderRadius: "12px",
+            backgroundColor: activeTab === "synced" ? "rgba(255,255,255,0.2)" : "hsl(var(--secondary-hsl))",
+            color: activeTab === "synced" ? "#ffffff" : "hsl(var(--foreground-hsl))"
+          }}>
+            {syncedCount}
+          </span>
+        </button>
+
+        <button
+          onClick={() => handleTabChange("custom")}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "0.5rem",
+            padding: "0.6rem 1.15rem",
+            borderRadius: "8px",
+            border: "none",
+            cursor: "pointer",
+            fontSize: "0.875rem",
+            fontWeight: activeTab === "custom" ? 800 : 600,
+            backgroundColor: activeTab === "custom" ? "hsl(var(--accent-hsl))" : "transparent",
+            color: activeTab === "custom" ? "#ffffff" : "hsl(var(--muted-hsl))",
+            transition: "all 0.15s ease"
+          }}
+        >
+          <Sparkles size={16} />
+          Custom In-House Products
+          <span style={{
+            fontSize: "0.75rem",
+            fontWeight: 700,
+            padding: "0.15rem 0.5rem",
+            borderRadius: "12px",
+            backgroundColor: activeTab === "custom" ? "rgba(255,255,255,0.2)" : "hsl(var(--secondary-hsl))",
+            color: activeTab === "custom" ? "#ffffff" : "hsl(var(--foreground-hsl))"
+          }}>
+            {customCount}
+          </span>
+        </button>
+
+        <button
+          onClick={() => handleTabChange("all")}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "0.5rem",
+            padding: "0.6rem 1.15rem",
+            borderRadius: "8px",
+            border: "none",
+            cursor: "pointer",
+            fontSize: "0.875rem",
+            fontWeight: activeTab === "all" ? 800 : 600,
+            backgroundColor: activeTab === "all" ? "hsl(var(--primary-hsl))" : "transparent",
+            color: activeTab === "all" ? "#ffffff" : "hsl(var(--muted-hsl))",
+            transition: "all 0.15s ease"
+          }}
+        >
+          <Layers size={16} />
+          All Products
+          <span style={{
+            fontSize: "0.75rem",
+            fontWeight: 700,
+            padding: "0.15rem 0.5rem",
+            borderRadius: "12px",
+            backgroundColor: activeTab === "all" ? "rgba(255,255,255,0.2)" : "hsl(var(--secondary-hsl))",
+            color: activeTab === "all" ? "#ffffff" : "hsl(var(--foreground-hsl))"
+          }}>
+            {totalCount}
+          </span>
+        </button>
       </div>
 
       {/* Filter Toolbar */}
@@ -471,7 +623,7 @@ function ProductsContent() {
         <div style={{ position: "relative", flex: 1, minWidth: "260px" }}>
           <input
             className="input"
-            placeholder="Search by name, SKU, short/long description, or ID..."
+            placeholder={activeTab === "custom" ? "Search custom products by name, SKU, or ID..." : "Search by name, SKU, short/long description, or ID..."}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             style={{ paddingLeft: "2.5rem" }}
@@ -524,7 +676,19 @@ function ProductsContent() {
         </div>
       ) : filteredProducts.length === 0 ? (
         <div className="card" style={{ textAlign: "center", padding: "4rem", color: "hsl(var(--muted-hsl))", border: "1px solid hsl(var(--border-hsl))" }}>
-          No products match your filters.
+          <p style={{ fontSize: "1.1rem", fontWeight: 700, marginBottom: "0.5rem", color: "hsl(var(--foreground-hsl))" }}>
+            No {activeTab === "custom" ? "custom" : activeTab === "synced" ? "synced" : ""} products found.
+          </p>
+          <p style={{ fontSize: "0.875rem", marginBottom: "1.5rem" }}>
+            {activeTab === "custom" 
+              ? "You haven't created any custom in-house products yet."
+              : "Try adjusting your search or category filters."}
+          </p>
+          {activeTab === "custom" && (
+            <Link href="/admin/products/new" className="btn btn-primary" style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem" }}>
+              <Plus size={16} /> Create Your First Custom Product
+            </Link>
+          )}
         </div>
       ) : (
         <div className="card" style={{ padding: 0, overflowX: "auto", border: "1px solid hsl(var(--border-hsl))" }}>
@@ -532,134 +696,380 @@ function ProductsContent() {
             <thead>
               <tr style={{ borderBottom: "1px solid hsl(var(--border-hsl))", backgroundColor: "hsl(var(--secondary-hsl) / 0.2)" }}>
                 <th style={{ padding: "1rem 1.5rem", fontWeight: 700, color: "hsl(var(--muted-hsl))" }}>PRODUCT INFO</th>
-                <th style={{ padding: "1rem 1.5rem", fontWeight: 700, color: "hsl(var(--muted-hsl))" }}>DESCRIPTIONS</th>
-                <th style={{ padding: "1rem 1.5rem", fontWeight: 700, color: "hsl(var(--muted-hsl))" }}>CATEGORY</th>
-                <th style={{ padding: "1rem 1.5rem", fontWeight: 700, color: "hsl(var(--muted-hsl))" }}>STARTING PRICE</th>
-                <th style={{ padding: "1rem 1.5rem", fontWeight: 700, color: "hsl(var(--muted-hsl))" }}>STATUS</th>
+                {activeTab === "custom" ? (
+                  <>
+                    <th style={{ padding: "1rem 1.5rem", fontWeight: 700, color: "hsl(var(--muted-hsl))" }}>CUSTOM OPTIONS</th>
+                    <th style={{ padding: "1rem 1.5rem", fontWeight: 700, color: "hsl(var(--muted-hsl))" }}>CATEGORY</th>
+                    <th style={{ padding: "1rem 1.5rem", fontWeight: 700, color: "hsl(var(--muted-hsl))" }}>BASE PRICE</th>
+                    <th style={{ padding: "1rem 1.5rem", fontWeight: 700, color: "hsl(var(--muted-hsl))" }}>APPAREL / CALIBRATION</th>
+                  </>
+                ) : activeTab === "synced" ? (
+                  <>
+                    <th style={{ padding: "1rem 1.5rem", fontWeight: 700, color: "hsl(var(--muted-hsl))" }}>DESCRIPTIONS</th>
+                    <th style={{ padding: "1rem 1.5rem", fontWeight: 700, color: "hsl(var(--muted-hsl))" }}>CATEGORY</th>
+                    <th style={{ padding: "1rem 1.5rem", fontWeight: 700, color: "hsl(var(--muted-hsl))" }}>STARTING PRICE</th>
+                    <th style={{ padding: "1rem 1.5rem", fontWeight: 700, color: "hsl(var(--muted-hsl))" }}>STATUS</th>
+                  </>
+                ) : (
+                  <>
+                    <th style={{ padding: "1rem 1.5rem", fontWeight: 700, color: "hsl(var(--muted-hsl))" }}>TYPE</th>
+                    <th style={{ padding: "1rem 1.5rem", fontWeight: 700, color: "hsl(var(--muted-hsl))" }}>CATEGORY</th>
+                    <th style={{ padding: "1rem 1.5rem", fontWeight: 700, color: "hsl(var(--muted-hsl))" }}>STARTING PRICE</th>
+                    <th style={{ padding: "1rem 1.5rem", fontWeight: 700, color: "hsl(var(--muted-hsl))" }}>STATUS</th>
+                  </>
+                )}
                 <th style={{ padding: "1rem 1.5rem", fontWeight: 700, color: "hsl(var(--muted-hsl))" }}>VISIBILITY</th>
                 <th style={{ padding: "1rem 1.5rem", fontWeight: 700, color: "hsl(var(--muted-hsl))" }}>ACTIONS</th>
               </tr>
             </thead>
             <tbody>
-              {filteredProducts.map(product => (
-                <tr key={product.id} className="table-row" style={{ borderBottom: "1px solid hsl(var(--border-hsl))", transition: "background 0.2s ease" }}>
-                  {/* Name and SKU */}
-                  <td style={{ padding: "1.25rem 1.5rem", minWidth: "220px" }}>
-                    <p style={{ fontWeight: 700, color: "hsl(var(--foreground-hsl))" }}>{product.name || product.sinalite?.name}</p>
-                    <p style={{ fontSize: "0.8rem", color: "hsl(var(--muted-hsl))", marginTop: "0.15rem" }}>
-                      SKU: {product.sku || product.sinalite?.sku || "N/A"} • ID: {product.id}
-                    </p>
-                  </td>
-                  {/* Descriptions Preview */}
-                  <td style={{ padding: "1.25rem 1.5rem", maxWidth: "260px" }}>
-                    <p style={{ fontSize: "0.8rem", fontWeight: 600, color: "hsl(var(--foreground-hsl))", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      <span style={{ fontSize: "0.7rem", color: "hsl(var(--accent-hsl))", textTransform: "uppercase" }}>Short: </span>
-                      {product.shortDescription || product.description || "N/A"}
-                    </p>
-                    <p style={{ fontSize: "0.75rem", color: "hsl(var(--muted-hsl))", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: "0.2rem" }}>
-                      <span style={{ fontSize: "0.7rem", color: "hsl(var(--primary-hsl))", textTransform: "uppercase" }}>Long: </span>
-                      {product.longDescription || product.description || "N/A"}
-                    </p>
-                  </td>
-                  {/* Category */}
-                  <td style={{ padding: "1.25rem 1.5rem" }}>
-                    <span style={{
-                      display: "inline-block",
-                      backgroundColor: "hsl(var(--secondary-hsl) / 0.5)",
-                      fontSize: "0.75rem",
-                      fontWeight: 700,
-                      padding: "0.25rem 0.6rem",
-                      borderRadius: "var(--radius-sm)",
-                      color: "hsl(var(--muted-hsl))"
-                    }}>
-                      {categories.find(c => c.id === product.categoryId)?.name || product.categoryOverride || product.sinalite?.category || product.categoryId}
-                    </span>
-                  </td>
-                  {/* Starting Price */}
-                  <td style={{ padding: "1.25rem 1.5rem", fontWeight: 700, color: "hsl(var(--primary-hsl))" }}>
-                    ${parseFloat(product.pricing?.startingPriceOverride || product.pricing?.startingPrice || 19.99).toFixed(2)} CAD
-                  </td>
-                  {/* Status Badges */}
-                  <td style={{ padding: "1.25rem 1.5rem" }}>
-                    {product.isCustom ? (
-                      <span style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: "0.25rem",
-                        color: "hsl(var(--primary-hsl))",
-                        fontSize: "0.7rem",
-                        fontWeight: 800,
-                        backgroundColor: "hsl(var(--primary-hsl) / 0.1)",
-                        padding: "0.25rem 0.5rem",
-                        borderRadius: "4px",
-                        textTransform: "uppercase"
-                      }}>
-                        Custom Product
-                      </span>
-                    ) : product.needsAttention ? (
-                      <span style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: "0.25rem",
-                        color: "hsl(var(--destructive-hsl))",
-                        fontSize: "0.7rem",
-                        fontWeight: 800,
-                        backgroundColor: "hsl(var(--destructive-hsl) / 0.1)",
-                        padding: "0.25rem 0.5rem",
-                        borderRadius: "4px",
-                        textTransform: "uppercase"
-                      }}>
-                        <AlertCircle size={12} /> Needs Info
-                      </span>
-                    ) : (
-                      <span style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: "0.25rem",
-                        color: "hsl(var(--success-hsl))",
-                        fontSize: "0.7rem",
-                        fontWeight: 800,
-                        backgroundColor: "hsl(var(--success-hsl) / 0.1)",
-                        padding: "0.25rem 0.5rem",
-                        borderRadius: "4px",
-                        textTransform: "uppercase"
-                      }}>
-                        <CheckCircle2 size={12} /> Synced
-                      </span>
-                    )}
-                  </td>
-                  {/* Visibility Toggle */}
-                  <td style={{ padding: "1.25rem 1.5rem" }}>
-                    <button
-                      onClick={() => handleToggleVisibility(product.id, product.isVisible)}
-                      className="btn"
-                      style={{
-                        padding: "0.4rem 0.75rem",
-                        fontSize: "0.8rem",
-                        backgroundColor: product.isVisible ? "hsl(var(--success-hsl) / 0.1)" : "hsl(var(--secondary-hsl))",
-                        color: product.isVisible ? "hsl(var(--success-hsl))" : "hsl(var(--muted-hsl))",
-                        border: "1px solid transparent"
-                      }}
-                    >
-                      {product.isVisible ? (
-                        <span style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}><Eye size={14} /> Visible</span>
-                      ) : (
-                        <span style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}><EyeOff size={14} /> Hidden</span>
+              {filteredProducts.map(product => {
+                const isCustom = product.isCustom === true;
+                const hasCustomTitle = !isCustom && product.name && product.sinalite?.name && product.name !== product.sinalite?.name;
+                const displayTitle = product.name || product.sinalite?.name || "Untitled Product";
+                const displayCategory = categories.find(c => c.id === product.categoryId)?.name || product.categoryOverride || product.sinalite?.category || product.categoryId || "Unassigned";
+
+                return (
+                  <tr key={product.id} className="table-row" style={{ borderBottom: "1px solid hsl(var(--border-hsl))", transition: "background 0.2s ease" }}>
+                    {/* Name and SKU */}
+                    <td style={{ padding: "1.25rem 1.5rem", minWidth: "240px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                        <p style={{ fontWeight: 750, color: "hsl(var(--foreground-hsl))", margin: 0, fontSize: "0.95rem" }}>
+                          {displayTitle}
+                        </p>
+                        {hasCustomTitle && (
+                          <span style={{
+                            fontSize: "0.65rem",
+                            fontWeight: 700,
+                            padding: "0.15rem 0.4rem",
+                            borderRadius: "4px",
+                            backgroundColor: "hsl(var(--accent-hsl) / 0.12)",
+                            color: "hsl(var(--accent-hsl))"
+                          }}>
+                            Custom Title
+                          </span>
+                        )}
+                      </div>
+                      
+                      {!isCustom && hasCustomTitle && product.sinalite?.name && (
+                        <p style={{ fontSize: "0.75rem", color: "hsl(var(--muted-hsl))", margin: "0.15rem 0 0" }}>
+                          Original API: {product.sinalite.name}
+                        </p>
                       )}
-                    </button>
-                  </td>
-                  {/* Action */}
-                  <td style={{ padding: "1.25rem 1.5rem" }}>
-                    <Link
-                      href={`/admin/products/${product.id}`}
-                      className="btn btn-outline"
-                      style={{ padding: "0.4rem 0.75rem", fontSize: "0.8rem" }}
-                    >
-                      <Edit3 size={14} /> Edit
-                    </Link>
-                  </td>
-                </tr>
-              ))}
+
+                      <p style={{ fontSize: "0.8rem", color: "hsl(var(--muted-hsl))", marginTop: "0.2rem", margin: 0 }}>
+                        SKU: {product.sku || product.sinalite?.sku || "N/A"} • ID: {product.id}
+                      </p>
+                    </td>
+
+                    {/* Columns for Custom Products View */}
+                    {activeTab === "custom" ? (
+                      <>
+                        {/* Options & Variants */}
+                        <td style={{ padding: "1.25rem 1.5rem", maxWidth: "220px" }}>
+                          {product.options && product.options.length > 0 ? (
+                            <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+                              <span style={{ fontSize: "0.825rem", fontWeight: 700, color: "hsl(var(--foreground-hsl))" }}>
+                                {product.options.length} Option Group{product.options.length > 1 ? "s" : ""}
+                              </span>
+                              <div style={{ display: "flex", flexWrap: "wrap", gap: "0.25rem" }}>
+                                {product.options.map((grp, gIdx) => (
+                                  <span key={gIdx} style={{
+                                    fontSize: "0.7rem",
+                                    padding: "0.1rem 0.4rem",
+                                    borderRadius: "3px",
+                                    backgroundColor: "hsl(var(--secondary-hsl))",
+                                    color: "hsl(var(--muted-hsl))"
+                                  }}>
+                                    {grp.name} ({grp.choices?.length || 0})
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          ) : (
+                            <span style={{ fontSize: "0.8rem", color: "hsl(var(--muted-hsl))" }}>
+                              Base pricing only
+                            </span>
+                          )}
+                        </td>
+
+                        {/* Category */}
+                        <td style={{ padding: "1.25rem 1.5rem" }}>
+                          <span style={{
+                            display: "inline-block",
+                            backgroundColor: "hsl(var(--secondary-hsl) / 0.6)",
+                            fontSize: "0.75rem",
+                            fontWeight: 700,
+                            padding: "0.25rem 0.6rem",
+                            borderRadius: "var(--radius-sm)",
+                            color: "hsl(var(--foreground-hsl))"
+                          }}>
+                            {displayCategory}
+                          </span>
+                        </td>
+
+                        {/* Base Price */}
+                        <td style={{ padding: "1.25rem 1.5rem", fontWeight: 800, color: "hsl(var(--primary-hsl))" }}>
+                          ${parseFloat(product.pricing?.startingPrice || 0).toFixed(2)} CAD
+                        </td>
+
+                        {/* Apparel / Calibration */}
+                        <td style={{ padding: "1.25rem 1.5rem" }}>
+                          {product.isApparel ? (
+                            product.garmentViews?.front?.calibration?.isCalibrated ? (
+                              <span style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "0.25rem",
+                                color: "hsl(var(--success-hsl))",
+                                fontSize: "0.7rem",
+                                fontWeight: 800,
+                                backgroundColor: "hsl(var(--success-hsl) / 0.1)",
+                                padding: "0.25rem 0.5rem",
+                                borderRadius: "4px"
+                              }}>
+                                <CheckCircle2 size={12} /> Apparel (Calibrated)
+                              </span>
+                            ) : (
+                              <span style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "0.25rem",
+                                color: "hsl(var(--destructive-hsl))",
+                                fontSize: "0.7rem",
+                                fontWeight: 800,
+                                backgroundColor: "hsl(var(--destructive-hsl) / 0.1)",
+                                padding: "0.25rem 0.5rem",
+                                borderRadius: "4px"
+                              }}>
+                                <AlertCircle size={12} /> Apparel (Uncalibrated)
+                              </span>
+                            )
+                          ) : (
+                            <span style={{ fontSize: "0.8rem", color: "hsl(var(--muted-hsl))" }}>
+                              Standard Print
+                            </span>
+                          )}
+                        </td>
+                      </>
+                    ) : activeTab === "synced" ? (
+                      <>
+                        {/* Descriptions Preview */}
+                        <td style={{ padding: "1.25rem 1.5rem", maxWidth: "260px" }}>
+                          <p style={{ fontSize: "0.8rem", fontWeight: 600, color: "hsl(var(--foreground-hsl))", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", margin: 0 }}>
+                            <span style={{ fontSize: "0.7rem", color: "hsl(var(--accent-hsl))", textTransform: "uppercase" }}>Short: </span>
+                            {product.shortDescription || product.description || "N/A"}
+                          </p>
+                          <p style={{ fontSize: "0.75rem", color: "hsl(var(--muted-hsl))", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: "0.2rem", margin: 0 }}>
+                            <span style={{ fontSize: "0.7rem", color: "hsl(var(--primary-hsl))", textTransform: "uppercase" }}>Long: </span>
+                            {product.longDescription || product.description || "N/A"}
+                          </p>
+                        </td>
+
+                        {/* Category */}
+                        <td style={{ padding: "1.25rem 1.5rem" }}>
+                          <span style={{
+                            display: "inline-block",
+                            backgroundColor: "hsl(var(--secondary-hsl) / 0.5)",
+                            fontSize: "0.75rem",
+                            fontWeight: 700,
+                            padding: "0.25rem 0.6rem",
+                            borderRadius: "var(--radius-sm)",
+                            color: "hsl(var(--muted-hsl))"
+                          }}>
+                            {displayCategory}
+                          </span>
+                        </td>
+
+                        {/* Starting Price */}
+                        <td style={{ padding: "1.25rem 1.5rem", fontWeight: 700, color: "hsl(var(--primary-hsl))" }}>
+                          ${parseFloat(product.pricing?.startingPriceOverride || product.pricing?.startingPrice || 19.99).toFixed(2)} CAD
+                        </td>
+
+                        {/* Status Badges */}
+                        <td style={{ padding: "1.25rem 1.5rem" }}>
+                          {product.needsAttention ? (
+                            <span style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "0.25rem",
+                              color: "hsl(var(--destructive-hsl))",
+                              fontSize: "0.7rem",
+                              fontWeight: 800,
+                              backgroundColor: "hsl(var(--destructive-hsl) / 0.1)",
+                              padding: "0.25rem 0.5rem",
+                              borderRadius: "4px",
+                              textTransform: "uppercase"
+                            }}>
+                              <AlertCircle size={12} /> Needs Info
+                            </span>
+                          ) : (
+                            <span style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "0.25rem",
+                              color: "hsl(var(--success-hsl))",
+                              fontSize: "0.7rem",
+                              fontWeight: 800,
+                              backgroundColor: "hsl(var(--success-hsl) / 0.1)",
+                              padding: "0.25rem 0.5rem",
+                              borderRadius: "4px",
+                              textTransform: "uppercase"
+                            }}>
+                              <CheckCircle2 size={12} /> Synced
+                            </span>
+                          )}
+                        </td>
+                      </>
+                    ) : (
+                      <>
+                        {/* Type Badge */}
+                        <td style={{ padding: "1.25rem 1.5rem" }}>
+                          {isCustom ? (
+                            <span style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "0.25rem",
+                              color: "hsl(var(--accent-hsl))",
+                              fontSize: "0.7rem",
+                              fontWeight: 800,
+                              backgroundColor: "hsl(var(--accent-hsl) / 0.1)",
+                              padding: "0.25rem 0.5rem",
+                              borderRadius: "4px",
+                              textTransform: "uppercase"
+                            }}>
+                              <Sparkles size={11} /> Custom In-House
+                            </span>
+                          ) : (
+                            <span style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "0.25rem",
+                              color: "hsl(var(--primary-hsl))",
+                              fontSize: "0.7rem",
+                              fontWeight: 800,
+                              backgroundColor: "hsl(var(--primary-hsl) / 0.1)",
+                              padding: "0.25rem 0.5rem",
+                              borderRadius: "4px",
+                              textTransform: "uppercase"
+                            }}>
+                              <Package size={11} /> SinaLite Synced
+                            </span>
+                          )}
+                        </td>
+
+                        {/* Category */}
+                        <td style={{ padding: "1.25rem 1.5rem" }}>
+                          <span style={{
+                            display: "inline-block",
+                            backgroundColor: "hsl(var(--secondary-hsl) / 0.5)",
+                            fontSize: "0.75rem",
+                            fontWeight: 700,
+                            padding: "0.25rem 0.6rem",
+                            borderRadius: "var(--radius-sm)",
+                            color: "hsl(var(--muted-hsl))"
+                          }}>
+                            {displayCategory}
+                          </span>
+                        </td>
+
+                        {/* Starting Price */}
+                        <td style={{ padding: "1.25rem 1.5rem", fontWeight: 700, color: "hsl(var(--primary-hsl))" }}>
+                          ${parseFloat(product.pricing?.startingPriceOverride || product.pricing?.startingPrice || 19.99).toFixed(2)} CAD
+                        </td>
+
+                        {/* Status */}
+                        <td style={{ padding: "1.25rem 1.5rem" }}>
+                          {product.needsAttention ? (
+                            <span style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "0.25rem",
+                              color: "hsl(var(--destructive-hsl))",
+                              fontSize: "0.7rem",
+                              fontWeight: 800,
+                              backgroundColor: "hsl(var(--destructive-hsl) / 0.1)",
+                              padding: "0.25rem 0.5rem",
+                              borderRadius: "4px",
+                              textTransform: "uppercase"
+                            }}>
+                              <AlertCircle size={12} /> Needs Info
+                            </span>
+                          ) : (
+                            <span style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "0.25rem",
+                              color: "hsl(var(--success-hsl))",
+                              fontSize: "0.7rem",
+                              fontWeight: 800,
+                              backgroundColor: "hsl(var(--success-hsl) / 0.1)",
+                              padding: "0.25rem 0.5rem",
+                              borderRadius: "4px",
+                              textTransform: "uppercase"
+                            }}>
+                              <CheckCircle2 size={12} /> Active
+                            </span>
+                          )}
+                        </td>
+                      </>
+                    )}
+
+                    {/* Visibility Toggle */}
+                    <td style={{ padding: "1.25rem 1.5rem" }}>
+                      <button
+                        onClick={() => handleToggleVisibility(product.id, product.isVisible)}
+                        className="btn"
+                        style={{
+                          padding: "0.4rem 0.75rem",
+                          fontSize: "0.8rem",
+                          backgroundColor: product.isVisible ? "hsl(var(--success-hsl) / 0.1)" : "hsl(var(--secondary-hsl))",
+                          color: product.isVisible ? "hsl(var(--success-hsl))" : "hsl(var(--muted-hsl))",
+                          border: "1px solid transparent"
+                        }}
+                      >
+                        {product.isVisible ? (
+                          <span style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}><Eye size={14} /> Visible</span>
+                        ) : (
+                          <span style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}><EyeOff size={14} /> Hidden</span>
+                        )}
+                      </button>
+                    </td>
+
+                    {/* Actions */}
+                    <td style={{ padding: "1.25rem 1.5rem" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                        <Link
+                          href={`/admin/products/${product.id}`}
+                          className="btn btn-outline"
+                          style={{ padding: "0.4rem 0.75rem", fontSize: "0.8rem", display: "inline-flex", alignItems: "center", gap: "0.3rem" }}
+                        >
+                          <Edit3 size={14} /> Edit
+                        </Link>
+                        {isCustom && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteCustomProduct(product.id, displayTitle)}
+                            className="btn"
+                            title="Delete custom product"
+                            style={{
+                              padding: "0.4rem 0.6rem",
+                              fontSize: "0.8rem",
+                              backgroundColor: "rgba(239, 68, 68, 0.1)",
+                              color: "hsl(var(--destructive-hsl))",
+                              border: "1px solid rgba(239, 68, 68, 0.2)",
+                              cursor: "pointer",
+                              borderRadius: "var(--radius-sm)"
+                            }}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -907,7 +1317,7 @@ function ProductsContent() {
                   <p style={{ fontWeight: 700 }}>Ready to run import:</p>
                   <ul style={{ paddingLeft: "1.25rem", marginTop: "0.25rem", color: "hsl(var(--foreground-hsl) / 0.8)" }}>
                     <li>Total rows to process: <strong>{fileRows.length}</strong></li>
-                    <li>Matching Strategy: Match <strong>{matchTarget.toUpperCase()}</strong> against column <strong>"{matchColumn}"</strong></li>
+                    <li>Matching Strategy: Match <strong>{matchTarget.toUpperCase()}</strong> against column <strong>&quot;{matchColumn}&quot;</strong></li>
                     <li>Mode: <strong>{importMode.replace(/_/g, ' ')}</strong></li>
                   </ul>
                 </div>

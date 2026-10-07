@@ -21,15 +21,30 @@ import {
   Sliders,
   CreditCard,
   Users,
-  Ticket
+  Ticket,
+  Sparkles
 } from "lucide-react";
 
 function AdminNavList({ pathname, navSections }) {
   const searchParams = useSearchParams();
   const currentTab = searchParams.get("tab");
+  const currentType = searchParams.get("type");
 
   const isItemActive = (href) => {
     if (href === "/admin") return pathname === "/admin";
+
+    // Handle products tabs (synced vs custom)
+    if (href.startsWith("/admin/products")) {
+      if (pathname === "/admin/products/new") {
+        return href === "/admin/products/new";
+      }
+      if (pathname !== "/admin/products") return false;
+      if (href === "/admin/products/new") return false;
+      
+      const targetType = href.includes("type=custom") ? "custom" : "synced";
+      const activeType = currentType || "synced";
+      return activeType === targetType;
+    }
 
     // Handle pricing tabs
     if (href.startsWith("/admin/pricing")) {
@@ -200,7 +215,8 @@ export default function AdminLayout({ children }) {
     {
       title: "CATALOG & PRODUCTS",
       items: [
-        { label: "Products Catalog", href: "/admin/products", icon: Package },
+        { label: "Synced Catalog (API)", href: "/admin/products?type=synced", icon: Package },
+        { label: "Custom In-House Products", href: "/admin/products?type=custom", icon: Sparkles },
         { label: "Categories Taxonomy", href: "/admin/categories?tab=taxonomy", icon: FolderEdit },
         { label: "Header Mega Menu", href: "/admin/categories?tab=megamenu", icon: Layers },
         { label: "Add Custom Product", href: "/admin/products/new", icon: Plus },

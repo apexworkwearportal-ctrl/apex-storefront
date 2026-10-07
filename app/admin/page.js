@@ -164,9 +164,13 @@ export default function AdminDashboardPage() {
           <div>
             <h2 style={{ fontSize: "2.25rem", fontWeight: 900, margin: 0, lineHeight: 1 }}>{stats.totalProducts}</h2>
             <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem", fontSize: "0.75rem", fontWeight: 650 }}>
-              <span style={{ color: "hsl(var(--primary-hsl))" }}>{stats.printProducts} Print</span>
+              <Link href="/admin/products?type=synced" style={{ color: "hsl(var(--primary-hsl))", textDecoration: "none" }}>
+                {stats.printProducts} Synced API
+              </Link>
               <span style={{ color: "hsl(var(--muted-hsl))" }}>•</span>
-              <span style={{ color: "hsl(var(--accent-hsl))" }}>{stats.customProducts} Custom</span>
+              <Link href="/admin/products?type=custom" style={{ color: "hsl(var(--accent-hsl))", textDecoration: "none" }}>
+                {stats.customProducts} Custom
+              </Link>
             </div>
           </div>
           <div style={{ borderTop: "1px solid hsl(var(--border-hsl))", paddingTop: "0.75rem", display: "flex", justifyContent: "space-between", fontSize: "0.75rem", color: "hsl(var(--muted-hsl))" }}>
