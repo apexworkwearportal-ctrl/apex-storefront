@@ -72,24 +72,18 @@ function ProductsContent() {
   const initialAttention = searchParams.get("attention") === "true";
   const initialType = searchParams.get("type") || "synced";
 
-  const [activeTab, setActiveTab] = useState(initialType);
   const [products, setProducts] = useState([]);
+  const [filterCategory, setFilterCategory] = useState("all");
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterAttention, setFilterAttention] = useState(initialAttention);
-  const [filterCategory, setFilterCategory] = useState("all");
   const [categories, setCategories] = useState([]);
 
-  // Sync activeTab with URL param
-  useEffect(() => {
-    const type = searchParams.get("type");
-    if (type && (type === "synced" || type === "custom" || type === "all")) {
-      setActiveTab(type);
-    }
-  }, [searchParams]);
+  // URL param tab handling
+  const urlType = searchParams.get("type");
+  const activeTab = (urlType === "synced" || urlType === "custom" || urlType === "all") ? urlType : "synced";
 
   const handleTabChange = (tab) => {
-    setActiveTab(tab);
     router.push(`/admin/products?type=${tab}`);
   };
 
@@ -157,7 +151,39 @@ function ProductsContent() {
   };
 
   useEffect(() => {
-    fetchProducts();
+    let active = true;
+    async function init() {
+      try {
+        const catSnapshot = await getDocs(collection(db, "categories"));
+        const catList = [];
+        catSnapshot.forEach(d => {
+          catList.push({ id: d.id, ...d.data() });
+        });
+
+        const snapshot = await getDocs(collection(db, "products"));
+        const list = [];
+        snapshot.forEach(doc => {
+          list.push({ id: doc.id, ...doc.data() });
+        });
+        
+        list.sort((a, b) => {
+          const nameA = a.name || a.sinalite?.name || "";
+          const nameB = b.name || b.sinalite?.name || "";
+          return nameA.localeCompare(nameB);
+        });
+        
+        if (active) {
+          setCategories(catList);
+          setProducts(list);
+        }
+      } catch (err) {
+        console.error("Error loading products:", err);
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
+    init();
+    return () => { active = false; };
   }, []);
 
   const handleToggleVisibility = async (productId, currentVisibility) => {
@@ -701,7 +727,7 @@ function ProductsContent() {
                     <th style={{ padding: "1rem 1.5rem", fontWeight: 700, color: "hsl(var(--muted-hsl))" }}>CUSTOM OPTIONS</th>
                     <th style={{ padding: "1rem 1.5rem", fontWeight: 700, color: "hsl(var(--muted-hsl))" }}>CATEGORY</th>
                     <th style={{ padding: "1rem 1.5rem", fontWeight: 700, color: "hsl(var(--muted-hsl))" }}>BASE PRICE</th>
-                    <th style={{ padding: "1rem 1.5rem", fontWeight: 700, color: "hsl(var(--muted-hsl))" }}>APPAREL / CALIBRATION</th>
+                    <th style={{ padding: "1rem 1.5rem", fontWeight: 700, color: "hsl(var(--muted-hsl))" }}>STATUS</th>
                   </>
                 ) : activeTab === "synced" ? (
                   <>
@@ -813,43 +839,21 @@ function ProductsContent() {
                           ${parseFloat(product.pricing?.startingPrice || 0).toFixed(2)} CAD
                         </td>
 
-                        {/* Apparel / Calibration */}
+                        {/* Status */}
                         <td style={{ padding: "1.25rem 1.5rem" }}>
-                          {product.isApparel ? (
-                            product.garmentViews?.front?.calibration?.isCalibrated ? (
-                              <span style={{
-                                display: "inline-flex",
-                                alignItems: "center",
-                                gap: "0.25rem",
-                                color: "hsl(var(--success-hsl))",
-                                fontSize: "0.7rem",
-                                fontWeight: 800,
-                                backgroundColor: "hsl(var(--success-hsl) / 0.1)",
-                                padding: "0.25rem 0.5rem",
-                                borderRadius: "4px"
-                              }}>
-                                <CheckCircle2 size={12} /> Apparel (Calibrated)
-                              </span>
-                            ) : (
-                              <span style={{
-                                display: "inline-flex",
-                                alignItems: "center",
-                                gap: "0.25rem",
-                                color: "hsl(var(--destructive-hsl))",
-                                fontSize: "0.7rem",
-                                fontWeight: 800,
-                                backgroundColor: "hsl(var(--destructive-hsl) / 0.1)",
-                                padding: "0.25rem 0.5rem",
-                                borderRadius: "4px"
-                              }}>
-                                <AlertCircle size={12} /> Apparel (Uncalibrated)
-                              </span>
-                            )
-                          ) : (
-                            <span style={{ fontSize: "0.8rem", color: "hsl(var(--muted-hsl))" }}>
-                              Standard Print
-                            </span>
-                          )}
+                          <span style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "0.25rem",
+                            color: "hsl(var(--success-hsl))",
+                            fontSize: "0.75rem",
+                            fontWeight: 800,
+                            backgroundColor: "hsl(var(--success-hsl) / 0.1)",
+                            padding: "0.25rem 0.5rem",
+                            borderRadius: "4px"
+                          }}>
+                            <CheckCircle2 size={12} /> Ready
+                          </span>
                         </td>
                       </>
                     ) : activeTab === "synced" ? (

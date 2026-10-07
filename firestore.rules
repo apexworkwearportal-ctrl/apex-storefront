@@ -33,6 +33,12 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // Apparel Products: Public read for storefront; Admin write
+    match /apparel_products/{productId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
     // Settings (fulfillment, pricing, apparelShipping, stripe): Public read; Admin write
     match /settings/{settingId} {
       allow read: if true;

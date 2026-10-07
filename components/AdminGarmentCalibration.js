@@ -20,12 +20,13 @@ const CHECKER =
  * 2-Step Interactive Admin Garment Photo Scale & Collar Calibration Dialog (Pure JS/JSX)
  */
 export default function AdminGarmentCalibration({
-  isOpen,
+  isOpen = true,
   onClose,
   imageUrl,
   sideName = "Front View",
   initialCalibration = null,
-  onSaveCalibration
+  onSaveCalibration,
+  onSave
 }) {
   const frameRef = useRef(null);
   const [frameW, setFrameW] = useState(0);
@@ -35,27 +36,12 @@ export default function AdminGarmentCalibration({
   const [sizeLabel, setSizeLabel] = useState(initialCalibration?.calSize || "M");
 
   // Handle coordinates in percentages (0 to 100)
-  const [lineA, setLineA] = useState(initialCalibration?.lineStart || { x: 20, y: 35 });
-  const [lineB, setLineB] = useState(initialCalibration?.lineEnd || { x: 80, y: 35 });
-  const [anchor, setAnchor] = useState(initialCalibration?.anchor || { x: 50, y: 15 });
+  const [lineA, setLineA] = useState(() => initialCalibration?.lineStart || { x: 20, y: 35 });
+  const [lineB, setLineB] = useState(() => initialCalibration?.lineEnd || { x: 80, y: 35 });
+  const [anchor, setAnchor] = useState(() => initialCalibration?.anchor || { x: 50, y: 15 });
 
   const [dragging, setDragging] = useState(null); // 'a' or 'b' or 'anchor'
   const [imgAspect, setImgAspect] = useState(1);
-
-  useEffect(() => {
-    if (initialCalibration?.lineStart && initialCalibration?.lineEnd) {
-      setLineA(initialCalibration.lineStart);
-      setLineB(initialCalibration.lineEnd);
-    } else {
-      setLineA({ x: 20, y: 35 });
-      setLineB({ x: 80, y: 35 });
-    }
-    if (initialCalibration?.anchor) {
-      setAnchor(initialCalibration.anchor);
-    } else {
-      setAnchor({ x: 50, y: 15 });
-    }
-  }, [initialCalibration, isOpen]);
 
   useEffect(() => {
     const el = frameRef.current;
@@ -70,7 +56,7 @@ export default function AdminGarmentCalibration({
     return () => observer.disconnect();
   }, []);
 
-  if (!isOpen || !imageUrl) return null;
+  if (isOpen === false || !imageUrl) return null;
 
   const currentKind = REFERENCE_KINDS.find(k => k.id === refKind) || REFERENCE_KINDS[0];
 
@@ -153,8 +139,14 @@ export default function AdminGarmentCalibration({
       calibratedAt: new Date().toISOString()
     };
 
-    onSaveCalibration(calibrationPayload);
-    onClose();
+    if (onSaveCalibration) {
+      onSaveCalibration(calibrationPayload);
+    } else if (onSave) {
+      onSave(calibrationPayload);
+    }
+    if (onClose) {
+      onClose();
+    }
   };
 
   // Convert percentage coordinates to frame pixels
@@ -356,7 +348,7 @@ export default function AdminGarmentCalibration({
                       pointerEvents: "none"
                     }}
                   >
-                    {refInNum}"
+                    {refInNum}&quot;
                   </div>
                 </>
               )}
@@ -400,7 +392,7 @@ export default function AdminGarmentCalibration({
                     <div style={{ borderLeft: "1px solid #334155", height: "100%" }} />
                   </div>
                   <p style={{ fontSize: "10px", color: "#475569", fontWeight: 600, backgroundColor: "rgba(255,255,255,0.9)", padding: "2px 6px", borderRadius: "4px", display: "inline-block", marginTop: "2px" }}>
-                    6" ruler — check it against the garment photo
+                    6&quot; ruler — check it against the garment photo
                   </p>
                 </div>
               )}
@@ -473,7 +465,7 @@ export default function AdminGarmentCalibration({
                     Scale: {scalePxPerInch.toFixed(1)} px per inch
                   </p>
                   <p style={{ color: "hsl(var(--foreground-hsl) / 0.8)", marginTop: "0.2rem" }}>
-                    Garment in photo measures <strong>{totalImageWidthIn.toFixed(1)}" wide × {totalImageHeightIn.toFixed(1)}" tall</strong>.
+                    Garment in photo measures <strong>{totalImageWidthIn.toFixed(1)}&quot; wide &times; {totalImageHeightIn.toFixed(1)}&quot; tall</strong>.
                   </p>
                 </div>
 
@@ -491,7 +483,7 @@ export default function AdminGarmentCalibration({
                 <div style={{ padding: "0.85rem", backgroundColor: "hsl(var(--secondary-hsl) / 0.3)", borderRadius: "var(--radius-md)", fontSize: "0.8rem", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
                   <p style={{ fontWeight: 800 }}>Collar Positioning Anchor</p>
                   <p style={{ color: "hsl(var(--muted-hsl))", lineHeight: "1.4" }}>
-                    Marking the high point of shoulder/collar allows preset print locations (e.g. Left Chest 8" down) to anchor consistently.
+                    Marking the high point of shoulder/collar allows preset print locations (e.g. Left Chest 8&quot; down) to anchor consistently.
                   </p>
                 </div>
 

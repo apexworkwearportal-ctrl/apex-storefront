@@ -53,31 +53,26 @@ function CatalogContent() {
   const [allExpanded, setAllExpanded] = useState(false);
   const [categorySearch, setCategorySearch] = useState("");
 
-  // Reset active page on filter/sort changes
+  // Sync states when browser Back/Forward navigation occurs
   useEffect(() => {
-    setCurrentPage(1);
-  }, [selectedCategory, selectedProduct, searchQuery, sortBy]);
-
-  // Sync states if URL search params change (supports Back/Forward browser keys)
-  useEffect(() => {
-    if (loading || products.length === 0) return;
-    
-    const catParam = searchParams.get("category") || "all";
-    const prodParam = searchParams.get("product") || null;
-    
-    setSelectedCategory(catParam);
-    
-    if (prodParam) {
-      const matchedProd = products.find(p => p.id === prodParam);
-      if (matchedProd) {
-        setSelectedProduct(matchedProd);
+    const handlePopState = () => {
+      const params = new URLSearchParams(window.location.search);
+      const catParam = params.get("category") || "all";
+      const prodParam = params.get("product") || null;
+      
+      setSelectedCategory(catParam);
+      if (prodParam && products.length > 0) {
+        const matched = products.find(p => p.id === prodParam);
+        setSelectedProduct(matched || null);
       } else {
         setSelectedProduct(null);
       }
-    } else {
-      setSelectedProduct(null);
-    }
-  }, [searchParams, products, loading]);
+      setCurrentPage(1);
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [products]);
 
   useEffect(() => {
     const fetchCatalog = async () => {
@@ -1053,6 +1048,7 @@ function CatalogContent() {
               <AnimatePresence mode="wait">
                 {paginatedProducts.length === 0 ? (
                   <motion.div 
+                    key="empty"
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -10 }}
@@ -1064,12 +1060,11 @@ function CatalogContent() {
                   </motion.div>
                 ) : (
                   <motion.div 
-                    initial="hidden"
-                    animate="visible"
-                    variants={{
-                      hidden: { opacity: 0 },
-                      visible: { opacity: 1, transition: { staggerChildren: 0.05 } }
-                    }}
+                    key={`products-grid-${selectedCategory}-${currentPage}-${sortBy}-${searchQuery}`}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.25 }}
                     style={{ display: "flex", flexDirection: "column", gap: "2.5rem" }}
                   >
                     <div
@@ -1079,7 +1074,7 @@ function CatalogContent() {
                         gap: "2rem"
                       }}
                     >
-                      {paginatedProducts.map(product => {
+                      {paginatedProducts.map((product, idx) => {
                         const image = product.images?.[0] || "https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?q=80&w=600&auto=format&fit=crop";
                         const startingPrice = parseFloat(product.pricing?.startingPriceOverride || product.pricing?.startingPrice || 0);
                         const displayPrice = startingPrice > 0 ? startingPrice : 19.99;
@@ -1087,10 +1082,9 @@ function CatalogContent() {
                         return (
                           <motion.div
                             key={product.id}
-                            variants={{
-                              hidden: { opacity: 0, y: 15 },
-                              visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.16, 1, 0.3, 1] } }
-                            }}
+                            initial={{ opacity: 0, y: 12 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ duration: 0.3, delay: Math.min(idx * 0.03, 0.3) }}
                             style={{ height: "100%" }}
                           >
                             <div className="card card-hover" style={{ display: "flex", flexDirection: "column", padding: 0, overflow: "hidden", height: "100%", border: "1px solid hsl(var(--border-hsl))", position: "relative" }}>
@@ -1108,7 +1102,7 @@ function CatalogContent() {
                                   borderRadius: "4px",
                                   zIndex: 2
                                 }}>
-                                  Custom Apparel
+                                  Custom Product
                                 </span>
                               ) : (
                                 <span style={{

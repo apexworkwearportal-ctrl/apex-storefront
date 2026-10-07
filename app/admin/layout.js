@@ -22,7 +22,8 @@ import {
   CreditCard,
   Users,
   Ticket,
-  Sparkles
+  Sparkles,
+  Shirt
 } from "lucide-react";
 
 function AdminNavList({ pathname, navSections }) {
@@ -32,6 +33,13 @@ function AdminNavList({ pathname, navSections }) {
 
   const isItemActive = (href) => {
     if (href === "/admin") return pathname === "/admin";
+
+    // Handle apparel section
+    if (href.startsWith("/admin/apparel")) {
+      if (pathname === "/admin/apparel/new") return href === "/admin/apparel/new";
+      if (pathname !== "/admin/apparel") return false;
+      return href === "/admin/apparel";
+    }
 
     // Handle products tabs (synced vs custom)
     if (href.startsWith("/admin/products")) {
@@ -220,6 +228,13 @@ export default function AdminLayout({ children }) {
         { label: "Categories Taxonomy", href: "/admin/categories?tab=taxonomy", icon: FolderEdit },
         { label: "Header Mega Menu", href: "/admin/categories?tab=megamenu", icon: Layers },
         { label: "Add Custom Product", href: "/admin/products/new", icon: Plus },
+      ]
+    },
+    {
+      title: "APPAREL & EMBROIDERY",
+      items: [
+        { label: "Apparel Catalog", href: "/admin/apparel", icon: Shirt },
+        { label: "Add Apparel Product", href: "/admin/apparel/new", icon: Plus },
       ]
     },
     {

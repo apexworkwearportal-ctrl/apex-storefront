@@ -6,8 +6,7 @@ import { db } from "@/lib/firebase";
 import { doc, getDoc, updateDoc, collection, getDocs } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Upload, Trash2, Eye, EyeOff, Save, Loader2, AlertCircle, Plus, Ruler, CheckCircle2 } from "lucide-react";
-import AdminGarmentCalibration from "@/components/AdminGarmentCalibration";
+import { ArrowLeft, Upload, Trash2, Eye, EyeOff, Save, Loader2, AlertCircle, Plus } from "lucide-react";
 
 export default function AdminProductEditPage({ params: paramsPromise }) {
   const params = use(paramsPromise);
@@ -44,19 +43,6 @@ export default function AdminProductEditPage({ params: paramsPromise }) {
   const [useCustomMarkup, setUseCustomMarkup] = useState(false);
   const [markupPercent, setMarkupPercent] = useState(35);
 
-  // Apparel & Calibration states
-  const [isApparel, setIsApparel] = useState(false);
-  const [minimumOrderQuantity, setMinimumOrderQuantity] = useState(12);
-  const [garmentViews, setGarmentViews] = useState({
-    front: { image: "", calibration: { isCalibrated: false } },
-    back: { image: "", calibration: { isCalibrated: false } },
-    left: { image: "", calibration: { isCalibrated: false } },
-    right: { image: "", calibration: { isCalibrated: false } },
-  });
-
-  // Modal for calibration
-  const [activeCalibrateSide, setActiveCalibrateSide] = useState(null);
-
   useEffect(() => {
     const fetchProductAndCategories = async () => {
       setLoading(true);
@@ -83,15 +69,6 @@ export default function AdminProductEditPage({ params: paramsPromise }) {
 
           setUseCustomMarkup(data.useCustomMarkup || false);
           setMarkupPercent(data.markupPercent !== undefined ? data.markupPercent : 35);
-
-          setIsApparel(data.isApparel || false);
-          setMinimumOrderQuantity(data.minimumOrderQuantity || 12);
-          if (data.garmentViews) {
-            setGarmentViews(prev => ({
-              ...prev,
-              ...data.garmentViews
-            }));
-          }
           
           if (data.isCustom) {
             setName(data.name || "");
@@ -221,57 +198,6 @@ export default function AdminProductEditPage({ params: paramsPromise }) {
     }));
   };
 
-  // Garment side profile upload helper
-  const handleUploadGarmentImage = async (side, file) => {
-    if (!file) return;
-    setUploading(true);
-    setError("");
-
-    try {
-      const idToken = await user.getIdToken();
-      const formData = new FormData();
-      formData.append("file", file);
-
-      const res = await fetch("/api/admin/upload", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${idToken}`,
-        },
-        body: formData,
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to upload garment image.");
-      }
-
-      setGarmentViews(prev => ({
-        ...prev,
-        [side]: {
-          ...prev[side],
-          image: data.url,
-          calibration: prev[side]?.calibration || { isCalibrated: false }
-        }
-      }));
-    } catch (err) {
-      console.error(err);
-      setError(err.message || "Garment image upload failed.");
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  const handleSaveGarmentCalibration = (calibrationPayload) => {
-    if (!activeCalibrateSide) return;
-    setGarmentViews(prev => ({
-      ...prev,
-      [activeCalibrateSide]: {
-        ...prev[activeCalibrateSide],
-        calibration: calibrationPayload
-      }
-    }));
-  };
-
   const handleSave = async (e) => {
     e.preventDefault();
     setSaving(true);
@@ -281,15 +207,7 @@ export default function AdminProductEditPage({ params: paramsPromise }) {
     try {
       const docRef = doc(db, "products", productId);
       
-      // Garment Calibration Gating
-      const isFrontCalibrated = garmentViews.front?.calibration?.isCalibrated;
-      const apparelGated = isApparel && !isFrontCalibrated;
-      const finalIsVisible = apparelGated ? false : isVisible;
-      const needsAttention = images.length === 0 || (!shortDescription && !longDescription) || apparelGated;
-
-      if (apparelGated && isVisible) {
-        setError("Warning: Uncalibrated Apparel products cannot be set to active on the storefront. Product has been saved but remains hidden until calibration is complete.");
-      }
+      const needsAttention = images.length === 0 || (!shortDescription && !longDescription);
 
       if (product.isCustom) {
         // Validate custom option groups
@@ -316,14 +234,11 @@ export default function AdminProductEditPage({ params: paramsPromise }) {
           categoryId,
           "pricing.startingPrice": parseFloat(priceOverride) || 0,
           displayOrder: parseInt(displayOrder) || 0,
-          isVisible: finalIsVisible,
+          isVisible: isVisible,
           images,
           options: optionGroups,
           useCustomMarkup,
           markupPercent: parseFloat(markupPercent) || 0,
-          isApparel,
-          minimumOrderQuantity: parseInt(minimumOrderQuantity) || 1,
-          garmentViews,
           needsAttention,
         };
 
@@ -338,13 +253,10 @@ export default function AdminProductEditPage({ params: paramsPromise }) {
           description: longDescription || shortDescription,
           categoryOverride: categoryId || null,
           displayOrder: parseInt(displayOrder) || 0,
-          isVisible: finalIsVisible,
+          isVisible: isVisible,
           images,
           useCustomMarkup,
           markupPercent: parseFloat(markupPercent) || 0,
-          isApparel,
-          minimumOrderQuantity: parseInt(minimumOrderQuantity) || 1,
-          garmentViews,
           needsAttention,
           "pricing.startingPriceOverride": priceVal,
         };
@@ -818,97 +730,6 @@ export default function AdminProductEditPage({ params: paramsPromise }) {
             </div>
           </div>
 
-          {/* Apparel & Garment Calibration Card */}
-          <div className="card">
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
-              <h2 style={{ fontSize: "1.2rem" }}>Apparel & Interactive Mockup</h2>
-              <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", cursor: "pointer", fontWeight: 600, fontSize: "0.9rem" }}>
-                <input
-                  type="checkbox"
-                  checked={isApparel}
-                  onChange={(e) => setIsApparel(e.target.checked)}
-                />
-                Is Apparel Product
-              </label>
-            </div>
-
-            {isApparel && (
-              <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
-                <div>
-                  <label className="label">Minimum Order Quantity (MOQ)</label>
-                  <input
-                    type="number"
-                    className="input"
-                    value={minimumOrderQuantity}
-                    onChange={(e) => setMinimumOrderQuantity(e.target.value)}
-                    placeholder="12"
-                    min="1"
-                  />
-                </div>
-
-                <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-                  <h3 style={{ fontSize: "0.95rem", fontWeight: 700 }}>Garment Views & Calibration</h3>
-
-                  {["front", "back", "left", "right"].map((side) => {
-                    const view = garmentViews[side] || {};
-                    const isCalibrated = view.calibration?.isCalibrated;
-
-                    return (
-                      <div key={side} style={{ padding: "0.75rem", borderRadius: "var(--radius-md)", border: "1px solid hsl(var(--border-hsl))", backgroundColor: "hsl(var(--secondary-hsl) / 0.1)" }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
-                          <span style={{ fontWeight: 700, textTransform: "capitalize", fontSize: "0.9rem" }}>{side} Profile</span>
-                          <span style={{
-                            fontSize: "0.7rem",
-                            padding: "0.2rem 0.5rem",
-                            borderRadius: "999px",
-                            fontWeight: 700,
-                            backgroundColor: isCalibrated ? "rgba(34, 197, 94, 0.15)" : "rgba(239, 68, 68, 0.15)",
-                            color: isCalibrated ? "rgb(22, 163, 74)" : "rgb(220, 38, 38)"
-                          }}>
-                            {isCalibrated ? "Calibrated ✓" : "Needs Calibration ⚠️"}
-                          </span>
-                        </div>
-
-                        {view.image ? (
-                          <div style={{ display: "flex", gap: "1rem", alignItems: "center" }}>
-                            <img src={view.image} alt={side} style={{ width: "60px", height: "60px", objectFit: "contain", borderRadius: "4px", backgroundColor: "#fff", border: "1px solid #ddd" }} />
-                            <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-                              <button
-                                type="button"
-                                onClick={() => setActiveCalibrateSide(side)}
-                                className="btn btn-outline"
-                                style={{ fontSize: "0.75rem", padding: "0.3rem 0.6rem", display: "flex", alignItems: "center", gap: "0.25rem" }}
-                              >
-                                <Ruler size={12} /> {isCalibrated ? "Recalibrate View" : "Calibrate View"}
-                              </button>
-                              <label style={{ fontSize: "0.7rem", color: "hsl(var(--primary-hsl))", cursor: "pointer", textDecoration: "underline" }}>
-                                Replace Image
-                                <input type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => handleUploadGarmentImage(side, e.target.files[0])} />
-                              </label>
-                            </div>
-                          </div>
-                        ) : (
-                          <div>
-                            <label className="btn btn-outline" style={{ fontSize: "0.8rem", cursor: "pointer", width: "100%", justifyContent: "center", display: "flex", alignItems: "center", gap: "0.25rem" }}>
-                              <Upload size={14} /> Upload {side} Profile Render
-                              <input type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => handleUploadGarmentImage(side, e.target.files[0])} />
-                            </label>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {(!garmentViews.front?.calibration?.isCalibrated) && (
-                  <div style={{ padding: "0.75rem", backgroundColor: "rgba(239, 68, 68, 0.08)", borderRadius: "var(--radius-sm)", color: "rgb(185, 28, 28)", fontSize: "0.8rem", fontWeight: 600 }}>
-                    ⚠️ Front view calibration required before this apparel item can go live on the storefront.
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
           {/* SinaLite Specs (Only if API Product) */}
           {!product?.isCustom && (
             <div className="card" style={{ backgroundColor: "hsl(var(--secondary-hsl) / 0.2)" }}>
@@ -935,18 +756,6 @@ export default function AdminProductEditPage({ params: paramsPromise }) {
           )}
         </div>
       </form>
-
-      {/* Garment Calibration Modal */}
-      {activeCalibrateSide && (
-        <AdminGarmentCalibration
-          isOpen={!!activeCalibrateSide}
-          onClose={() => setActiveCalibrateSide(null)}
-          imageUrl={garmentViews[activeCalibrateSide]?.image}
-          sideName={`${activeCalibrateSide.toUpperCase()} View`}
-          initialCalibration={garmentViews[activeCalibrateSide]?.calibration}
-          onSaveCalibration={handleSaveGarmentCalibration}
-        />
-      )}
     </div>
   );
 }

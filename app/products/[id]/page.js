@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, use } from "react";
+import { useEffect, useState, use, useMemo } from "react";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { db } from "@/lib/firebase";
@@ -10,7 +10,6 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, ShoppingBag, Loader2, Sparkles, FileCheck, Eye } from "lucide-react";
 import { motion } from "framer-motion";
-import ApparelMockupEditor from "@/components/ApparelMockupEditor";
 import PrintProofModal from "@/components/PrintProofModal";
 
 export default function ProductDetailPage({ params: paramsPromise }) {
@@ -39,24 +38,32 @@ export default function ProductDetailPage({ params: paramsPromise }) {
   const [proofApproved, setProofApproved] = useState(false);
   const [proofDetails, setProofDetails] = useState(null);
 
-  const handleApparelAddToCart = (mockupCartPayload) => {
-    addToCart({
-      productId: product.isCustom ? productId : parseInt(productId),
-      name: product.name || product.sinalite?.name,
-      images: product.images || [],
-      categoryId: product.categoryId || product.category || null,
-      ...mockupCartPayload,
-      isCustom: !!product.isCustom,
-      isApparel: true
+  // Compute selection validation states
+  const totalGroupsCount = Object.keys(optionGroups).length;
+  const selectedCount = Object.keys(selectedOptions).filter(k => selectedOptions[k] !== "").length;
+  const allSelected = totalGroupsCount > 0 && selectedCount === totalGroupsCount;
+
+  // Compute custom product price with useMemo
+  const customCalculatedPrice = useMemo(() => {
+    if (!product?.isCustom) return null;
+    let price = parseFloat(product.pricing?.startingPrice || 0);
+    Object.entries(selectedOptions).forEach(([groupName, selectedId]) => {
+      const groupChoices = optionGroups[groupName] || [];
+      const choice = groupChoices.find(c => c.id === selectedId);
+      if (choice) {
+        price += parseFloat(choice.priceUpcharge || 0);
+      }
     });
-    router.push("/cart");
-  };
+    return { price };
+  }, [product, selectedOptions, optionGroups]);
+
+  const effectivePriceData = product?.isCustom ? customCalculatedPrice : priceData;
 
   const handleAddToCart = () => {
-    if (!product || !priceData || !allSelected) return;
+    if (!product || !effectivePriceData || !allSelected) return;
 
     // Guard: never add a $0.00 item — this combination is unavailable
-    const resolvedPrice = parseFloat(priceData.price || priceData.price?.price || 0);
+    const resolvedPrice = parseFloat(effectivePriceData.price || effectivePriceData.price?.price || 0);
     if (resolvedPrice <= 0) return;
 
     // Print Proof Enforcement
@@ -83,7 +90,7 @@ export default function ProductDetailPage({ params: paramsPromise }) {
       selectedOptionMap: selectedOptions,
       selectedOptionIds: product.isCustom ? Object.values(selectedOptions) : Object.values(selectedOptions).map(id => parseInt(id)),
       optionSummary: optionSummaries.join(" | "),
-      price: parseFloat(priceData.price || priceData.price?.price || product.pricing?.startingPrice || 0),
+      price: parseFloat(effectivePriceData.price || effectivePriceData.price?.price || product.pricing?.startingPrice || 0),
       quantity: 1, // Add one configuration unit by default
       artworkFiles: artworkFiles,
       proofDetails: proofDetails,
@@ -93,6 +100,7 @@ export default function ProductDetailPage({ params: paramsPromise }) {
     addToCart(cartItem);
     router.push("/cart");
   };
+
   useEffect(() => {
     const fetchProductAndOptions = async () => {
       setLoadingProduct(true);
@@ -112,6 +120,13 @@ export default function ProductDetailPage({ params: paramsPromise }) {
         }
         
         const data = snap.data();
+
+        // If product is an apparel product, redirect to dedicated apparel studio
+        if (data.isApparel) {
+          router.replace(`/apparel/${productId}`);
+          return;
+        }
+
         setProduct(data);
         setLoadingProduct(false);
 
@@ -119,7 +134,7 @@ export default function ProductDetailPage({ params: paramsPromise }) {
           // Build custom options structure
           const customGroups = {};
           (data.options || []).forEach(group => {
-            customGroups[group.name] = (group.choices || []).map((choice, index) => ({
+            customGroups[group.name] = (group.choices || []).map((choice) => ({
               id: `${group.name}:${choice.name}`, // unique ID within option selections
               name: choice.name,
               priceUpcharge: parseFloat(choice.priceUpcharge || 0)
@@ -154,31 +169,11 @@ export default function ProductDetailPage({ params: paramsPromise }) {
     };
 
     fetchProductAndOptions();
-  }, [productId]);
+  }, [productId, router]);
 
-  // Compute selection validation states
-  const totalGroupsCount = Object.keys(optionGroups).length;
-  const selectedCount = Object.keys(selectedOptions).filter(k => selectedOptions[k] !== "").length;
-  const allSelected = totalGroupsCount > 0 && selectedCount === totalGroupsCount;
-
-  // Calculate price when options change (ONLY if all options are selected)
+  // Calculate live price when options change (ONLY for API products)
   useEffect(() => {
-    if (!product || loadingOptions || !allSelected) {
-      setPriceData(null);
-      return;
-    }
-
-    if (product.isCustom) {
-      // Local calculation for custom firebase products
-      let price = parseFloat(product.pricing?.startingPrice || 0);
-      Object.entries(selectedOptions).forEach(([groupName, selectedId]) => {
-        const groupChoices = optionGroups[groupName] || [];
-        const choice = groupChoices.find(c => c.id === selectedId);
-        if (choice) {
-          price += parseFloat(choice.priceUpcharge || 0);
-        }
-      });
-      setPriceData({ price: price });
+    if (!product || product.isCustom || loadingOptions || !allSelected) {
       return;
     }
 
@@ -215,7 +210,7 @@ export default function ProductDetailPage({ params: paramsPromise }) {
     }, 150); // Small debounce
 
     return () => clearTimeout(timer);
-  }, [selectedOptions, product, productId, loadingOptions, allSelected, optionGroups]);
+  }, [selectedOptions, product, productId, loadingOptions, allSelected]);
 
   const handleOptionChange = (groupName, value) => {
     setSelectedOptions(prev => ({
@@ -294,64 +289,9 @@ export default function ProductDetailPage({ params: paramsPromise }) {
           </Link>
         </div>
 
-        {product?.isApparel ? (
-          /* Custom Apparel Product Layout */
-          <div style={{ display: "flex", flexDirection: "column", gap: "2rem" }}>
-            {/* Apparel Product Info Banner Header */}
-            <div className="card" style={{ padding: "1.75rem 2rem", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "1rem" }}>
-              <div>
-                <span style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "0.3rem",
-                  fontSize: "0.7rem",
-                  fontWeight: 800,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.1em",
-                  color: "hsl(var(--accent-hsl))",
-                  backgroundColor: "hsl(var(--accent-hsl) / 0.1)",
-                  padding: "0.25rem 0.65rem",
-                  borderRadius: "4px",
-                  marginBottom: "0.5rem"
-                }}>
-                  <Sparkles size={12} /> Custom Apparel Designer
-                </span>
-                <h1 style={{ fontSize: "1.85rem", fontWeight: 900, color: "hsl(var(--primary-hsl))", lineHeight: 1.2 }}>{title}</h1>
-                <p style={{ color: "hsl(var(--muted-hsl))", fontSize: "0.825rem", marginTop: "0.2rem" }}>SKU: {skuCode || "APEX-CUSTOM-GARMENT"}</p>
-              </div>
-
-              <div style={{ textAlign: "right" }}>
-                <p style={{ fontSize: "0.75rem", fontWeight: 700, color: "hsl(var(--muted-hsl))", textTransform: "uppercase" }}>Base Price Per Item</p>
-                <p style={{ fontSize: "1.5rem", fontWeight: 900, color: "hsl(var(--accent-hsl))" }}>
-                  ${displayStartingPrice.toFixed(2)} <span style={{ fontSize: "0.85rem", color: "hsl(var(--muted-hsl))", fontWeight: 600 }}>CAD</span>
-                </p>
-                <p style={{ fontSize: "0.75rem", color: "hsl(var(--muted-hsl))", marginTop: "0.1rem" }}>
-                  Minimum Order Qty: <strong>{product.minimumOrderQuantity || 12} pcs</strong>
-                </p>
-              </div>
-            </div>
-
-            {/* Interactive Apparel Visual Designer & Mockup Editor */}
-            <ApparelMockupEditor
-              productName={title}
-              garmentViews={product.garmentViews || {}}
-              moq={product.minimumOrderQuantity || 12}
-              basePrice={displayStartingPrice}
-              onAddToCart={handleApparelAddToCart}
-            />
-
-            {/* Product Specifications & Care Details */}
-            <div className="card" style={{ padding: "2rem" }}>
-              <h2 style={{ fontSize: "1.25rem", fontWeight: 800, marginBottom: "1rem", color: "hsl(var(--primary-hsl))" }}>Garment Specifications & Care</h2>
-              <div style={{ whiteSpace: "pre-line", fontSize: "0.95rem", lineHeight: "1.6", color: "hsl(var(--foreground-hsl) / 0.85)" }}>
-                {product.longDescription || product.description || "High quality workwear garment crafted for durability, comfort, and professional logo printing."}
-              </div>
-            </div>
-          </div>
-        ) : (
-          /* Standard Print Product 2-Column Layout */
-          <div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr", gap: "3rem" }} className="product-grid">
-            {/* Left Column: Gallery + Description */}
+        {/* Standard Print Product 2-Column Layout */}
+        <div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr", gap: "3rem" }} className="product-grid">
+          {/* Left Column: Gallery + Description */}
             <div style={{ display: "flex", flexDirection: "column", gap: "2rem" }}>
               <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
                 <div style={{
@@ -551,7 +491,7 @@ export default function ProductDetailPage({ params: paramsPromise }) {
                       <span style={{ fontSize: "0.95rem", fontWeight: 600, color: "hsl(var(--muted-hsl))" }}>
                         Select all options above to view price
                       </span>
-                    ) : priceData && parseFloat(priceData.price || priceData.price?.price || 0) <= 0 ? (
+                    ) : effectivePriceData && parseFloat(effectivePriceData.price || effectivePriceData.price?.price || 0) <= 0 ? (
                       <div style={{
                         display: "flex",
                         alignItems: "flex-start",
@@ -574,7 +514,7 @@ export default function ProductDetailPage({ params: paramsPromise }) {
                       </div>
                     ) : (
                       <span style={{ fontSize: "2rem", fontWeight: 900, color: "hsl(var(--accent-hsl))" }}>
-                        ${priceData ? parseFloat(priceData.price || priceData.price?.price || 0).toFixed(2) : "0.00"}
+                        ${effectivePriceData ? parseFloat(effectivePriceData.price || effectivePriceData.price?.price || 0).toFixed(2) : "0.00"}
                         <span style={{ fontSize: "0.9rem", color: "hsl(var(--muted-hsl))", fontWeight: 600 }}> CAD</span>
                       </span>
                     )}
@@ -612,7 +552,7 @@ export default function ProductDetailPage({ params: paramsPromise }) {
                   </div>
 
                   {/* Box weight details (Only for API products) */}
-                  {!product.isCustom && priceData?.packageInfo && (
+                  {!product.isCustom && effectivePriceData?.packageInfo && (
                     <div style={{
                       padding: "0.6rem 0.85rem",
                       backgroundColor: "hsl(var(--secondary-hsl) / 0.4)",
@@ -626,9 +566,9 @@ export default function ProductDetailPage({ params: paramsPromise }) {
                     }}>
                       <span>📦</span>
                       <span>
-                        {priceData.packageInfo["number of boxes"]} {parseInt(priceData.packageInfo["number of boxes"]) === 1 ? "box" : "boxes"}
-                        {" • "}{priceData.packageInfo["box size"]}
-                        {" • "}{parseFloat(priceData.packageInfo["total weight"]).toFixed(2)} lbs
+                        {effectivePriceData.packageInfo["number of boxes"]} {parseInt(effectivePriceData.packageInfo["number of boxes"]) === 1 ? "box" : "boxes"}
+                        {" • "}{effectivePriceData.packageInfo["box size"]}
+                        {" • "}{parseFloat(effectivePriceData.packageInfo["total weight"]).toFixed(2)} lbs
                       </span>
                     </div>
                   )}
@@ -756,9 +696,9 @@ export default function ProductDetailPage({ params: paramsPromise }) {
 
               {/* Add to Cart CTA */}
               {(() => {
-                const currentPrice = priceData ? parseFloat(priceData.price || priceData.price?.price || 0) : null;
-                const priceIsZero = allSelected && priceData && currentPrice <= 0;
-                const isDisabled = calculatingPrice || !priceData || loadingOptions || !allSelected || uploadingFile || priceIsZero;
+                const currentPrice = effectivePriceData ? parseFloat(effectivePriceData.price || effectivePriceData.price?.price || 0) : null;
+                const priceIsZero = allSelected && effectivePriceData && currentPrice <= 0;
+                const isDisabled = calculatingPrice || !effectivePriceData || loadingOptions || !allSelected || uploadingFile || priceIsZero;
                 return (
                   <button
                     onClick={handleAddToCart}
@@ -797,7 +737,6 @@ export default function ProductDetailPage({ params: paramsPromise }) {
             </div>
           </motion.div>
         </div>
-        )}
       </main>
 
       <Footer />
