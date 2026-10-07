@@ -7,7 +7,7 @@ import { db } from "@/lib/firebase";
 import { collection, getDocs, query, orderBy } from "firebase/firestore";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Search, SlidersHorizontal, ArrowUpDown, ChevronRight, Loader2, ShoppingBag, Sparkles, ChevronDown, Plus, Minus } from "lucide-react";
+import { Search, SlidersHorizontal, ArrowUpDown, ChevronRight, Loader2, ShoppingBag, Sparkles, ChevronDown, Plus, Minus, X, Filter } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 // Helper to format category names nicely (Title Case, remove trailing hyphens)
@@ -34,6 +34,19 @@ function CatalogContent() {
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [sortBy, setSortBy] = useState("priority");
   const [expandedFaqIdx, setExpandedFaqIdx] = useState(null);
+  const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
+
+  // Lock body scroll when mobile category filter modal is open
+  useEffect(() => {
+    if (mobileFilterOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [mobileFilterOpen]);
 
   // Pagination & Sidebar states
   const [currentPage, setCurrentPage] = useState(1);
@@ -386,6 +399,216 @@ function CatalogContent() {
     return rangeWithDots;
   };
 
+  // Category Tree Navigation (reused for desktop sidebar & mobile drawer)
+  const renderCategoryNavigation = (isMobile = false) => (
+    <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+      {/* Category Search Input */}
+      <div style={{ position: "relative", marginBottom: "0.75rem" }}>
+        <input
+          className="input"
+          placeholder="Filter categories..."
+          value={categorySearch}
+          onChange={(e) => setCategorySearch(e.target.value)}
+          style={{ paddingLeft: "2rem", paddingRight: "0.75rem", fontSize: "0.85rem", height: "36px" }}
+        />
+        <Search size={14} style={{
+          position: "absolute",
+          left: "0.7rem", top: "50%",
+          transform: "translateY(-50%)",
+          color: "hsl(var(--foreground-hsl) / 0.4)"
+        }} />
+      </div>
+
+      {/* All Products button */}
+      {(!categorySearch || "all products".includes(categorySearch.toLowerCase())) && (
+        <button
+          onClick={() => { 
+            setSelectedCategory("all"); 
+            setSelectedProduct(null); 
+            if (isMobile) setMobileFilterOpen(false);
+          }}
+          className="category-btn"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            width: "100%",
+            padding: "0.65rem 0.85rem",
+            border: "none",
+            borderRadius: "var(--radius-sm)",
+            cursor: "pointer",
+            fontSize: "0.85rem",
+            fontWeight: selectedCategory === "all" && !selectedProduct ? 800 : 600,
+            backgroundColor: selectedCategory === "all" && !selectedProduct ? "hsl(var(--accent-hsl) / 0.08)" : "transparent",
+            color: selectedCategory === "all" && !selectedProduct ? "hsl(var(--accent-hsl))" : "hsl(var(--foreground-hsl) / 0.8)",
+            textAlign: "left",
+            transition: "all 0.2s ease"
+          }}
+        >
+          <span style={{ display: "flex", alignItems: "center" }}>
+            All Products
+            <span style={{ fontSize: "0.7rem", color: "hsl(var(--muted-hsl))", marginLeft: "0.3rem", fontWeight: 550 }}>
+              ({products.length})
+            </span>
+          </span>
+          <ChevronRight size={14} style={{ opacity: selectedCategory === "all" && !selectedProduct ? 1 : 0.3 }} />
+        </button>
+      )}
+
+      {/* 3-Level Parent Category list tree */}
+      {categories.filter(c => !c.parentId).filter(shouldShowParent).map(parentCat => {
+        const subs = categories.filter(c => c.parentId === parentCat.id).filter(shouldShowSub);
+        const parentExpanded = isParentExpanded(parentCat.id);
+        const isParentSelected = selectedCategory === parentCat.id;
+        const count = getProductCountForCategory(parentCat.id);
+
+        return (
+          <div key={parentCat.id} style={{ display: "flex", flexDirection: "column", gap: "0.15rem", marginTop: "0.25rem" }}>
+            <button
+              onClick={() => { 
+                setSelectedCategory(parentCat.id); 
+                setSelectedProduct(null); 
+                if (isMobile && subs.length === 0) setMobileFilterOpen(false);
+              }}
+              className="category-btn"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                width: "100%",
+                padding: "0.6rem 0.85rem",
+                border: "none",
+                borderRadius: "var(--radius-sm)",
+                cursor: "pointer",
+                fontSize: "0.85rem",
+                fontWeight: isParentSelected ? 800 : 600,
+                backgroundColor: isParentSelected ? "hsl(var(--accent-hsl) / 0.08)" : "transparent",
+                color: isParentSelected ? "hsl(var(--accent-hsl))" : "hsl(var(--primary-hsl))",
+                borderLeft: isParentSelected ? "3px solid hsl(var(--accent-hsl))" : "3px solid transparent",
+                textAlign: "left",
+                transition: "all 0.2s ease"
+              }}
+            >
+              <span style={{ display: "flex", alignItems: "center", gap: "0.35rem", fontSize: "0.825rem", fontWeight: 700 }}>
+                {formatCategoryName(parentCat.name)}
+              </span>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                <span style={{
+                  backgroundColor: isParentSelected ? "hsl(var(--accent-hsl))" : "hsl(var(--secondary-hsl))",
+                  color: isParentSelected ? "#ffffff" : "hsl(var(--muted-hsl))",
+                  fontSize: "0.675rem",
+                  fontWeight: 700,
+                  padding: "0.15rem 0.5rem",
+                  borderRadius: "10px"
+                }}>
+                  {count}
+                </span>
+                {subs.length > 0 && (
+                  <span style={{ fontSize: "10px", color: "hsl(var(--muted-hsl))" }}>{parentExpanded ? "▾" : "▸"}</span>
+                )}
+              </div>
+            </button>
+
+            {/* Level 2 Subcategories */}
+            {parentExpanded && subs.length > 0 && (
+              <div style={{ paddingLeft: "0.65rem", display: "flex", flexDirection: "column", gap: "0.15rem", borderLeft: "2px solid hsl(var(--border-hsl) / 0.6)", marginLeft: "0.75rem" }}>
+                {subs.map(subCat => {
+                  const leafs = categories.filter(c => c.parentId === subCat.id).filter(shouldShowLeaf);
+                  const subExpanded = isSubExpanded(subCat.id);
+                  const isSubSelected = selectedCategory === subCat.id;
+                  const subCount = getProductCountForCategory(subCat.id);
+
+                  return (
+                    <div key={subCat.id} style={{ display: "flex", flexDirection: "column", gap: "0.15rem" }}>
+                      <button
+                        onClick={() => { 
+                          setSelectedCategory(subCat.id); 
+                          setSelectedProduct(null); 
+                          if (isMobile && leafs.length === 0) setMobileFilterOpen(false);
+                        }}
+                        className="category-btn"
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          width: "100%",
+                          padding: "0.45rem 0.75rem",
+                          border: "none",
+                          borderRadius: "var(--radius-sm)",
+                          cursor: "pointer",
+                          fontSize: "0.8rem",
+                          fontWeight: isSubSelected ? 800 : 500,
+                          backgroundColor: isSubSelected ? "hsl(var(--accent-hsl) / 0.08)" : "transparent",
+                          color: isSubSelected ? "hsl(var(--accent-hsl))" : "hsl(var(--foreground-hsl) / 0.8)",
+                          textAlign: "left",
+                          transition: "all 0.2s ease"
+                        }}
+                      >
+                        <span style={{ display: "flex", alignItems: "center" }}>
+                          {formatCategoryName(subCat.name)}
+                        </span>
+                        <div style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
+                          <span style={{ fontSize: "0.675rem", color: "hsl(var(--muted-hsl))", fontWeight: 600 }}>
+                            ({subCount})
+                          </span>
+                          {leafs.length > 0 && (
+                            <span style={{ fontSize: "8px", color: "hsl(var(--muted-hsl))" }}>{subExpanded ? "▾" : "▸"}</span>
+                          )}
+                        </div>
+                      </button>
+
+                      {/* Level 3 Leaf Categories (Product Types) */}
+                      {subExpanded && leafs.length > 0 && (
+                        <div style={{ paddingLeft: "0.75rem", display: "flex", flexDirection: "column", gap: "0.15rem", borderLeft: "1px dotted hsl(var(--border-hsl))", marginLeft: "0.5rem" }}>
+                          {leafs.map(leafCat => {
+                            const isLeafSelected = selectedCategory === leafCat.id;
+                            const leafCount = getProductCountForCategory(leafCat.id);
+                            return (
+                              <button
+                                key={leafCat.id}
+                                onClick={() => { 
+                                  setSelectedCategory(leafCat.id); 
+                                  setSelectedProduct(null); 
+                                  if (isMobile) setMobileFilterOpen(false);
+                                }}
+                                className="category-btn"
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "space-between",
+                                  width: "100%",
+                                  padding: "0.35rem 0.6rem",
+                                  border: "none",
+                                  borderRadius: "var(--radius-sm)",
+                                  cursor: "pointer",
+                                  fontSize: "0.775rem",
+                                  fontWeight: isLeafSelected ? 800 : 500,
+                                  backgroundColor: isLeafSelected ? "hsl(var(--accent-hsl) / 0.08)" : "transparent",
+                                  color: isLeafSelected ? "hsl(var(--accent-hsl))" : "hsl(var(--muted-hsl))",
+                                  textAlign: "left",
+                                  transition: "all 0.2s ease"
+                                }}
+                              >
+                                <span>{formatCategoryName(leafCat.name)}</span>
+                                <span style={{ fontSize: "0.65rem", color: "hsl(var(--muted-hsl))" }}>
+                                  ({leafCount})
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+
   // Background image for hero banner (either category image from Firebase or a premium abstract overlay)
   const activeCatObj = activeLeaf || activeChild || activeParent;
   const bgImage = activeCatObj?.heroImage || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=1200&auto=format&fit=crop";
@@ -502,8 +725,8 @@ function CatalogContent() {
         ) : (
           <div style={{ display: "grid", gridTemplateColumns: "280px 1fr", gap: "2.5rem" }} className="catalog-grid">
             
-            {/* Left Column: Categories Sidebar */}
-            <aside style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+            {/* Left Column: Categories Desktop Sidebar */}
+            <aside className="desktop-sidebar" style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
               <div className="card" style={{ padding: "1.5rem", display: "flex", flexDirection: "column", gap: "1rem", border: "1px solid hsl(var(--border-hsl))" }}>
                 <h3 style={{ fontSize: "1.05rem", fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "space-between", textTransform: "uppercase", letterSpacing: "0.05em", borderBottom: "1px solid hsl(var(--border-hsl))", paddingBottom: "0.5rem", color: "hsl(var(--primary-hsl))" }}>
                   <span style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}><SlidersHorizontal size={16} /> Categories</span>
@@ -523,202 +746,257 @@ function CatalogContent() {
                   </button>
                 </h3>
 
-                <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-                  {/* Category Search Input */}
-                  <div style={{ position: "relative", marginBottom: "0.75rem" }}>
-                    <input
-                      className="input"
-                      placeholder="Filter categories..."
-                      value={categorySearch}
-                      onChange={(e) => setCategorySearch(e.target.value)}
-                      style={{ paddingLeft: "2rem", paddingRight: "0.75rem", fontSize: "0.8rem", height: "34px" }}
-                    />
-                    <Search size={14} style={{
-                      position: "absolute",
-                      left: "0.7rem", top: "50%",
-                      transform: "translateY(-50%)",
-                      color: "hsl(var(--foreground-hsl) / 0.4)"
-                    }} />
-                  </div>
-
-                  {/* All Products button */}
-                  {(!categorySearch || "all products".includes(categorySearch.toLowerCase())) && (
-                    <button
-                      onClick={() => { setSelectedCategory("all"); setSelectedProduct(null); }}
-                      className="category-btn"
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        width: "100%",
-                        padding: "0.6rem 0.85rem",
-                        border: "none",
-                        borderRadius: "var(--radius-sm)",
-                        cursor: "pointer",
-                        fontSize: "0.85rem",
-                        fontWeight: selectedCategory === "all" && !selectedProduct ? 800 : 600,
-                        backgroundColor: selectedCategory === "all" && !selectedProduct ? "hsl(var(--accent-hsl) / 0.08)" : "transparent",
-                        color: selectedCategory === "all" && !selectedProduct ? "hsl(var(--accent-hsl))" : "hsl(var(--foreground-hsl) / 0.8)",
-                        textAlign: "left",
-                        transition: "all 0.2s ease"
-                      }}
-                    >
-                      <span style={{ display: "flex", alignItems: "center" }}>
-                        All Products
-                        <span style={{ fontSize: "0.7rem", color: "hsl(var(--muted-hsl))", marginLeft: "0.3rem", fontWeight: 550 }}>
-                          ({products.length})
-                        </span>
-                      </span>
-                      <ChevronRight size={14} style={{ opacity: selectedCategory === "all" && !selectedProduct ? 1 : 0.3 }} />
-                    </button>
-                  )}
-
-                  {/* 3-Level Parent Category list tree */}
-                  {categories.filter(c => !c.parentId).filter(shouldShowParent).map(parentCat => {
-                    const subs = categories.filter(c => c.parentId === parentCat.id).filter(shouldShowSub);
-                    const parentExpanded = isParentExpanded(parentCat.id);
-                    const isParentSelected = selectedCategory === parentCat.id;
-                    const count = getProductCountForCategory(parentCat.id);
-
-                    return (
-                      <div key={parentCat.id} style={{ display: "flex", flexDirection: "column", gap: "0.15rem", marginTop: "0.25rem" }}>
-                        <button
-                          onClick={() => { setSelectedCategory(parentCat.id); setSelectedProduct(null); }}
-                          className="category-btn"
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "space-between",
-                            width: "100%",
-                            padding: "0.6rem 0.85rem",
-                            border: "none",
-                            borderRadius: "var(--radius-sm)",
-                            cursor: "pointer",
-                            fontSize: "0.85rem",
-                            fontWeight: isParentSelected ? 800 : 600,
-                            backgroundColor: isParentSelected ? "hsl(var(--accent-hsl) / 0.08)" : "transparent",
-                            color: isParentSelected ? "hsl(var(--accent-hsl))" : "hsl(var(--primary-hsl))",
-                            borderLeft: isParentSelected ? "3px solid hsl(var(--accent-hsl))" : "3px solid transparent",
-                            textAlign: "left",
-                            transition: "all 0.2s ease"
-                          }}
-                        >
-                          <span style={{ display: "flex", alignItems: "center", gap: "0.35rem", fontSize: "0.825rem", fontWeight: 700 }}>
-                            {formatCategoryName(parentCat.name)}
-                          </span>
-                          <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
-                            <span style={{
-                              backgroundColor: isParentSelected ? "hsl(var(--accent-hsl))" : "hsl(var(--secondary-hsl))",
-                              color: isParentSelected ? "#ffffff" : "hsl(var(--muted-hsl))",
-                              fontSize: "0.675rem",
-                              fontWeight: 700,
-                              padding: "0.15rem 0.5rem",
-                              borderRadius: "10px"
-                            }}>
-                              {count}
-                            </span>
-                            {subs.length > 0 && (
-                              <span style={{ fontSize: "10px", color: "hsl(var(--muted-hsl))" }}>{parentExpanded ? "▾" : "▸"}</span>
-                            )}
-                          </div>
-                        </button>
-
-                        {/* Level 2 Subcategories */}
-                        {parentExpanded && subs.length > 0 && (
-                          <div style={{ paddingLeft: "0.65rem", display: "flex", flexDirection: "column", gap: "0.15rem", borderLeft: "2px solid hsl(var(--border-hsl) / 0.6)", marginLeft: "0.75rem" }}>
-                            {subs.map(subCat => {
-                              const leafs = categories.filter(c => c.parentId === subCat.id).filter(shouldShowLeaf);
-                              const subExpanded = isSubExpanded(subCat.id);
-                              const isSubSelected = selectedCategory === subCat.id;
-                              const subCount = getProductCountForCategory(subCat.id);
-
-                              return (
-                                <div key={subCat.id} style={{ display: "flex", flexDirection: "column", gap: "0.15rem" }}>
-                                  <button
-                                    onClick={() => { setSelectedCategory(subCat.id); setSelectedProduct(null); }}
-                                    className="category-btn"
-                                    style={{
-                                      display: "flex",
-                                      alignItems: "center",
-                                      justifyContent: "space-between",
-                                      width: "100%",
-                                      padding: "0.45rem 0.75rem",
-                                      border: "none",
-                                      borderRadius: "var(--radius-sm)",
-                                      cursor: "pointer",
-                                      fontSize: "0.8rem",
-                                      fontWeight: isSubSelected ? 800 : 500,
-                                      backgroundColor: isSubSelected ? "hsl(var(--accent-hsl) / 0.08)" : "transparent",
-                                      color: isSubSelected ? "hsl(var(--accent-hsl))" : "hsl(var(--foreground-hsl) / 0.8)",
-                                      textAlign: "left",
-                                      transition: "all 0.2s ease"
-                                    }}
-                                  >
-                                    <span style={{ display: "flex", alignItems: "center" }}>
-                                      {formatCategoryName(subCat.name)}
-                                    </span>
-                                    <div style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
-                                      <span style={{ fontSize: "0.675rem", color: "hsl(var(--muted-hsl))", fontWeight: 600 }}>
-                                        ({subCount})
-                                      </span>
-                                      {leafs.length > 0 && (
-                                        <span style={{ fontSize: "8px", color: "hsl(var(--muted-hsl))" }}>{subExpanded ? "▾" : "▸"}</span>
-                                      )}
-                                    </div>
-                                  </button>
-
-                                  {/* Level 3 Leaf Categories (Product Types) */}
-                                  {subExpanded && leafs.length > 0 && (
-                                    <div style={{ paddingLeft: "0.75rem", display: "flex", flexDirection: "column", gap: "0.15rem", borderLeft: "1px dotted hsl(var(--border-hsl))", marginLeft: "0.5rem" }}>
-                                      {leafs.map(leafCat => {
-                                        const isLeafSelected = selectedCategory === leafCat.id;
-                                        const leafCount = getProductCountForCategory(leafCat.id);
-                                        return (
-                                          <button
-                                            key={leafCat.id}
-                                            onClick={() => { setSelectedCategory(leafCat.id); setSelectedProduct(null); }}
-                                            className="category-btn"
-                                            style={{
-                                              display: "flex",
-                                              alignItems: "center",
-                                              justifyContent: "space-between",
-                                              width: "100%",
-                                              padding: "0.35rem 0.6rem",
-                                              border: "none",
-                                              borderRadius: "var(--radius-sm)",
-                                              cursor: "pointer",
-                                              fontSize: "0.775rem",
-                                              fontWeight: isLeafSelected ? 800 : 500,
-                                              backgroundColor: isLeafSelected ? "hsl(var(--accent-hsl) / 0.08)" : "transparent",
-                                              color: isLeafSelected ? "hsl(var(--accent-hsl))" : "hsl(var(--muted-hsl))",
-                                              textAlign: "left",
-                                              transition: "all 0.2s ease"
-                                            }}
-                                          >
-                                            <span>{formatCategoryName(leafCat.name)}</span>
-                                            <span style={{ fontSize: "0.65rem", color: "hsl(var(--muted-hsl))" }}>
-                                              ({leafCount})
-                                            </span>
-                                          </button>
-                                        );
-                                      })}
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
+                {renderCategoryNavigation(false)}
               </div>
             </aside>
 
+            {/* Mobile Category Popup / Bottom Drawer */}
+            <AnimatePresence>
+              {mobileFilterOpen && (
+                <div style={{
+                  position: "fixed",
+                  inset: 0,
+                  zIndex: 9999,
+                  display: "flex",
+                  flexDirection: "column",
+                  justifyContent: "flex-end"
+                }}>
+                  {/* Backdrop */}
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    onClick={() => setMobileFilterOpen(false)}
+                    style={{
+                      position: "absolute",
+                      inset: 0,
+                      backgroundColor: "rgba(10, 15, 30, 0.65)",
+                      backdropFilter: "blur(4px)"
+                    }}
+                  />
+
+                  {/* Drawer Content */}
+                  <motion.div
+                    initial={{ y: "100%" }}
+                    animate={{ y: 0 }}
+                    exit={{ y: "100%" }}
+                    transition={{ type: "spring", damping: 28, stiffness: 300 }}
+                    style={{
+                      position: "relative",
+                      zIndex: 10,
+                      backgroundColor: "hsl(var(--card-hsl))",
+                      borderTopLeftRadius: "20px",
+                      borderTopRightRadius: "20px",
+                      borderTop: "1px solid hsl(var(--border-hsl))",
+                      boxShadow: "0 -8px 30px rgba(0,0,0,0.25)",
+                      maxHeight: "85vh",
+                      display: "flex",
+                      flexDirection: "column",
+                      overflow: "hidden"
+                    }}
+                  >
+                    {/* Drawer Handle */}
+                    <div style={{
+                      width: "40px",
+                      height: "4px",
+                      backgroundColor: "hsl(var(--muted-hsl) / 0.3)",
+                      borderRadius: "2px",
+                      margin: "0.75rem auto 0.25rem"
+                    }} />
+
+                    {/* Drawer Header */}
+                    <div style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      padding: "0.75rem 1.25rem 1rem",
+                      borderBottom: "1px solid hsl(var(--border-hsl))"
+                    }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                        <div style={{
+                          width: "30px",
+                          height: "30px",
+                          borderRadius: "8px",
+                          backgroundColor: "hsl(var(--accent-hsl) / 0.1)",
+                          color: "hsl(var(--accent-hsl))",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center"
+                        }}>
+                          <SlidersHorizontal size={16} />
+                        </div>
+                        <div>
+                          <h3 style={{ fontSize: "1.05rem", fontWeight: 800, color: "hsl(var(--primary-hsl))", margin: 0 }}>
+                            Select Category
+                          </h3>
+                          <p style={{ fontSize: "0.75rem", color: "hsl(var(--muted-hsl))", margin: 0 }}>
+                            Choose a product type to filter catalog
+                          </p>
+                        </div>
+                      </div>
+
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                        <button
+                          onClick={() => setAllExpanded(!allExpanded)}
+                          style={{
+                            background: "none",
+                            border: "none",
+                            fontSize: "0.75rem",
+                            fontWeight: 700,
+                            color: "hsl(var(--accent-hsl))",
+                            cursor: "pointer",
+                            padding: "0.25rem 0.5rem"
+                          }}
+                        >
+                          {allExpanded ? "Collapse" : "Expand All"}
+                        </button>
+                        <button
+                          onClick={() => setMobileFilterOpen(false)}
+                          aria-label="Close categories popup"
+                          style={{
+                            width: "32px",
+                            height: "32px",
+                            borderRadius: "50%",
+                            border: "1px solid hsl(var(--border-hsl))",
+                            backgroundColor: "hsl(var(--secondary-hsl))",
+                            color: "hsl(var(--foreground-hsl))",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            cursor: "pointer"
+                          }}
+                        >
+                          <X size={16} />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Drawer Scrollable Body */}
+                    <div style={{
+                      padding: "1rem 1.25rem 1.5rem",
+                      overflowY: "auto",
+                      WebkitOverflowScrolling: "touch",
+                      flex: 1
+                    }}>
+                      {renderCategoryNavigation(true)}
+                    </div>
+
+                    {/* Drawer Footer Action */}
+                    <div style={{
+                      padding: "0.85rem 1.25rem",
+                      borderTop: "1px solid hsl(var(--border-hsl))",
+                      backgroundColor: "hsl(var(--card-hsl))",
+                      display: "flex",
+                      gap: "0.75rem"
+                    }}>
+                      <button
+                        onClick={() => {
+                          setSelectedCategory("all");
+                          setSelectedProduct(null);
+                          setMobileFilterOpen(false);
+                        }}
+                        style={{
+                          flex: 1,
+                          padding: "0.75rem",
+                          borderRadius: "var(--radius-sm)",
+                          border: "1px solid hsl(var(--border-hsl))",
+                          backgroundColor: "hsl(var(--secondary-hsl))",
+                          color: "hsl(var(--foreground-hsl))",
+                          fontWeight: 700,
+                          fontSize: "0.875rem",
+                          cursor: "pointer"
+                        }}
+                      >
+                        Reset All
+                      </button>
+                      <button
+                        onClick={() => setMobileFilterOpen(false)}
+                        className="btn btn-primary"
+                        style={{
+                          flex: 2,
+                          padding: "0.75rem",
+                          fontWeight: 800,
+                          fontSize: "0.875rem",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          gap: "0.4rem"
+                        }}
+                      >
+                        Show {filteredProducts.length} Products
+                      </button>
+                    </div>
+                  </motion.div>
+                </div>
+              )}
+            </AnimatePresence>
+
             {/* Right Column: Toolbar and Products Grid */}
-            <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
               
+              {/* Mobile Filter Button Bar (Visible on <= 860px) */}
+              <div className="mobile-filter-bar">
+                <button
+                  type="button"
+                  onClick={() => setMobileFilterOpen(true)}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    width: "100%",
+                    padding: "0.85rem 1.15rem",
+                    backgroundColor: "hsl(var(--card-hsl))",
+                    border: "1.5px solid hsl(var(--accent-hsl) / 0.3)",
+                    borderRadius: "var(--radius-md)",
+                    boxShadow: "0 2px 10px rgba(0,0,0,0.04)",
+                    cursor: "pointer",
+                    textAlign: "left"
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                    <div style={{
+                      width: "36px",
+                      height: "36px",
+                      borderRadius: "8px",
+                      backgroundColor: "hsl(var(--accent-hsl) / 0.12)",
+                      color: "hsl(var(--accent-hsl))",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center"
+                    }}>
+                      <Filter size={18} />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: "0.7rem", textTransform: "uppercase", letterSpacing: "0.06em", color: "hsl(var(--muted-hsl))", fontWeight: 750 }}>
+                        Category Filter
+                      </div>
+                      <div style={{ fontSize: "0.95rem", fontWeight: 800, color: "hsl(var(--primary-hsl))", display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                        {selectedCategory === "all" && !selectedProduct
+                          ? "All Products"
+                          : (activeLeaf?.name || activeChild?.name || activeParent?.name || selectedProduct?.name || "Filtered")}
+                        <span style={{ fontSize: "0.75rem", color: "hsl(var(--accent-hsl))", fontWeight: 700, backgroundColor: "hsl(var(--accent-hsl) / 0.1)", padding: "0.1rem 0.45rem", borderRadius: "10px" }}>
+                          {filteredProducts.length}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <span style={{
+                    fontSize: "0.8rem",
+                    fontWeight: 800,
+                    padding: "0.4rem 0.85rem",
+                    borderRadius: "20px",
+                    backgroundColor: "hsl(var(--accent-hsl))",
+                    color: "#ffffff",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.3rem"
+                  }}>
+                    Browse <ChevronRight size={14} />
+                  </span>
+                </button>
+              </div>
+
               {/* Toolbar: Search and Sort */}
               <div className="card" style={{ padding: "1rem 1.25rem", display: "flex", flexWrap: "wrap", gap: "1rem", alignItems: "center", justifyContent: "space-between", border: "1px solid hsl(var(--border-hsl))" }}>
                 {/* Search input */}
@@ -782,7 +1060,7 @@ function CatalogContent() {
                     style={{ textAlign: "center", padding: "4rem", color: "hsl(var(--muted-hsl))", border: "1px solid hsl(var(--border-hsl))" }}
                   >
                     <ShoppingBag size={48} style={{ strokeWidth: 1, marginBottom: "1rem", opacity: 0.5, display: "inline-block" }} />
-                    <p>No products matched "{searchQuery}." Try a broader term, or browse categories in the sidebar.</p>
+                    <p>No products matched &quot;{searchQuery}.&quot; Try a broader term, or browse categories in the sidebar.</p>
                   </motion.div>
                 ) : (
                   <motion.div 
@@ -1100,10 +1378,22 @@ function CatalogContent() {
           background-color: hsl(var(--accent-hsl) / 0.04) !important;
           transform: translateY(-1px);
         }
-        @media (max-width: 768px) {
+        .mobile-filter-bar {
+          display: none;
+        }
+        .desktop-sidebar {
+          display: flex;
+        }
+        @media (max-width: 860px) {
           .catalog-grid {
             grid-template-columns: 1fr !important;
-            gap: 2rem !important;
+            gap: 1.25rem !important;
+          }
+          .desktop-sidebar {
+            display: none !important;
+          }
+          .mobile-filter-bar {
+            display: block !important;
           }
         }
       `}</style>
