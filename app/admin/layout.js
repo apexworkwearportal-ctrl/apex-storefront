@@ -115,19 +115,20 @@ function AdminNavList({ pathname, navSections }) {
                   display: "flex",
                   alignItems: "center",
                   gap: "0.75rem",
-                  padding: "0.6rem 0.75rem",
+                  padding: "0.55rem 0.75rem",
                   borderRadius: "8px",
                   fontSize: "0.85rem",
-                  fontWeight: active ? 700 : 550,
-                  backgroundColor: active ? "#1E293B" : "transparent",
+                  fontWeight: active ? 700 : 500,
+                  backgroundColor: active ? "rgba(59, 130, 246, 0.15)" : "transparent",
                   color: active ? "#60A5FA" : "#94A3B8",
                   borderLeft: active ? "3px solid #3B82F6" : "3px solid transparent",
                   textDecoration: "none",
-                  transition: "all 0.15s ease"
+                  transition: "all 0.18s cubic-bezier(0.16, 1, 0.3, 1)",
+                  userSelect: "none"
                 }}
               >
-                <Icon size={16} style={{ color: active ? "#3B82F6" : "#64748B" }} />
-                {item.label}
+                <Icon size={16} style={{ color: active ? "#60A5FA" : "#64748B", transition: "color 0.18s ease" }} />
+                <span>{item.label}</span>
               </Link>
             );
           })}
@@ -409,39 +410,36 @@ export default function AdminLayout({ children }) {
 
           {/* Quick Actions & Live Status */}
           <div style={{ display: "flex", alignItems: "center", gap: "1.25rem" }}>
-            {/* Live System Status */}
+            {/* Live System Status with Apple-style Pulse Dot */}
             <div style={{
               display: "flex",
               alignItems: "center",
               gap: "0.5rem",
-              padding: "0.35rem 0.75rem",
+              padding: "0.35rem 0.85rem",
               backgroundColor: "#ECFDF5",
               border: "1px solid #A7F3D0",
               borderRadius: "20px",
               color: "#059669",
               fontSize: "0.75rem",
-              fontWeight: 700
+              fontWeight: 700,
+              boxShadow: "0 1px 2px rgba(16, 185, 129, 0.08)"
             }}>
-              <CheckCircle2 size={14} /> System Operational
+              <span className="status-dot-pulse" style={{ width: "7px", height: "7px", borderRadius: "50%", backgroundColor: "#10B981", display: "inline-block" }} />
+              System Operational
             </div>
 
             <Link
               href="/admin/products/new"
+              className="btn btn-primary"
               style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "0.4rem",
-                padding: "0.45rem 0.85rem",
-                backgroundColor: "#2563EB",
-                color: "white",
-                borderRadius: "6px",
-                fontSize: "0.8rem",
+                padding: "0.45rem 0.95rem",
+                fontSize: "0.82rem",
+                borderRadius: "8px",
                 fontWeight: 700,
-                textDecoration: "none",
-                boxShadow: "0 2px 8px rgba(37, 99, 235, 0.25)"
+                gap: "0.35rem"
               }}
             >
-              <Plus size={14} /> Add Product
+              <Plus size={15} /> Add Product
             </Link>
           </div>
         </header>

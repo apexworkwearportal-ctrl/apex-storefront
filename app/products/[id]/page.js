@@ -589,18 +589,7 @@ export default function ProductDetailPage({ params: paramsPromise }) {
                               key={opt.id}
                               type="button"
                               onClick={() => handleOptionChange(groupName, opt.id.toString())}
-                              style={{
-                                padding: "0.55rem 0.95rem",
-                                fontSize: "0.85rem",
-                                borderRadius: "var(--radius-sm)",
-                                border: isSelected ? "2px solid hsl(var(--accent-hsl))" : "1px solid hsl(var(--border-hsl))",
-                                backgroundColor: isSelected ? "hsl(var(--accent-hsl) / 0.08)" : "white",
-                                color: isSelected ? "hsl(var(--accent-hsl))" : "hsl(var(--foreground-hsl))",
-                                fontWeight: isSelected ? 800 : 600,
-                                cursor: "pointer",
-                                transition: "all 0.15s ease",
-                                fontFamily: "var(--font-sans)"
-                              }}
+                              className={`apple-pill-btn ${isSelected ? "active" : ""}`}
                             >
                               {opt.name}
                             </button>

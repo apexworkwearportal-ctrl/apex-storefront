@@ -801,26 +801,26 @@ function AdminPricingContent() {
         </p>
       </div>
 
-      <div style={{ display: "flex", gap: "0.5rem", borderBottom: "2px solid hsl(var(--border-hsl))", marginBottom: "2rem", paddingBottom: "2px" }}>
-        {tabs.map(tab => {
-          const Icon = tab.icon;
-          const active = activeTab === tab.key;
-          return (
-            <button
-              key={tab.key}
-              onClick={() => router.push(`/admin/pricing?tab=${tab.key}`)}
-              style={{
-                padding: "0.65rem 1.25rem", fontSize: "0.85rem",
-                fontWeight: active ? 800 : 600, border: "none", background: "none", cursor: "pointer",
-                borderBottom: active ? "3px solid hsl(var(--accent-hsl))" : "3px solid transparent",
-                color: active ? "hsl(var(--accent-hsl))" : "hsl(var(--muted-hsl))",
-                display: "flex", alignItems: "center", gap: "0.4rem", transition: "all 0.2s ease"
-              }}
-            >
-              <Icon size={16} /> {tab.label}
-            </button>
-          );
-        })}
+      <div style={{ marginBottom: "2rem" }}>
+        <div className="apple-segmented-control">
+          {tabs.map(tab => {
+            const Icon = tab.icon;
+            const active = activeTab === tab.key;
+            return (
+              <button
+                key={tab.key}
+                onClick={() => router.push(`/admin/pricing?tab=${tab.key}`)}
+                className={`apple-segmented-item ${active ? "active" : ""}`}
+                style={{
+                  padding: "0.55rem 1.15rem",
+                  fontSize: "0.85rem"
+                }}
+              >
+                <Icon size={16} /> {tab.label}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {activeTab === "calculator" && <CalculatorTab sitewiseSettings={sitewiseSettings} />}
