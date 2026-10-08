@@ -6,7 +6,8 @@ import { db } from "@/lib/firebase";
 import { doc, getDoc, updateDoc, collection, getDocs } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Upload, Trash2, Eye, EyeOff, Save, Loader2, AlertCircle, Plus } from "lucide-react";
+import { ArrowLeft, Upload, Trash2, Eye, EyeOff, Save, Loader2, AlertCircle, Plus, Printer, Calculator, CheckCircle2 } from "lucide-react";
+import { calculateCustomPrintPrice } from "@/lib/custom-print-pricing";
 
 export default function AdminProductEditPage({ params: paramsPromise }) {
   const params = use(paramsPromise);
@@ -39,6 +40,37 @@ export default function AdminProductEditPage({ params: paramsPromise }) {
   const [optionGroups, setOptionGroups] = useState([]);
   const [optionGroupsCount, setOptionGroupsCount] = useState(0);
 
+  // Custom Print Variants
+  const [customPrintSizes, setCustomPrintSizes] = useState([
+    { id: "sz_1", name: '8.5" x 11"', imposition: 2, costPerM: 40.00 },
+    { id: "sz_2", name: '11" x 17"', imposition: 1, costPerM: 75.00 },
+    { id: "sz_3", name: '4" x 6"', imposition: 4, costPerM: 25.00 },
+    { id: "sz_4", name: '5.5" x 8.5"', imposition: 4, costPerM: 35.00 }
+  ]);
+
+  const [sidesPagesOptions, setSidesPagesOptions] = useState([
+    { id: "1_sided", name: "1 Sided", value: 1 },
+    { id: "2_sided", name: "2 Sided", value: 2 }
+  ]);
+
+  const [printModeOptions, setPrintModeOptions] = useState([
+    { id: "color", name: "Colour", type: "color" },
+    { id: "bw", name: "Black & White (Grayscale)", type: "bw" }
+  ]);
+
+  // Global Print Settings (for live simulator)
+  const [globalPrintSettings, setGlobalPrintSettings] = useState({
+    colorClickCharge: 0.08,
+    grayscaleClickCharge: 0.02,
+    markupMultiplier: 2.0
+  });
+
+  // Simulator Test States
+  const [simQty, setSimQty] = useState(500);
+  const [simSizeIdx, setSimSizeIdx] = useState(0);
+  const [simSidesIdx, setSimSidesIdx] = useState(1);
+  const [simModeIdx, setSimModeIdx] = useState(0);
+
   // Product Markup Overrides
   const [useCustomMarkup, setUseCustomMarkup] = useState(false);
   const [markupPercent, setMarkupPercent] = useState(35);
@@ -47,13 +79,25 @@ export default function AdminProductEditPage({ params: paramsPromise }) {
     const fetchProductAndCategories = async () => {
       setLoading(true);
       try {
-        // Fetch categories list
-        const catSnap = await getDocs(collection(db, "categories"));
+        // Fetch categories list and global print settings in parallel
+        const [catSnap, settingsRes] = await Promise.all([
+          getDocs(collection(db, "categories")),
+          fetch("/api/admin/custom-print-settings").then(r => r.json()).catch(() => null)
+        ]);
+
         const catList = [];
         catSnap.forEach(d => {
           catList.push({ id: d.id, ...d.data() });
         });
         setCategories(catList);
+
+        if (settingsRes && !settingsRes.error) {
+          setGlobalPrintSettings({
+            colorClickCharge: parseFloat(settingsRes.colorClickCharge) || 0.08,
+            grayscaleClickCharge: parseFloat(settingsRes.grayscaleClickCharge) || 0.02,
+            markupMultiplier: parseFloat(settingsRes.markupMultiplier) || 2.0
+          });
+        }
 
         // Fetch product
         const docRef = doc(db, "products", productId);
@@ -74,8 +118,18 @@ export default function AdminProductEditPage({ params: paramsPromise }) {
             setName(data.name || "");
             setSku(data.sku || "");
             setCategoryId(data.categoryId || "");
-            setPriceOverride(data.pricing?.startingPrice || "");
+            setPriceOverride(data.basePrice !== undefined ? data.basePrice : (data.pricing?.startingPrice || ""));
             setOptionGroups(data.options || []);
+
+            if (Array.isArray(data.customPrintSizes) && data.customPrintSizes.length > 0) {
+              setCustomPrintSizes(data.customPrintSizes);
+            }
+            if (Array.isArray(data.sidesPagesOptions) && data.sidesPagesOptions.length > 0) {
+              setSidesPagesOptions(data.sidesPagesOptions);
+            }
+            if (Array.isArray(data.printModeOptions) && data.printModeOptions.length > 0) {
+              setPrintModeOptions(data.printModeOptions);
+            }
           } else {
             // API product overrides & custom editable name
             setName(data.name || data.sinalite?.name || "");
@@ -143,7 +197,77 @@ export default function AdminProductEditPage({ params: paramsPromise }) {
     setImages(prev => prev.filter((_, idx) => idx !== index));
   };
 
-  // Custom Options group handlers
+  // Custom Print Sizes Handlers
+  const addSizeRow = () => {
+    setCustomPrintSizes(prev => [
+      ...prev,
+      { id: `sz_${Date.now()}`, name: "New Size", imposition: 2, costPerM: 30.00 }
+    ]);
+  };
+
+  const removeSizeRow = (idx) => {
+    setCustomPrintSizes(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  const handleSizeChange = (idx, field, value) => {
+    setCustomPrintSizes(prev => prev.map((s, i) => {
+      if (i === idx) {
+        return {
+          ...s,
+          [field]: field === "imposition" || field === "costPerM" ? (parseFloat(value) || 0) : value
+        };
+      }
+      return s;
+    }));
+  };
+
+  // Sides / Pages Handlers
+  const addSidesOption = () => {
+    const nextVal = sidesPagesOptions.length + 1;
+    setSidesPagesOptions(prev => [
+      ...prev,
+      { id: `sides_${Date.now()}`, name: `${nextVal} Pages`, value: nextVal }
+    ]);
+  };
+
+  const removeSidesOption = (idx) => {
+    setSidesPagesOptions(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  const handleSidesChange = (idx, field, value) => {
+    setSidesPagesOptions(prev => prev.map((item, i) => {
+      if (i === idx) {
+        return {
+          ...item,
+          [field]: field === "value" ? (parseFloat(value) || 1) : value
+        };
+      }
+      return item;
+    }));
+  };
+
+  // Print Mode Handlers
+  const addPrintModeOption = () => {
+    setPrintModeOptions(prev => [
+      ...prev,
+      { id: `mode_${Date.now()}`, name: "Custom Print Mode", type: "color" }
+    ]);
+  };
+
+  const removePrintModeOption = (idx) => {
+    setPrintModeOptions(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  const handlePrintModeChange = (idx, field, value) => {
+    setPrintModeOptions(prev => prev.map((m, i) => {
+      if (i === idx) {
+        return { ...m, [field]: value };
+      }
+      return m;
+    }));
+  };
+
+  // Optional Additional Option groups handlers
   const addOptionGroup = () => {
     setOptionGroups(prev => [...prev, { name: "", choices: [{ name: "", priceUpcharge: 0 }] }]);
   };
@@ -198,6 +322,20 @@ export default function AdminProductEditPage({ params: paramsPromise }) {
     }));
   };
 
+  // Run Real-Time Calculation for Live Simulator
+  const activeSimSize = customPrintSizes[simSizeIdx] || customPrintSizes[0] || { name: '8.5" x 11"', imposition: 2, costPerM: 40 };
+  const activeSimSides = sidesPagesOptions[simSidesIdx] || sidesPagesOptions[0] || { name: "1 Sided", value: 1 };
+  const activeSimMode = printModeOptions[simModeIdx] || printModeOptions[0] || { name: "Colour", type: "color" };
+
+  const liveSimulation = calculateCustomPrintPrice({
+    quantity: simQty,
+    size: activeSimSize,
+    sidesPages: activeSimSides,
+    printMode: activeSimMode,
+    basePrice: parseFloat(priceOverride) || 0,
+    settings: globalPrintSettings
+  });
+
   const handleSave = async (e) => {
     e.preventDefault();
     setSaving(true);
@@ -206,11 +344,10 @@ export default function AdminProductEditPage({ params: paramsPromise }) {
 
     try {
       const docRef = doc(db, "products", productId);
-      
       const needsAttention = images.length === 0 || (!shortDescription && !longDescription);
 
       if (product.isCustom) {
-        // Validate custom option groups
+        // Validate additional custom option groups if any
         for (const group of optionGroups) {
           if (!group.name.trim()) {
             throw new Error("Option groups must have a name.");
@@ -225,6 +362,8 @@ export default function AdminProductEditPage({ params: paramsPromise }) {
           }
         }
 
+        const basePriceVal = parseFloat(priceOverride) || 0;
+
         const updateData = {
           name,
           sku,
@@ -232,10 +371,15 @@ export default function AdminProductEditPage({ params: paramsPromise }) {
           longDescription,
           description: longDescription || shortDescription,
           categoryId,
-          "pricing.startingPrice": parseFloat(priceOverride) || 0,
+          basePrice: basePriceVal,
+          "pricing.startingPrice": basePriceVal,
           displayOrder: parseInt(displayOrder) || 0,
           isVisible: isVisible,
           images,
+          isCustomPrint: true,
+          customPrintSizes,
+          sidesPagesOptions,
+          printModeOptions,
           options: optionGroups,
           useCustomMarkup,
           markupPercent: parseFloat(markupPercent) || 0,
@@ -265,7 +409,6 @@ export default function AdminProductEditPage({ params: paramsPromise }) {
       }
 
       setSuccess(true);
-      // Refresh local model cache
       const freshSnap = await getDoc(docRef);
       if (freshSnap.exists()) {
         setProduct(freshSnap.data());
@@ -311,11 +454,11 @@ export default function AdminProductEditPage({ params: paramsPromise }) {
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: "1rem", alignItems: "center", marginBottom: "2rem" }}>
         <div>
-          <h1 style={{ fontSize: "2rem", marginBottom: "0.25rem" }}>Edit Product</h1>
+          <h1 style={{ fontSize: "2rem", marginBottom: "0.25rem", fontWeight: 900 }}>Edit Product</h1>
           <p style={{ color: "hsl(var(--muted-hsl))", fontSize: "0.95rem" }}>
             {product?.isCustom ? (
               <>
-                <span style={{ fontSize: "0.85rem", padding: "0.2rem 0.5rem", marginRight: "0.5rem", backgroundColor: "hsl(var(--primary-hsl) / 0.15)", color: "hsl(var(--primary-hsl))", borderRadius: "4px", fontWeight: 700 }}>Custom Product</span>
+                <span style={{ fontSize: "0.85rem", padding: "0.2rem 0.5rem", marginRight: "0.5rem", backgroundColor: "hsl(var(--primary-hsl) / 0.15)", color: "hsl(var(--primary-hsl))", borderRadius: "4px", fontWeight: 700 }}>Custom Print Product</span>
                 {name || "Untitled Product"} <span style={{ fontSize: "0.8rem", padding: "0.1rem 0.4rem", backgroundColor: "hsl(var(--secondary-hsl))", borderRadius: "4px" }}>SKU: {sku || "N/A"}</span>
               </>
             ) : (
@@ -330,7 +473,7 @@ export default function AdminProductEditPage({ params: paramsPromise }) {
           onClick={handleSave}
           className="btn btn-primary"
           disabled={saving}
-          style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.75rem 1.5rem" }}
+          style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.75rem 1.75rem", fontWeight: 800 }}
         >
           {saving ? <Loader2 size={18} className="animate-spin" style={{ animation: "spin 1s linear infinite" }} /> : <Save size={18} />}
           {saving ? "Saving Changes..." : "Save Product"}
@@ -338,8 +481,8 @@ export default function AdminProductEditPage({ params: paramsPromise }) {
       </div>
 
       {success && (
-        <div className="card" style={{ borderColor: "hsl(var(--success-hsl))", backgroundColor: "hsl(var(--success-hsl) / 0.05)", padding: "1rem 1.5rem", marginBottom: "1.5rem", color: "hsl(var(--success-hsl))", fontWeight: 600 }}>
-          Changes saved successfully!
+        <div className="card" style={{ borderColor: "hsl(var(--success-hsl))", backgroundColor: "hsl(var(--success-hsl) / 0.05)", padding: "1rem 1.5rem", marginBottom: "1.5rem", color: "hsl(var(--success-hsl))", fontWeight: 600, display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          <CheckCircle2 size={18} /> Changes saved successfully!
         </div>
       )}
 
@@ -349,14 +492,14 @@ export default function AdminProductEditPage({ params: paramsPromise }) {
         </div>
       )}
 
-      <form onSubmit={handleSave} style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr", gap: "2rem" }}>
+      <form onSubmit={handleSave} className="admin-form-grid">
         {/* Left column: Content details */}
         <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
           
-          {/* Product Name & Specifications Card (Available for ALL products) */}
+          {/* Product Name & Specifications Card */}
           <div className="card" style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <h2 style={{ fontSize: "1.2rem", margin: 0 }}>Product Information</h2>
+              <h2 style={{ fontSize: "1.2rem", margin: 0, fontWeight: 800 }}>Product Information</h2>
               <span style={{
                 fontSize: "0.75rem",
                 fontWeight: 700,
@@ -380,11 +523,6 @@ export default function AdminProductEditPage({ params: paramsPromise }) {
                 placeholder={product?.isCustom ? "e.g. Premium Custom Workwear Jacket" : (product?.sinalite?.name || "Product Name")}
                 required={product?.isCustom}
               />
-              {!product?.isCustom && product?.sinalite?.name && (
-                <p style={{ fontSize: "0.75rem", color: "hsl(var(--muted-hsl))", marginTop: "0.35rem" }}>
-                  Original SinaLite Name: <strong>{product.sinalite.name}</strong> (Customize this title to change how it is displayed across the customer storefront).
-                </p>
-              )}
             </div>
 
             {product?.isCustom ? (
@@ -413,10 +551,7 @@ export default function AdminProductEditPage({ params: paramsPromise }) {
           {/* Description Card */}
           <div className="card" style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
             <div>
-              <h2 style={{ fontSize: "1.2rem", marginBottom: "0.25rem" }}>Short Description (Summary)</h2>
-              <p style={{ fontSize: "0.85rem", color: "hsl(var(--muted-hsl))", marginBottom: "0.5rem" }}>
-                Brief summary for catalog cards, search results, and quick previews.
-              </p>
+              <h2 style={{ fontSize: "1.2rem", marginBottom: "0.25rem", fontWeight: 800 }}>Short Description (Summary)</h2>
               <textarea
                 className="input"
                 value={shortDescription}
@@ -428,111 +563,392 @@ export default function AdminProductEditPage({ params: paramsPromise }) {
             </div>
 
             <div>
-              <h2 style={{ fontSize: "1.2rem", marginBottom: "0.25rem" }}>Long Description (Detailed Specs)</h2>
-              <p style={{ fontSize: "0.85rem", color: "hsl(var(--muted-hsl))", marginBottom: "0.5rem" }}>
-                Full product specifications, paper stock details, template requirements, and artwork guidelines.
-              </p>
+              <h2 style={{ fontSize: "1.2rem", marginBottom: "0.25rem", fontWeight: 800 }}>Long Description (Detailed Specs)</h2>
               <textarea
                 className="input"
                 value={longDescription}
                 onChange={(e) => setLongDescription(e.target.value)}
                 placeholder="Provide detailed specs, sizing tables, material options, artwork instructions..."
-                rows={7}
+                rows={6}
                 style={{ resize: "vertical", fontFamily: "inherit" }}
               />
             </div>
           </div>
 
-          {/* Custom Options Manager if product is custom */}
+          {/* Custom Print Variants Configuration if product is custom */}
           {product?.isCustom && (
-            <div className="card">
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.5rem" }}>
-                <div>
-                  <h2 style={{ fontSize: "1.2rem" }}>Options & Variants Configurator</h2>
-                  <p style={{ fontSize: "0.8rem", color: "hsl(var(--muted-hsl))" }}>
-                    Configure dynamic upcharges for selectable custom sizing, colors, or printing placements.
-                  </p>
+            <>
+              {/* 1. Print Sizes Matrix */}
+              <div className="card" style={{ display: "flex", flexDirection: "column", gap: "1.25rem", border: "1.5px solid #CBD5E1" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                      <Printer size={18} style={{ color: "#2563EB" }} />
+                      <h2 style={{ fontSize: "1.15rem", fontWeight: 800, margin: 0 }}>
+                        1. Print Sizes Matrix
+                      </h2>
+                    </div>
+                    <p style={{ fontSize: "0.8rem", color: "hsl(var(--muted-hsl))", margin: "0.2rem 0 0" }}>
+                      Customer only selects Size Name. Imposition & Cost/M are used by the backend pricing engine.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={addSizeRow}
+                    className="btn btn-outline"
+                    style={{ padding: "0.4rem 0.85rem", fontSize: "0.8rem", display: "flex", alignItems: "center", gap: "0.25rem" }}
+                  >
+                    <Plus size={14} /> Add Size
+                  </button>
                 </div>
-                <button type="button" onClick={addOptionGroup} className="btn btn-outline" style={{ padding: "0.4rem 0.85rem", fontSize: "0.8rem", display: "flex", alignItems: "center", gap: "0.25rem" }}>
-                  <Plus size={14} /> Add Option Group
-                </button>
-              </div>
 
-              {optionGroups.length === 0 ? (
-                <div style={{ textAlign: "center", padding: "2rem", border: "1px dashed hsl(var(--border-hsl))", borderRadius: "var(--radius-md)", color: "hsl(var(--muted-hsl))" }}>
-                  No custom options specified. The product will sell at base price only.
-                </div>
-              ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
-                  {optionGroups.map((group, gIdx) => (
-                    <div key={gIdx} className="card" style={{ padding: "1.25rem", backgroundColor: "hsl(var(--secondary-hsl) / 0.15)", position: "relative" }}>
-                      <button
-                        type="button"
-                        onClick={() => removeOptionGroup(gIdx)}
-                        className="btn"
-                        style={{
-                          position: "absolute",
-                          top: "1rem",
-                          right: "1rem",
-                          padding: "0.3rem",
-                          backgroundColor: "rgba(220, 38, 38, 0.1)",
-                          color: "hsl(var(--destructive-hsl))",
-                          border: "none",
-                          cursor: "pointer",
-                          borderRadius: "var(--radius-sm)"
-                        }}
-                      >
-                        <Trash2 size={14} />
-                      </button>
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "2fr 1.2fr 1.4fr auto", gap: "0.75rem", padding: "0 0.5rem", fontSize: "0.75rem", fontWeight: 800, color: "#64748B" }}>
+                    <span>SIZE LABEL (CUSTOMER SEES)</span>
+                    <span>IMPOSITION (CUTS/SHEET)</span>
+                    <span>PAPER COST / M ($ CAD)</span>
+                    <span></span>
+                  </div>
 
-                      <div style={{ maxWidth: "80%", marginBottom: "1rem" }}>
-                        <label className="label">Option Group Name</label>
-                        <input className="input" value={group.name} onChange={(e) => handleGroupNameChange(gIdx, e.target.value)} required />
+                  {customPrintSizes.map((sz, idx) => (
+                    <div
+                      key={sz.id || idx}
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "2fr 1.2fr 1.4fr auto",
+                        gap: "0.75rem",
+                        alignItems: "center",
+                        backgroundColor: "#F8FAFC",
+                        padding: "0.75rem",
+                        borderRadius: "8px",
+                        border: "1px solid #E2E8F0"
+                      }}
+                    >
+                      <input
+                        type="text"
+                        className="input"
+                        value={sz.name}
+                        onChange={(e) => handleSizeChange(idx, "name", e.target.value)}
+                        placeholder='e.g. 8.5" x 11"'
+                        style={{ fontWeight: 700, padding: "0.45rem 0.65rem", fontSize: "0.85rem" }}
+                        required
+                      />
+
+                      <input
+                        type="number"
+                        min="1"
+                        className="input"
+                        value={sz.imposition}
+                        onChange={(e) => handleSizeChange(idx, "imposition", e.target.value)}
+                        placeholder="2"
+                        style={{ padding: "0.45rem 0.65rem", fontSize: "0.85rem" }}
+                        required
+                      />
+
+                      <div style={{ position: "relative" }}>
+                        <span style={{ position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)", color: "#64748B", fontWeight: 700, fontSize: "0.85rem" }}>$</span>
+                        <input
+                          type="number"
+                          step="0.01"
+                          className="input"
+                          value={sz.costPerM}
+                          onChange={(e) => handleSizeChange(idx, "costPerM", e.target.value)}
+                          placeholder="40.00"
+                          style={{ paddingLeft: "1.65rem", paddingRight: "0.5rem", paddingTop: "0.45rem", paddingBottom: "0.45rem", fontSize: "0.85rem" }}
+                          required
+                        />
                       </div>
 
-                      <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-                        <label className="label">Choices & Price Upcharges</label>
-                        {group.choices.map((choice, cIdx) => (
-                          <div key={cIdx} style={{ display: "flex", gap: "0.75rem", alignItems: "center" }}>
-                            <input
-                              className="input"
-                              value={choice.name}
-                              onChange={(e) => handleChoiceChange(gIdx, cIdx, "name", e.target.value)}
-                              placeholder="Choice name (e.g. XL, Navy Blue)"
-                              style={{ flex: 2 }}
-                              required
-                            />
-                            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flex: 1 }}>
-                              <span style={{ fontSize: "0.85rem", fontWeight: 700 }}>+$</span>
-                              <input
-                                type="number"
-                                step="0.01"
-                                className="input"
-                                value={choice.priceUpcharge}
-                                onChange={(e) => handleChoiceChange(gIdx, cIdx, "priceUpcharge", e.target.value)}
-                              />
-                            </div>
-                            {group.choices.length > 1 && (
-                              <button type="button" onClick={() => removeChoice(gIdx, cIdx)} className="btn btn-outline" style={{ padding: "0.5rem", color: "hsl(var(--destructive-hsl))" }}>
-                                <Trash2 size={14} />
-                              </button>
-                            )}
-                          </div>
-                        ))}
-                        <button type="button" onClick={() => addChoice(gIdx)} className="btn btn-outline" style={{ padding: "0.4rem 0.85rem", fontSize: "0.8rem", width: "fit-content", marginTop: "0.5rem", display: "flex", alignItems: "center", gap: "0.25rem" }}>
-                          <Plus size={12} /> Add Choice Row
+                      {customPrintSizes.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => removeSizeRow(idx)}
+                          style={{ background: "none", border: "none", color: "#EF4444", cursor: "pointer", padding: "0.25rem" }}
+                          title="Remove size"
+                        >
+                          <Trash2 size={16} />
                         </button>
-                      </div>
+                      )}
                     </div>
                   ))}
                 </div>
-              )}
-            </div>
+              </div>
+
+              {/* 2. Sides / Pages & Print Mode */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.25rem" }}>
+                
+                {/* Sides / Pages Card */}
+                <div className="card" style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div>
+                      <h3 style={{ fontSize: "1rem", fontWeight: 800, margin: 0 }}>
+                        2. Sides / Pages
+                      </h3>
+                      <span style={{ fontSize: "0.75rem", color: "#64748B" }}>Multiplied in Paper Cost</span>
+                    </div>
+                    <button type="button" onClick={addSidesOption} className="btn btn-outline" style={{ padding: "0.3rem 0.6rem", fontSize: "0.75rem" }}>
+                      <Plus size={12} /> Add
+                    </button>
+                  </div>
+
+                  <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                    {sidesPagesOptions.map((side, idx) => (
+                      <div key={side.id || idx} style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+                        <input
+                          type="text"
+                          className="input"
+                          value={side.name}
+                          onChange={(e) => handleSidesChange(idx, "name", e.target.value)}
+                          placeholder="e.g. 1 Sided, 2 Sided, 8 Pages"
+                          style={{ flex: 1.8, fontSize: "0.85rem", padding: "0.45rem 0.65rem" }}
+                          required
+                        />
+                        <div style={{ display: "flex", alignItems: "center", gap: "0.35rem", flexShrink: 0 }}>
+                          <span style={{ fontSize: "0.75rem", color: "#64748B", fontWeight: 700 }}>Val:</span>
+                          <input
+                            type="number"
+                            className="input"
+                            value={side.value}
+                            onChange={(e) => handleSidesChange(idx, "value", e.target.value)}
+                            style={{ fontSize: "0.85rem", width: "64px", padding: "0.45rem 0.5rem", textAlign: "center" }}
+                            required
+                          />
+                        </div>
+                        {sidesPagesOptions.length > 1 && (
+                          <button type="button" onClick={() => removeSidesOption(idx)} style={{ background: "none", border: "none", color: "#EF4444", cursor: "pointer" }}>
+                            <Trash2 size={14} />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Print Mode Card */}
+                <div className="card" style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div>
+                      <h3 style={{ fontSize: "1rem", fontWeight: 800, margin: 0 }}>
+                        3. Print Mode
+                      </h3>
+                      <span style={{ fontSize: "0.75rem", color: "#64748B" }}>Determines Click Charge</span>
+                    </div>
+                    <button type="button" onClick={addPrintModeOption} className="btn btn-outline" style={{ padding: "0.3rem 0.6rem", fontSize: "0.75rem" }}>
+                      <Plus size={12} /> Add
+                    </button>
+                  </div>
+
+                  <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                    {printModeOptions.map((mode, idx) => (
+                      <div key={mode.id || idx} style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+                        <input
+                          type="text"
+                          className="input"
+                          value={mode.name}
+                          onChange={(e) => handlePrintModeChange(idx, "name", e.target.value)}
+                          placeholder="e.g. Colour, B&W"
+                          style={{ flex: 1.8, fontSize: "0.85rem", padding: "0.45rem 0.65rem" }}
+                          required
+                        />
+                        <select
+                          className="input"
+                          value={mode.type}
+                          onChange={(e) => handlePrintModeChange(idx, "type", e.target.value)}
+                          style={{ flex: 1.2, fontSize: "0.8rem", padding: "0.45rem 0.5rem" }}
+                        >
+                          <option value="color">Colour Rate</option>
+                          <option value="bw">B&W Rate</option>
+                        </select>
+                        {printModeOptions.length > 1 && (
+                          <button type="button" onClick={() => removePrintModeOption(idx)} style={{ background: "none", border: "none", color: "#EF4444", cursor: "pointer" }}>
+                            <Trash2 size={14} />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Interactive Live Calculation Sandbox / Validator Box */}
+              <div style={{
+                backgroundColor: "#F0FDF4",
+                border: "2px solid #86EFAC",
+                borderRadius: "12px",
+                padding: "1.5rem",
+                display: "flex",
+                flexDirection: "column",
+                gap: "1.25rem"
+              }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "0.5rem" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", color: "#166534" }}>
+                    <Calculator size={20} />
+                    <h3 style={{ fontSize: "1.1rem", fontWeight: 900, margin: 0 }}>
+                      Live Backend Pricing Validator
+                    </h3>
+                  </div>
+                  <span style={{ fontSize: "0.75rem", backgroundColor: "#DCFCE7", color: "#166534", padding: "0.25rem 0.6rem", borderRadius: "20px", fontWeight: 700 }}>
+                    Cost = (Sides × Cost/M ÷ 1000) + (Clicks × Click Charge)
+                  </span>
+                </div>
+
+                {/* Simulator Controls */}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: "0.75rem" }}>
+                  <div>
+                    <label style={{ fontSize: "0.7rem", fontWeight: 700, color: "#166534" }}>Test Quantity</label>
+                    <input type="number" className="input" value={simQty} onChange={e => setSimQty(e.target.value)} style={{ fontSize: "0.85rem", height: "36px" }} />
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: "0.7rem", fontWeight: 700, color: "#166534" }}>Test Size</label>
+                    <select className="input" value={simSizeIdx} onChange={e => setSimSizeIdx(parseInt(e.target.value))} style={{ fontSize: "0.85rem", height: "36px" }}>
+                      {customPrintSizes.map((s, i) => (
+                        <option key={i} value={i}>{s.name} (Imp: {s.imposition}, ${s.costPerM}/M)</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: "0.7rem", fontWeight: 700, color: "#166534" }}>Test Sides/Pages</label>
+                    <select className="input" value={simSidesIdx} onChange={e => setSimSidesIdx(parseInt(e.target.value))} style={{ fontSize: "0.85rem", height: "36px" }}>
+                      {sidesPagesOptions.map((s, i) => (
+                        <option key={i} value={i}>{s.name} (Val: {s.value})</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: "0.7rem", fontWeight: 700, color: "#166534" }}>Test Mode</label>
+                    <select className="input" value={simModeIdx} onChange={e => setSimModeIdx(parseInt(e.target.value))} style={{ fontSize: "0.85rem", height: "36px" }}>
+                      {printModeOptions.map((m, i) => (
+                        <option key={i} value={i}>{m.name} ({m.type === "color" ? `$${globalPrintSettings.colorClickCharge}` : `$${globalPrintSettings.grayscaleClickCharge}`})</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Real-Time Live Math Breakdown Cards */}
+                <div style={{
+                  backgroundColor: "#FFFFFF",
+                  borderRadius: "10px",
+                  border: "1px solid #BBF7D0",
+                  padding: "1.25rem",
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))",
+                  gap: "1rem"
+                }}>
+                  <div>
+                    <span style={{ fontSize: "0.7rem", color: "#64748B", fontWeight: 700, display: "block" }}>1. Press Clicks</span>
+                    <span style={{ fontSize: "1.1rem", fontWeight: 900, color: "#0F172A" }}>{liveSimulation.clicks} Clicks</span>
+                    <span style={{ fontSize: "0.68rem", color: "#64748B", display: "block" }}>{simQty} qty ÷ {liveSimulation.imposition} imposition</span>
+                  </div>
+
+                  <div>
+                    <span style={{ fontSize: "0.7rem", color: "#64748B", fontWeight: 700, display: "block" }}>2. Click Cost</span>
+                    <span style={{ fontSize: "1.1rem", fontWeight: 900, color: "#0F172A" }}>${liveSimulation.clickCost.toFixed(2)}</span>
+                    <span style={{ fontSize: "0.68rem", color: "#64748B", display: "block" }}>{liveSimulation.clicks} × ${liveSimulation.clickCharge.toFixed(3)}</span>
+                  </div>
+
+                  <div>
+                    <span style={{ fontSize: "0.7rem", color: "#64748B", fontWeight: 700, display: "block" }}>3. Paper Cost</span>
+                    <span style={{ fontSize: "1.1rem", fontWeight: 900, color: "#0F172A" }}>${liveSimulation.paperCost.toFixed(2)}</span>
+                    <span style={{ fontSize: "0.68rem", color: "#64748B", display: "block" }}>({liveSimulation.sidesCount} sides × ${liveSimulation.paperCostPerM}/M ÷ 1000) × {liveSimulation.clicks}</span>
+                  </div>
+
+                  <div>
+                    <span style={{ fontSize: "0.7rem", color: "#64748B", fontWeight: 700, display: "block" }}>4. Total Job Cost</span>
+                    <span style={{ fontSize: "1.1rem", fontWeight: 900, color: "#EA580C" }}>${liveSimulation.totalCost.toFixed(2)}</span>
+                    <span style={{ fontSize: "0.68rem", color: "#64748B", display: "block" }}>Paper + Click Cost</span>
+                  </div>
+
+                  <div style={{ backgroundColor: "#F8FAFC", padding: "0.75rem", borderRadius: "8px", border: "1.5px solid #2563EB" }}>
+                    <span style={{ fontSize: "0.7rem", color: "#2563EB", fontWeight: 800, display: "block" }}>5. Customer Selling Price</span>
+                    <span style={{ fontSize: "1.3rem", fontWeight: 900, color: "#2563EB" }}>${liveSimulation.finalPrice.toFixed(2)} CAD</span>
+                    <span style={{ fontSize: "0.72rem", color: "#166534", fontWeight: 700, display: "block" }}>
+                      ${liveSimulation.unitPrice.toFixed(2)}/unit • {liveSimulation.markupMultiplier}x Multiplier + ${parseFloat(priceOverride || 0).toFixed(2)} Base
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Optional Additional Custom Options */}
+              <div className="card">
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.25rem" }}>
+                  <div>
+                    <h2 style={{ fontSize: "1.1rem", fontWeight: 800, margin: 0 }}>Additional Custom Options (Optional)</h2>
+                    <p style={{ fontSize: "0.8rem", color: "hsl(var(--muted-hsl))", margin: "0.2rem 0 0" }}>
+                      Configure extra selectors (e.g. Folding, Lamination, Round Corners).
+                    </p>
+                  </div>
+                  <button type="button" onClick={addOptionGroup} className="btn btn-outline" style={{ padding: "0.4rem 0.85rem", fontSize: "0.8rem", display: "flex", alignItems: "center", gap: "0.25rem" }}>
+                    <Plus size={14} /> Add Option Group
+                  </button>
+                </div>
+
+                {optionGroups.length === 0 ? (
+                  <div style={{ textAlign: "center", padding: "1.5rem", border: "1px dashed hsl(var(--border-hsl))", borderRadius: "var(--radius-md)", color: "hsl(var(--muted-hsl))", fontSize: "0.85rem" }}>
+                    No extra options. Only the standard Custom Print engine variants (Sizes, Sides, Print Mode) will be used.
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+                    {optionGroups.map((group, gIdx) => (
+                      <div key={gIdx} className="card" style={{ padding: "1rem", backgroundColor: "#F8FAFC", position: "relative" }}>
+                        <button
+                          type="button"
+                          onClick={() => removeOptionGroup(gIdx)}
+                          style={{ position: "absolute", top: "0.75rem", right: "0.75rem", background: "none", border: "none", color: "#EF4444", cursor: "pointer" }}
+                        >
+                          <Trash2 size={15} />
+                        </button>
+
+                        <div style={{ maxWidth: "75%", marginBottom: "0.75rem" }}>
+                          <label className="label">Option Group Name</label>
+                          <input className="input" value={group.name} onChange={(e) => handleGroupNameChange(gIdx, e.target.value)} required />
+                        </div>
+
+                        <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                          {group.choices.map((choice, cIdx) => (
+                            <div key={cIdx} style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+                              <input
+                                className="input"
+                                value={choice.name}
+                                onChange={(e) => handleChoiceChange(gIdx, cIdx, "name", e.target.value)}
+                                placeholder="Choice name (e.g. Gloss Lamination, Half Fold)"
+                                style={{ flex: 2 }}
+                                required
+                              />
+                              <div style={{ display: "flex", alignItems: "center", gap: "0.35rem", flex: 1 }}>
+                                <span style={{ fontSize: "0.8rem", fontWeight: 700 }}>+$</span>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  className="input"
+                                  value={choice.priceUpcharge}
+                                  onChange={(e) => handleChoiceChange(gIdx, cIdx, "priceUpcharge", e.target.value)}
+                                />
+                              </div>
+                              {group.choices.length > 1 && (
+                                <button type="button" onClick={() => removeChoice(gIdx, cIdx)} style={{ background: "none", border: "none", color: "#EF4444", cursor: "pointer" }}>
+                                  <Trash2 size={14} />
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                          <button type="button" onClick={() => addChoice(gIdx)} className="btn btn-outline" style={{ padding: "0.3rem 0.65rem", fontSize: "0.75rem", width: "fit-content", marginTop: "0.25rem", display: "flex", alignItems: "center", gap: "0.25rem" }}>
+                            <Plus size={12} /> Add Choice Row
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </>
           )}
 
           {/* Media Images Card */}
           <div className="card">
-            <h2 style={{ fontSize: "1.2rem", marginBottom: "0.5rem" }}>Storefront Images</h2>
+            <h2 style={{ fontSize: "1.2rem", marginBottom: "0.5rem", fontWeight: 800 }}>Storefront Images</h2>
             <p style={{ fontSize: "0.85rem", color: "hsl(var(--muted-hsl))", marginBottom: "1.5rem" }}>
               Add product renders or photos uploaded directly. Order matters.
             </p>
@@ -610,7 +1026,7 @@ export default function AdminProductEditPage({ params: paramsPromise }) {
         <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
           {/* Metadata Card */}
           <div className="card">
-            <h2 style={{ fontSize: "1.2rem", marginBottom: "1.25rem" }}>Storefront Settings</h2>
+            <h2 style={{ fontSize: "1.2rem", marginBottom: "1.25rem", fontWeight: 800 }}>Storefront Settings</h2>
             
             <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
               {/* Visibility Toggle */}
@@ -670,23 +1086,23 @@ export default function AdminProductEditPage({ params: paramsPromise }) {
                 </span>
               </div>
 
-              {/* Starting Price (Override for API, main price for Custom) */}
+              {/* Starting / Base Price */}
               <div>
                 <label className="label" htmlFor="price-override">
-                  {product?.isCustom ? "Base Selling Price ($ CAD)" : "Starting Price Override ($ CAD)"}
+                  {product?.isCustom ? "Base Setup Price ($ CAD)*" : "Starting Price Override ($ CAD)"}
                 </label>
                 <input
                   id="price-override"
                   type="number"
                   step="0.01"
                   className="input"
-                  placeholder={parseFloat(product?.pricing?.startingPrice || 0).toFixed(2)}
+                  placeholder={parseFloat(product?.basePrice || product?.pricing?.startingPrice || 0).toFixed(2)}
                   value={priceOverride}
                   onChange={(e) => setPriceOverride(e.target.value)}
                 />
                 <span style={{ fontSize: "0.75rem", color: "hsl(var(--muted-hsl))", display: "block", marginTop: "0.25rem" }}>
                   {product?.isCustom 
-                    ? "Starting base price before option choices are selected."
+                    ? "Base setup cost added to the paper & click pricing formula."
                     : `Manually override starting price (cheapest calculations: $${parseFloat(product?.pricing?.startingPrice || 0).toFixed(2)}).`
                   }
                 </span>
@@ -696,7 +1112,7 @@ export default function AdminProductEditPage({ params: paramsPromise }) {
 
           {/* Markup Override Card */}
           <div className="card">
-            <h2 style={{ fontSize: "1.2rem", marginBottom: "1rem" }}>Pricing & Markup Settings</h2>
+            <h2 style={{ fontSize: "1.2rem", marginBottom: "1rem", fontWeight: 800 }}>Pricing & Markup Settings</h2>
             
             <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
               <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", cursor: "pointer", fontWeight: 600 }}>
@@ -733,7 +1149,7 @@ export default function AdminProductEditPage({ params: paramsPromise }) {
           {/* SinaLite Specs (Only if API Product) */}
           {!product?.isCustom && (
             <div className="card" style={{ backgroundColor: "hsl(var(--secondary-hsl) / 0.2)" }}>
-              <h2 style={{ fontSize: "1.1rem", marginBottom: "1rem" }}>SinaLite Details</h2>
+              <h2 style={{ fontSize: "1.1rem", marginBottom: "1rem", fontWeight: 800 }}>SinaLite Details</h2>
               <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", fontSize: "0.85rem" }}>
                 <div style={{ display: "flex", justifyContent: "space-between" }}>
                   <span style={{ color: "hsl(var(--muted-hsl))" }}>SinaLite Category</span>

@@ -83,6 +83,46 @@ main {
   flex-grow: 1;
 }
 
+/* Global Content Container */
+.container {
+  width: 100%;
+  max-width: 1240px;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 1.5rem;
+  padding-right: 1.5rem;
+}
+
+/* Product Detail Responsive Grid */
+.product-detail-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3rem;
+  align-items: flex-start;
+}
+
+@media (max-width: 960px) {
+  .product-detail-grid {
+    grid-template-columns: 1fr !important;
+    gap: 2rem !important;
+  }
+}
+
+/* Admin Responsive Form Grid */
+.admin-form-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(340px, 1fr);
+  gap: 2rem;
+  align-items: flex-start;
+}
+
+@media (max-width: 1100px) {
+  .admin-form-grid {
+    grid-template-columns: 1fr !important;
+    gap: 1.5rem !important;
+  }
+}
+
 /* Headings */
 h1, h2, h3, h4, h5, h6 {
   font-family: var(--font-display);
@@ -192,20 +232,39 @@ h1, h2, h3, h4, h5, h6 {
 /* Clean Form Controls */
 .input {
   width: 100%;
-  padding: 0.75rem 1rem;
+  padding: 0.55rem 0.85rem;
   font-family: var(--font-sans);
-  font-size: 0.95rem;
+  font-size: 0.9rem;
   border-radius: var(--radius-md);
   border: 1px solid hsl(var(--border-hsl));
   background-color: hsl(var(--card-hsl));
   color: hsl(var(--foreground-hsl));
   transition: all 0.2s ease;
   outline: none;
+  box-sizing: border-box;
 }
 
 .input:focus {
   border-color: hsl(var(--accent-hsl));
   box-shadow: 0 0 0 3px hsl(var(--accent-hsl) / 0.15);
+}
+
+.input-sm {
+  padding: 0.35rem 0.55rem !important;
+  font-size: 0.82rem !important;
+  border-radius: var(--radius-sm) !important;
+}
+
+/* Remove default spinner arrows from number inputs so text and values are clearly visible */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
 }
 
 .label {
@@ -285,6 +344,47 @@ h1, h2, h3, h4, h5, h6 {
     bottom: 0.5rem !important;
     padding: 0.35rem 0.75rem !important;
     gap: 0.4rem !important;
+  }
+}
+
+/* Cart & Checkout Responsive Utilities */
+.cart-grid {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 2.5rem;
+}
+
+@media (max-width: 960px) {
+  .cart-grid {
+    grid-template-columns: 1fr !important;
+    gap: 1.75rem !important;
+  }
+}
+
+.form-row-2col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+@media (max-width: 600px) {
+  .form-row-2col {
+    grid-template-columns: 1fr !important;
+    gap: 0.75rem !important;
+  }
+
+  .cart-item-card-inner {
+    grid-template-columns: 1fr !important;
+    gap: 1rem !important;
+  }
+
+  .cart-item-img {
+    width: 64px !important;
+    height: 64px !important;
+  }
+
+  .checkout-card-padding {
+    padding: 1.15rem !important;
   }
 }
 

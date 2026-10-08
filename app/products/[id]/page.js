@@ -11,6 +11,7 @@ import Link from "next/link";
 import { ArrowLeft, ShoppingBag, Loader2, Sparkles, FileCheck, Eye } from "lucide-react";
 import { motion } from "framer-motion";
 import PrintProofModal from "@/components/PrintProofModal";
+import { calculateCustomPrintPrice } from "@/lib/custom-print-pricing";
 
 export default function ProductDetailPage({ params: paramsPromise }) {
   const params = use(paramsPromise);
@@ -30,6 +31,13 @@ export default function ProductDetailPage({ params: paramsPromise }) {
   const [calculatingPrice, setCalculatingPrice] = useState(false);
   const [activeImageIdx, setActiveImageIdx] = useState(0);
 
+  // Global custom print settings
+  const [customPrintSettings, setCustomPrintSettings] = useState({
+  colorClickCharge: 0.045,      // $/click for color
+  grayscaleClickCharge: 0.01,  // $/click for b&w / grayscale
+  markupMultiplier: 3.0        // Multiplier over cost (e.g. 2.0 = 2x)
+  });
+
   // File Upload & Print Proof states
   const [uploadingFile, setUploadingFile] = useState(false);
   const [artworkFiles, setArtworkFiles] = useState([]); // Array of { name, url }
@@ -43,19 +51,58 @@ export default function ProductDetailPage({ params: paramsPromise }) {
   const selectedCount = Object.keys(selectedOptions).filter(k => selectedOptions[k] !== "").length;
   const allSelected = totalGroupsCount > 0 && selectedCount === totalGroupsCount;
 
-  // Compute custom product price with useMemo
+  // Compute custom product price with useMemo using the Custom Print Pricing Engine
   const customCalculatedPrice = useMemo(() => {
     if (!product?.isCustom) return null;
-    let price = parseFloat(product.pricing?.startingPrice || 0);
+
+    // 1. Extract Quantity
+    const selectedQtyId = selectedOptions["Quantity"] || selectedOptions["quantity"] || selectedOptions["Qty"];
+    const qtyOpt = (optionGroups["Quantity"] || optionGroups["quantity"] || optionGroups["Qty"] || []).find(o => o.id === selectedQtyId);
+    const quantity = qtyOpt?.value || parseInt(selectedQtyId, 10) || 500;
+
+    // 2. Extract Size
+    const selectedSizeId = selectedOptions["Size"] || selectedOptions["size"];
+    const sizeOpt = (optionGroups["Size"] || optionGroups["size"] || []).find(o => o.id === selectedSizeId);
+
+    // 3. Extract Sides / Pages
+    const selectedSidesId = selectedOptions["Sides / Pages"] || selectedOptions["sides"] || selectedOptions["Pages"];
+    const sidesOpt = (optionGroups["Sides / Pages"] || optionGroups["sides"] || optionGroups["Pages"] || []).find(o => o.id === selectedSidesId);
+
+    // 4. Extract Print Mode
+    const selectedModeId = selectedOptions["Print Mode"] || selectedOptions["printMode"] || selectedOptions["Mode"];
+    const modeOpt = (optionGroups["Print Mode"] || optionGroups["printMode"] || optionGroups["Mode"] || []).find(o => o.id === selectedModeId);
+
+    // 5. Additional options upcharges (if any)
+    let additionalUpcharges = 0;
     Object.entries(selectedOptions).forEach(([groupName, selectedId]) => {
-      const groupChoices = optionGroups[groupName] || [];
-      const choice = groupChoices.find(c => c.id === selectedId);
+      if (["Quantity", "quantity", "Qty", "Size", "size", "Sides / Pages", "sides", "Pages", "Print Mode", "printMode", "Mode"].includes(groupName)) {
+        return;
+      }
+      const choices = optionGroups[groupName] || [];
+      const choice = choices.find(c => c.id === selectedId);
       if (choice) {
-        price += parseFloat(choice.priceUpcharge || 0);
+        additionalUpcharges += parseFloat(choice.priceUpcharge || 0);
       }
     });
-    return { price };
-  }, [product, selectedOptions, optionGroups]);
+
+    const basePrice = parseFloat(product.basePrice !== undefined ? product.basePrice : (product.pricing?.startingPrice || 0));
+
+    const result = calculateCustomPrintPrice({
+      quantity,
+      size: sizeOpt,
+      sidesPages: sidesOpt,
+      printMode: modeOpt,
+      basePrice,
+      settings: customPrintSettings,
+      additionalUpcharges
+    });
+
+    return {
+      price: result.finalPrice,
+      unitPrice: result.unitPrice,
+      breakdown: result
+    };
+  }, [product, selectedOptions, optionGroups, customPrintSettings]);
 
   const effectivePriceData = product?.isCustom ? customCalculatedPrice : priceData;
 
@@ -91,7 +138,8 @@ export default function ProductDetailPage({ params: paramsPromise }) {
       selectedOptionIds: product.isCustom ? Object.values(selectedOptions) : Object.values(selectedOptions).map(id => parseInt(id)),
       optionSummary: optionSummaries.join(" | "),
       price: parseFloat(effectivePriceData.price || effectivePriceData.price?.price || product.pricing?.startingPrice || 0),
-      quantity: 1, // Add one configuration unit by default
+      unitPrice: effectivePriceData.unitPrice || null,
+      quantity: 1, // 1 ordered job bundle
       artworkFiles: artworkFiles,
       proofDetails: proofDetails,
       isCustom: !!product.isCustom
@@ -108,11 +156,33 @@ export default function ProductDetailPage({ params: paramsPromise }) {
       setError("");
       
       try {
+        // Fetch custom print pricing settings in parallel
+        fetch("/api/custom-print-settings")
+          .then(r => r.json())
+          .then(data => {
+            if (data && !data.error) {
+              setCustomPrintSettings({
+                colorClickCharge: parseFloat(data.colorClickCharge) || 0.08,
+                grayscaleClickCharge: parseFloat(data.grayscaleClickCharge) || 0.02,
+                markupMultiplier: parseFloat(data.markupMultiplier) || 2.0
+              });
+            }
+          })
+          .catch(console.error);
+
         // Load product from Firestore
-        const docRef = doc(db, "products", productId);
-        const snap = await getDoc(docRef);
+        let docRef = doc(db, "products", productId);
+        let snap = await getDoc(docRef);
         
         if (!snap.exists()) {
+          // Check if it exists in apparel_products collection
+          const apparelDocRef = doc(db, "apparel_products", productId);
+          const apparelSnap = await getDoc(apparelDocRef);
+          if (apparelSnap.exists()) {
+            router.replace(`/apparel/${productId}`);
+            return;
+          }
+
           setError("Product not found.");
           setLoadingProduct(false);
           setLoadingOptions(false);
@@ -131,17 +201,92 @@ export default function ProductDetailPage({ params: paramsPromise }) {
         setLoadingProduct(false);
 
         if (data.isCustom) {
-          // Build custom options structure
+          // Build custom options structure for Custom Print Engine
           const customGroups = {};
+
+          // 1. Quantity Choices
+          customGroups["Quantity"] = [
+            { id: "50", name: "50 Units", value: 50 },
+            { id: "100", name: "100 Units", value: 100 },
+            { id: "250", name: "250 Units", value: 250 },
+            { id: "500", name: "500 Units", value: 500 },
+            { id: "1000", name: "1,000 Units", value: 1000 },
+            { id: "2500", name: "2,500 Units", value: 2500 },
+            { id: "5000", name: "5,000 Units", value: 5000 }
+          ];
+
+          // 2. Size Choices (Customer sees only name, backend uses imposition and costPerM)
+          const sizesList = Array.isArray(data.customPrintSizes) && data.customPrintSizes.length > 0
+            ? data.customPrintSizes
+            : [
+                { id: "sz_1", name: '8.5" x 11"', imposition: 2, costPerM: 40.00 },
+                { id: "sz_2", name: '11" x 17"', imposition: 1, costPerM: 75.00 },
+                { id: "sz_3", name: '4" x 6"', imposition: 4, costPerM: 25.00 },
+                { id: "sz_4", name: '5.5" x 8.5"', imposition: 4, costPerM: 35.00 }
+              ];
+          
+          customGroups["Size"] = sizesList.map(s => ({
+            id: s.name,
+            name: s.name,
+            imposition: parseFloat(s.imposition) || 1,
+            costPerM: parseFloat(s.costPerM) || 0
+          }));
+
+          // 3. Sides / Pages Choices
+          const sidesList = Array.isArray(data.sidesPagesOptions) && data.sidesPagesOptions.length > 0
+            ? data.sidesPagesOptions
+            : [
+                { id: "1_sided", name: "1 Sided", value: 1 },
+                { id: "2_sided", name: "2 Sided", value: 2 }
+              ];
+
+          customGroups["Sides / Pages"] = sidesList.map(s => ({
+            id: s.name,
+            name: s.name,
+            value: parseFloat(s.value) || 1
+          }));
+
+          // 4. Print Mode Choices
+          const modesList = Array.isArray(data.printModeOptions) && data.printModeOptions.length > 0
+            ? data.printModeOptions
+            : [
+                { id: "color", name: "Colour", type: "color" },
+                { id: "bw", name: "Black & White (Grayscale)", type: "bw" }
+              ];
+
+          customGroups["Print Mode"] = modesList.map(m => ({
+            id: m.name,
+            name: m.name,
+            type: m.type || "color"
+          }));
+
+          // 5. Additional custom option groups (e.g. Finishing, Coating)
           (data.options || []).forEach(group => {
-            customGroups[group.name] = (group.choices || []).map((choice) => ({
-              id: `${group.name}:${choice.name}`, // unique ID within option selections
-              name: choice.name,
-              priceUpcharge: parseFloat(choice.priceUpcharge || 0)
-            }));
+            if (group.name && group.choices?.length > 0) {
+              customGroups[group.name] = group.choices.map(choice => ({
+                id: `${group.name}:${choice.name}`,
+                name: choice.name,
+                priceUpcharge: parseFloat(choice.priceUpcharge || 0)
+              }));
+            }
           });
+
           setOptionGroups(customGroups);
-          setSelectedOptions({});
+
+          // Default Pre-selections
+          const defaultSelections = {};
+          Object.entries(customGroups).forEach(([gName, opts]) => {
+            if (opts.length > 0) {
+              // For quantity, default to 500 or 100 if present
+              if (gName === "Quantity") {
+                const preferred = opts.find(o => o.id === "500") || opts[0];
+                defaultSelections[gName] = preferred.id.toString();
+              } else {
+                defaultSelections[gName] = opts[0].id.toString();
+              }
+            }
+          });
+          setSelectedOptions(defaultSelections);
           setLoadingOptions(false);
         } else {
           // Fetch options live from SinaLite API proxy
@@ -154,8 +299,6 @@ export default function ProductDetailPage({ params: paramsPromise }) {
 
           const groups = optData.optionGroups || {};
           setOptionGroups(groups);
-          // Pre-select the cheapest "starting from" options:
-          // quantity groups → smallest qty, turnaround → slowest/cheapest, others → first
           const preSelected = optData.defaultSelections || {};
           setSelectedOptions(preSelected);
           setLoadingOptions(false);
@@ -207,15 +350,15 @@ export default function ProductDetailPage({ params: paramsPromise }) {
 
     const timer = setTimeout(() => {
       calculateLivePrice();
-    }, 150); // Small debounce
+    }, 150);
 
     return () => clearTimeout(timer);
-  }, [selectedOptions, product, productId, loadingOptions, allSelected]);
+  }, [selectedOptions, product, loadingOptions, allSelected, productId]);
 
   const handleOptionChange = (groupName, value) => {
     setSelectedOptions(prev => ({
       ...prev,
-      [groupName]: value,
+      [groupName]: value
     }));
   };
 
@@ -232,15 +375,17 @@ export default function ProductDetailPage({ params: paramsPromise }) {
 
       const res = await fetch("/api/upload", {
         method: "POST",
-        body: formData,
+        body: formData
       });
 
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.error || "Failed to upload artwork file.");
+        throw new Error(data.error || "Failed to upload file.");
       }
 
       setArtworkFiles(prev => [...prev, { name: file.name, url: data.url }]);
+      setProofApproved(false);
+      setProofDetails(null);
     } catch (err) {
       console.error("Upload error:", err);
       setUploadError(err.message || "File upload failed.");
@@ -249,522 +394,491 @@ export default function ProductDetailPage({ params: paramsPromise }) {
     }
   };
 
-  const handleRemoveFile = (indexToRemove) => {
-    setArtworkFiles(prev => prev.filter((_, idx) => idx !== indexToRemove));
+  const handleRemoveArtwork = (index) => {
+    setArtworkFiles(prev => prev.filter((_, idx) => idx !== index));
+    if (artworkFiles.length <= 1) {
+      setProofApproved(false);
+      setProofDetails(null);
+    }
+  };
+
+  const handleProofApproval = (details) => {
+    setProofApproved(true);
+    setProofDetails(details);
+    setProofModalOpen(false);
   };
 
   if (loadingProduct) {
     return (
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", color: "hsl(var(--muted-hsl))" }}>
-        <Loader2 className="animate-spin" style={{ animation: "spin 1.5s linear infinite", marginRight: "0.5rem" }} /> Loading product details...
+      <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
+        <Header />
+        <main className="container" style={{ flex: 1, padding: "4rem 1.5rem", display: "flex", justifyContent: "center", alignItems: "center" }}>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "1rem", color: "hsl(var(--muted-hsl))" }}>
+            <Loader2 className="animate-spin" size={32} style={{ animation: "spin 1.5s linear infinite", color: "hsl(var(--accent-hsl))" }} />
+            <p style={{ fontWeight: 600 }}>Loading product specifications...</p>
+          </div>
+        </main>
+        <Footer />
       </div>
     );
   }
 
   if (error || !product) {
     return (
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh", gap: "1rem" }}>
-        <h2 style={{ fontWeight: 800 }}>Error</h2>
-        <p style={{ color: "hsl(var(--destructive-hsl))" }}>{error || "Product details could not be loaded."}</p>
-        <Link href="/products" className="btn btn-secondary">Back to Catalog</Link>
+      <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
+        <Header />
+        <main className="container" style={{ flex: 1, padding: "4rem 1.5rem", textAlign: "center" }}>
+          <h2 style={{ fontSize: "1.5rem", marginBottom: "1rem" }}>Product Not Found</h2>
+          <p style={{ color: "hsl(var(--muted-hsl))", marginBottom: "1.5rem" }}>{error || "The requested product is unavailable."}</p>
+          <Link href="/products" className="btn btn-primary">
+            Back to Catalog
+          </Link>
+        </main>
+        <Footer />
       </div>
     );
   }
 
-  // Display details setup
-  const title = product.name || product.sinalite?.name;
-  const skuCode = product.sku || product.sinalite?.sku;
-  const imagesList = product.images || ["https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?q=80&w=600&auto=format&fit=crop"];
-  const displayStartingPrice = parseFloat(product.pricing?.startingPriceOverride || product.pricing?.startingPrice || 0);
+  const productName = product.name || product.sinalite?.name || "Print Product";
+  const skuCode = product.sku || product.sinalite?.sku || "PRNT-ITEM";
+  const images = product.images && product.images.length > 0 
+    ? product.images 
+    : ["https://placehold.co/800x600/png?text=Custom+Print+Product"];
+
+  const displayStartingPrice = parseFloat(product.basePrice !== undefined ? product.basePrice : (product.pricing?.startingPrice || 0));
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", minHeight: "100vh", backgroundColor: "hsl(var(--background-hsl))" }}>
+    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
       <Header />
-      
-      <main style={{ maxWidth: "1200px", margin: "2rem auto 4rem auto", padding: "0 1.5rem", width: "100%", flexGrow: 1 }}>
-        {/* Back Link */}
-        <div style={{ marginBottom: "2rem" }}>
-          <Link href="/products" style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem", color: "hsl(var(--muted-hsl))", fontSize: "0.9rem", fontWeight: 600 }}>
-            <ArrowLeft size={16} /> Back to Catalog
+
+      <main className="container" style={{ flex: 1, padding: "2rem 1.5rem 5rem" }}>
+        {/* Breadcrumb */}
+        <div style={{ marginBottom: "1.5rem" }}>
+          <Link href="/products" style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem", color: "hsl(var(--muted-hsl))", fontSize: "0.85rem", fontWeight: 600 }}>
+            <ArrowLeft size={16} /> Back to Products
           </Link>
         </div>
 
-        {/* Standard Print Product 2-Column Layout */}
-        <div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr", gap: "3rem" }} className="product-grid">
-          {/* Left Column: Gallery + Description */}
-            <div style={{ display: "flex", flexDirection: "column", gap: "2rem" }}>
-              <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-                <div style={{
-                  width: "100%",
-                  height: "400px",
-                  backgroundColor: "white",
-                  borderRadius: "var(--radius-lg)",
-                  border: "1px solid hsl(var(--border-hsl))",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  padding: "2rem",
-                  overflow: "hidden"
-                }}>
-                  <img
-                    src={imagesList[activeImageIdx]}
-                    alt={`${title} view`}
-                    style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }}
-                  />
-                </div>
-                {imagesList.length > 1 && (
-                  <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
-                    {imagesList.map((url, idx) => (
-                      <button
-                        key={idx}
-                        onClick={() => setActiveImageIdx(idx)}
-                        style={{
-                          width: "70px",
-                          height: "70px",
-                          padding: "0.25rem",
-                          backgroundColor: "white",
-                          borderRadius: "var(--radius-sm)",
-                          border: activeImageIdx === idx ? "2px solid hsl(var(--accent-hsl))" : "1px solid hsl(var(--border-hsl))",
-                          cursor: "pointer"
-                        }}
-                      >
-                        <img src={url} alt="thumbnail" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div className="card" style={{ padding: "2rem" }}>
-                <h2 style={{ fontSize: "1.25rem", fontWeight: 800, marginBottom: "1rem", color: "hsl(var(--primary-hsl))" }}>Product Specifications</h2>
-                <div style={{ whiteSpace: "pre-line", fontSize: "0.95rem", lineHeight: "1.6", color: "hsl(var(--foreground-hsl) / 0.85)" }}>
-                  {product.longDescription || product.description || product.sinalite?.description || "No specifications are currently defined for this product."}
-                </div>
-              </div>
+        <div className="product-detail-grid">
+          {/* Left Column: Gallery */}
+          <div style={{ display: "flex", flexDirection: "column", gap: "1rem", position: "sticky", top: "6rem" }}>
+            <div style={{
+              width: "100%",
+              aspectRatio: "1/1",
+              maxHeight: "520px",
+              backgroundColor: "white",
+              borderRadius: "var(--radius-lg)",
+              border: "1px solid hsl(var(--border-hsl))",
+              boxShadow: "var(--shadow-sm)",
+              overflow: "hidden",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              position: "relative"
+            }}>
+              <img
+                src={images[activeImageIdx] || images[0]}
+                alt={productName}
+                style={{ width: "100%", height: "100%", objectFit: "contain", padding: "1.5rem" }}
+              />
             </div>
 
-            {/* Right Column: Options Configurator Panel */}
-            <motion.div
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-              style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}
-            >
-              <div className="card" style={{ padding: "2rem", display: "flex", flexDirection: "column", gap: "1.5rem", border: "1px solid hsl(var(--border-hsl))" }}>
-                <div>
-                  <span style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: "0.3rem",
-                    fontSize: "0.65rem",
-                    fontWeight: 800,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.1em",
-                    color: "hsl(var(--accent-hsl))",
-                    backgroundColor: "hsl(var(--accent-hsl) / 0.1)",
-                    padding: "0.25rem 0.65rem",
-                    borderRadius: "4px",
-                    marginBottom: "0.75rem"
-                  }}>
-                    <Sparkles size={10} /> Instant Printing
-                  </span>
-                  <h1 style={{ fontSize: "1.75rem", fontWeight: 900, lineHeight: "1.2", letterSpacing: "-0.01em" }}>{title}</h1>
-                  <p style={{ color: "hsl(var(--muted-hsl))", fontSize: "0.8rem", marginTop: "0.25rem" }}>SKU: {skuCode}</p>
+            {/* Thumbnails */}
+            {images.length > 1 && (
+              <div style={{ display: "flex", gap: "0.75rem", overflowX: "auto", paddingBottom: "0.5rem" }}>
+                {images.map((img, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => setActiveImageIdx(idx)}
+                    style={{
+                      width: "70px",
+                      height: "70px",
+                      borderRadius: "var(--radius-sm)",
+                      border: activeImageIdx === idx ? "2px solid hsl(var(--accent-hsl))" : "1px solid hsl(var(--border-hsl))",
+                      backgroundColor: "white",
+                      padding: "0.25rem",
+                      cursor: "pointer",
+                      flexShrink: 0,
+                      overflow: "hidden"
+                    }}
+                  >
+                    <img src={img} alt={`Thumb ${idx + 1}`} style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Right Column: Specifications & Pricing Engine */}
+          <div style={{ display: "flex", flexDirection: "column", gap: "1.75rem" }}>
+            <div>
+              <h1 style={{ fontSize: "2rem", fontWeight: 900, lineHeight: 1.2 }}>{productName}</h1>
+              <p style={{ color: "hsl(var(--muted-hsl))", fontSize: "0.8rem", marginTop: "0.25rem" }}>SKU: {skuCode}</p>
+            </div>
+            
+            {(product.shortDescription || product.description) && (
+              <p style={{
+                fontSize: "0.9rem",
+                color: "hsl(var(--foreground-hsl) / 0.8)",
+                lineHeight: "1.5",
+                marginTop: "0.75rem",
+                paddingTop: "0.75rem",
+                borderTop: "1px solid hsl(var(--border-hsl))"
+              }}>
+                {product.shortDescription || product.description}
+              </p>
+            )}
+
+            {/* Display starting price info */}
+            {!allSelected && displayStartingPrice > 0 && (
+              <div style={{ padding: "0.85rem 1rem", backgroundColor: "hsl(var(--secondary-hsl) / 0.3)", borderRadius: "var(--radius-sm)" }}>
+                <p style={{ fontSize: "0.75rem", color: "hsl(var(--muted-hsl))", fontWeight: 600 }}>Starting Price</p>
+                <p style={{ fontSize: "1.25rem", fontWeight: 800, color: "hsl(var(--accent-hsl))" }}>${displayStartingPrice.toFixed(2)} CAD</p>
+              </div>
+            )}
+
+            {/* Dynamic Option Groups loop */}
+            <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+              <h3 style={{ fontSize: "0.9rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.05em", color: "hsl(var(--muted-hsl))" }}>
+                Configure Options
+              </h3>
+              
+              {loadingOptions ? (
+                <div style={{ display: "flex", alignItems: "center", color: "hsl(var(--muted-hsl))", fontSize: "0.85rem", padding: "1rem 0" }}>
+                  <Loader2 className="animate-spin" size={14} style={{ animation: "spin 1.5s linear infinite", marginRight: "0.25rem" }} /> Loading configuration options...
                 </div>
-                
-                {(product.shortDescription || product.description) && (
-                  <p style={{
-                    fontSize: "0.9rem",
-                    color: "hsl(var(--foreground-hsl) / 0.8)",
-                    lineHeight: "1.5",
-                    marginTop: "0.75rem",
-                    paddingTop: "0.75rem",
-                    borderTop: "1px solid hsl(var(--border-hsl))"
-                  }}>
-                    {product.shortDescription || product.description}
-                  </p>
-                )}
+              ) : (
+                Object.entries(optionGroups).map(([groupName, options]) => {
+                  const isQuantity = groupName.toLowerCase().includes("qty") || groupName.toLowerCase().includes("quantity");
 
-              {/* Display starting price info */}
-              {!allSelected && displayStartingPrice > 0 && (
-                <div style={{ padding: "0.85rem 1rem", backgroundColor: "hsl(var(--secondary-hsl) / 0.3)", borderRadius: "var(--radius-sm)" }}>
-                  <p style={{ fontSize: "0.75rem", color: "hsl(var(--muted-hsl))", fontWeight: 600 }}>Starting Price</p>
-                  <p style={{ fontSize: "1.25rem", fontWeight: 800, color: "hsl(var(--accent-hsl))" }}>${displayStartingPrice.toFixed(2)} CAD</p>
-                </div>
-              )}
-
-              {/* Dynamic Option Groups loop */}
-              <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
-                <h3 style={{ fontSize: "0.9rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.05em", color: "hsl(var(--muted-hsl))" }}>Configure Options</h3>
-                
-                {loadingOptions ? (
-                  <div style={{ display: "flex", alignItems: "center", color: "hsl(var(--muted-hsl))", fontSize: "0.85rem", padding: "1rem 0" }}>
-                    <Loader2 className="animate-spin" size={14} style={{ animation: "spin 1.5s linear infinite", marginRight: "0.25rem" }} /> Loading configuration options...
-                  </div>
-                ) : (
-                  Object.entries(optionGroups).map(([groupName, options]) => {
-                    const isQuantity = groupName.toLowerCase().includes("qty") || groupName.toLowerCase().includes("quantity");
-
-                    if (isQuantity) {
-                      return (
-                        <div key={groupName}>
-                          <label className="label" htmlFor={`opt-${groupName}`} style={{ textTransform: "capitalize" }}>
-                            {groupName}
-                          </label>
-                          <select
-                            id={`opt-${groupName}`}
-                            className="input"
-                            value={selectedOptions[groupName] || ""}
-                            onChange={(e) => handleOptionChange(groupName, e.target.value)}
-                          >
-                            <option value="">Select quantity...</option>
-                            {options.map(opt => {
-                              const upchargeText = opt.priceUpcharge > 0 ? ` (+$${opt.priceUpcharge.toFixed(2)})` : "";
-                              return (
-                                <option key={opt.id} value={opt.id.toString()}>
-                                  {opt.name}{upchargeText}
-                                </option>
-                              );
-                            })}
-                          </select>
-                        </div>
-                      );
-                    }
-
+                  if (isQuantity) {
                     return (
                       <div key={groupName}>
-                        <label className="label" style={{ textTransform: "capitalize" }}>
+                        <label className="label" htmlFor={`opt-${groupName}`} style={{ textTransform: "capitalize", fontWeight: 700 }}>
                           {groupName}
                         </label>
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginTop: "0.25rem" }}>
-                          {options.map(opt => {
-                            const isSelected = selectedOptions[groupName] === opt.id.toString();
-                            const upchargeText = opt.priceUpcharge > 0 ? ` (+$${opt.priceUpcharge.toFixed(2)})` : "";
-                            
-                            return (
-                              <button
-                                key={opt.id}
-                                type="button"
-                                onClick={() => handleOptionChange(groupName, opt.id.toString())}
-                                style={{
-                                  padding: "0.5rem 0.85rem",
-                                  fontSize: "0.85rem",
-                                  borderRadius: "var(--radius-sm)",
-                                  border: isSelected ? "2px solid hsl(var(--accent-hsl))" : "1px solid hsl(var(--border-hsl))",
-                                  backgroundColor: isSelected ? "hsl(var(--accent-hsl) / 0.08)" : "white",
-                                  color: isSelected ? "hsl(var(--accent-hsl))" : "hsl(var(--foreground-hsl))",
-                                  fontWeight: isSelected ? 700 : 500,
-                                  cursor: "pointer",
-                                  transition: "all 0.15s ease",
-                                  fontFamily: "var(--font-sans)"
-                                }}
-                              >
-                                {opt.name}{upchargeText}
-                              </button>
-                            );
-                          })}
-                        </div>
+                        <select
+                          id={`opt-${groupName}`}
+                          className="input"
+                          value={selectedOptions[groupName] || ""}
+                          onChange={(e) => handleOptionChange(groupName, e.target.value)}
+                        >
+                          <option value="">Select quantity...</option>
+                          {options.map(opt => (
+                            <option key={opt.id} value={opt.id.toString()}>
+                              {opt.name}
+                            </option>
+                          ))}
+                        </select>
                       </div>
                     );
-                  })
-                )}
-              </div>
+                  }
 
-              {/* Price Calculator Display */}
-              <div style={{
-                borderTop: "1px solid hsl(var(--border-hsl))",
-                paddingTop: "1.5rem",
-                marginTop: "0.5rem",
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center"
-              }}>
-                <div>
-                  <p style={{ fontSize: "0.8rem", fontWeight: 700, color: "hsl(var(--muted-hsl))", textTransform: "uppercase" }}>Price Estimate</p>
-                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginTop: "0.25rem" }}>
-                    {calculatingPrice ? (
-                      <div style={{ display: "flex", alignItems: "center", color: "hsl(var(--muted-hsl))", fontSize: "0.95rem" }}>
-                        <Loader2 className="animate-spin" size={16} style={{ animation: "spin 1.5s linear infinite", marginRight: "0.25rem" }} />
-                        Calculating...
+                  return (
+                    <div key={groupName}>
+                      <label className="label" style={{ textTransform: "capitalize", fontWeight: 700 }}>
+                        {groupName}
+                      </label>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginTop: "0.25rem" }}>
+                        {options.map(opt => {
+                          const isSelected = selectedOptions[groupName] === opt.id.toString();
+                          
+                          return (
+                            <button
+                              key={opt.id}
+                              type="button"
+                              onClick={() => handleOptionChange(groupName, opt.id.toString())}
+                              style={{
+                                padding: "0.55rem 0.95rem",
+                                fontSize: "0.85rem",
+                                borderRadius: "var(--radius-sm)",
+                                border: isSelected ? "2px solid hsl(var(--accent-hsl))" : "1px solid hsl(var(--border-hsl))",
+                                backgroundColor: isSelected ? "hsl(var(--accent-hsl) / 0.08)" : "white",
+                                color: isSelected ? "hsl(var(--accent-hsl))" : "hsl(var(--foreground-hsl))",
+                                fontWeight: isSelected ? 800 : 600,
+                                cursor: "pointer",
+                                transition: "all 0.15s ease",
+                                fontFamily: "var(--font-sans)"
+                              }}
+                            >
+                              {opt.name}
+                            </button>
+                          );
+                        })}
                       </div>
-                    ) : !allSelected ? (
-                      <span style={{ fontSize: "0.95rem", fontWeight: 600, color: "hsl(var(--muted-hsl))" }}>
-                        Select all options above to view price
-                      </span>
-                    ) : effectivePriceData && parseFloat(effectivePriceData.price || effectivePriceData.price?.price || 0) <= 0 ? (
-                      <div style={{
-                        display: "flex",
-                        alignItems: "flex-start",
-                        gap: "0.6rem",
-                        padding: "0.75rem 1rem",
-                        backgroundColor: "hsl(var(--destructive-hsl) / 0.06)",
-                        border: "1px solid hsl(var(--destructive-hsl) / 0.25)",
-                        borderRadius: "var(--radius-sm)",
-                        width: "100%"
-                      }}>
-                        <span style={{ fontSize: "1.1rem", lineHeight: 1, marginTop: "0.05rem" }}>⚠️</span>
-                        <div>
-                          <p style={{ fontWeight: 800, fontSize: "0.9rem", color: "hsl(var(--destructive-hsl))", marginBottom: "0.2rem" }}>
-                            This combination is not available
-                          </p>
-                          <p style={{ fontSize: "0.8rem", color: "hsl(var(--muted-hsl))", lineHeight: 1.4 }}>
-                            This option selection is currently unavailable for ordering. Please try a different combination of options above.
-                          </p>
-                        </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Price Calculator Display */}
+            <div style={{
+              borderTop: "1px solid hsl(var(--border-hsl))",
+              paddingTop: "1.5rem",
+              marginTop: "0.5rem",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center"
+            }}>
+              <div>
+                <p style={{ fontSize: "0.8rem", fontWeight: 700, color: "hsl(var(--muted-hsl))", textTransform: "uppercase" }}>Price Estimate</p>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginTop: "0.25rem", flexWrap: "wrap" }}>
+                  {calculatingPrice ? (
+                    <div style={{ display: "flex", alignItems: "center", color: "hsl(var(--muted-hsl))", fontSize: "0.95rem" }}>
+                      <Loader2 className="animate-spin" size={16} style={{ animation: "spin 1.5s linear infinite", marginRight: "0.25rem" }} />
+                      Calculating...
+                    </div>
+                  ) : !allSelected ? (
+                    <span style={{ fontSize: "0.95rem", fontWeight: 600, color: "hsl(var(--muted-hsl))" }}>
+                      Select all options above to view price
+                    </span>
+                  ) : effectivePriceData && parseFloat(effectivePriceData.price || effectivePriceData.price?.price || 0) <= 0 ? (
+                    <div style={{
+                      display: "flex",
+                      alignItems: "flex-start",
+                      gap: "0.6rem",
+                      padding: "0.75rem 1rem",
+                      backgroundColor: "hsl(var(--destructive-hsl) / 0.06)",
+                      border: "1px solid hsl(var(--destructive-hsl) / 0.25)",
+                      borderRadius: "var(--radius-sm)",
+                      width: "100%"
+                    }}>
+                      <span style={{ fontSize: "1.1rem", lineHeight: 1, marginTop: "0.05rem" }}>⚠️</span>
+                      <div>
+                        <p style={{ fontWeight: 800, fontSize: "0.9rem", color: "hsl(var(--destructive-hsl))", marginBottom: "0.2rem" }}>
+                          This combination is not available
+                        </p>
+                        <p style={{ fontSize: "0.8rem", color: "hsl(var(--muted-hsl))", lineHeight: 1.4 }}>
+                          This option selection is currently unavailable for ordering. Please try a different combination of options above.
+                        </p>
                       </div>
-                    ) : (
+                    </div>
+                  ) : (
+                    <div style={{ display: "flex", alignItems: "baseline", gap: "0.6rem", flexWrap: "wrap" }}>
                       <span style={{ fontSize: "2rem", fontWeight: 900, color: "hsl(var(--accent-hsl))" }}>
                         ${effectivePriceData ? parseFloat(effectivePriceData.price || effectivePriceData.price?.price || 0).toFixed(2) : "0.00"}
                         <span style={{ fontSize: "0.9rem", color: "hsl(var(--muted-hsl))", fontWeight: 600 }}> CAD</span>
                       </span>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Package Box Info & Configuration Summary (SinaLite Spec Layout) */}
-              {allSelected && (
-                <div style={{
-                  borderTop: "1px solid hsl(var(--border-hsl))",
-                  paddingTop: "1rem",
-                  marginTop: "0.5rem",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "0.75rem"
-                }}>
-                  {/* Configuration list */}
-                  <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
-                    <p style={{ fontSize: "0.75rem", fontWeight: 700, color: "hsl(var(--muted-hsl))", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                      Configuration Summary
-                    </p>
-                    <div style={{ display: "flex", flexDirection: "column", gap: "0.3rem", fontSize: "0.8rem" }}>
-                      {Object.entries(optionGroups).map(([groupName, options]) => {
-                        const selectedId = selectedOptions[groupName];
-                        const selectedOption = options.find(opt => opt.id.toString() === selectedId);
-                        return (
-                          <div key={groupName} style={{ display: "flex", justifyContent: "space-between" }}>
-                            <span style={{ color: "hsl(var(--muted-hsl))", textTransform: "capitalize" }}>{groupName}</span>
-                            <span style={{ fontWeight: 600 }}>{selectedOption?.name || "N/A"}</span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Box weight details (Only for API products) */}
-                  {!product.isCustom && effectivePriceData?.packageInfo && (
-                    <div style={{
-                      padding: "0.6rem 0.85rem",
-                      backgroundColor: "hsl(var(--secondary-hsl) / 0.4)",
-                      borderRadius: "var(--radius-sm)",
-                      fontSize: "0.8rem",
-                      color: "hsl(var(--muted-hsl))",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "0.5rem",
-                      marginTop: "0.25rem"
-                    }}>
-                      <span>📦</span>
-                      <span>
-                        {effectivePriceData.packageInfo["number of boxes"]} {parseInt(effectivePriceData.packageInfo["number of boxes"]) === 1 ? "box" : "boxes"}
-                        {" • "}{effectivePriceData.packageInfo["box size"]}
-                        {" • "}{parseFloat(effectivePriceData.packageInfo["total weight"]).toFixed(2)} lbs
-                      </span>
+                      {effectivePriceData?.unitPrice > 0 && (
+                        <span style={{ fontSize: "0.85rem", color: "hsl(var(--muted-hsl))", fontWeight: 700 }}>
+                          (${effectivePriceData.unitPrice.toFixed(2)} / unit)
+                        </span>
+                      )}
                     </div>
                   )}
                 </div>
-              )}
+              </div>
+            </div>
 
-              {/* File Upload Section */}
+            {/* Configuration Summary */}
+            {allSelected && (
               <div style={{
                 borderTop: "1px solid hsl(var(--border-hsl))",
                 paddingTop: "1rem",
-                marginTop: "0.5rem"
+                marginTop: "0.5rem",
+                display: "flex",
+                flexDirection: "column",
+                gap: "0.75rem"
               }}>
-                <label className="label" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span>Upload Artwork / Custom Specifications</span>
-                  <span style={{ fontSize: "0.75rem", fontWeight: 500, color: "hsl(var(--muted-hsl))" }}>PDF, PNG, JPG (Max 10MB)</span>
-                </label>
-                
-                {/* Uploaded files list */}
-                {artworkFiles.length > 0 && (
-                  <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginBottom: "0.75rem" }}>
-                    {artworkFiles.map((file, idx) => (
-                      <div key={idx} style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        padding: "0.5rem 0.75rem",
-                        backgroundColor: "hsl(var(--secondary-hsl) / 0.3)",
-                        borderRadius: "var(--radius-sm)",
-                        fontSize: "0.85rem"
-                      }}>
-                        <span style={{
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                          maxWidth: "80%",
-                          fontWeight: 500
-                        }}>
-                          📄 {file.name}
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
+                  <p style={{ fontSize: "0.75rem", fontWeight: 700, color: "hsl(var(--muted-hsl))", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                    Configuration Summary
+                  </p>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "0.3rem", fontSize: "0.8rem" }}>
+                    {Object.entries(optionGroups).map(([groupName, options]) => {
+                      const selectedId = selectedOptions[groupName];
+                      const selectedOption = options.find(opt => opt.id.toString() === selectedId);
+                      return (
+                        <div key={groupName} style={{ display: "flex", justifyContent: "space-between" }}>
+                          <span style={{ color: "hsl(var(--muted-hsl))", textTransform: "capitalize" }}>{groupName}</span>
+                          <span style={{ fontWeight: 600 }}>{selectedOption?.name || "N/A"}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Box weight details (Only for API products) */}
+                {!product.isCustom && effectivePriceData?.packageInfo && (
+                  <div style={{
+                    padding: "0.6rem 0.85rem",
+                    backgroundColor: "hsl(var(--secondary-hsl) / 0.4)",
+                    borderRadius: "var(--radius-sm)",
+                    fontSize: "0.8rem",
+                    color: "hsl(var(--muted-hsl))",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.5rem",
+                    marginTop: "0.25rem"
+                  }}>
+                    <span>📦 Est. Package: {effectivePriceData.packageInfo.weight} lbs ({effectivePriceData.packageInfo.boxes} box)</span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Artwork File Upload Card */}
+            <div style={{
+              border: "1px solid hsl(var(--border-hsl))",
+              borderRadius: "var(--radius-md)",
+              padding: "1.25rem",
+              backgroundColor: "white",
+              display: "flex",
+              flexDirection: "column",
+              gap: "1rem"
+            }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div>
+                  <h4 style={{ fontSize: "0.95rem", fontWeight: 700 }}>Upload Print Artwork</h4>
+                  <p style={{ fontSize: "0.75rem", color: "hsl(var(--muted-hsl))" }}>
+                    PDF, AI, PSD, or high-res TIFF/JPEG files (300 DPI recommended).
+                  </p>
+                </div>
+                {proofApproved && (
+                  <span style={{
+                    fontSize: "0.75rem",
+                    fontWeight: 700,
+                    color: "hsl(var(--success-hsl))",
+                    backgroundColor: "hsl(var(--success-hsl) / 0.1)",
+                    padding: "0.25rem 0.5rem",
+                    borderRadius: "var(--radius-sm)",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.25rem"
+                  }}>
+                    <FileCheck size={14} /> Proof Approved
+                  </span>
+                )}
+              </div>
+
+              {/* Uploaded files list */}
+              {artworkFiles.length > 0 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                  {artworkFiles.map((f, idx) => (
+                    <div key={idx} style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      padding: "0.5rem 0.75rem",
+                      backgroundColor: "hsl(var(--secondary-hsl) / 0.3)",
+                      borderRadius: "var(--radius-sm)",
+                      fontSize: "0.85rem"
+                    }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", overflow: "hidden" }}>
+                        <span style={{ fontWeight: 600, textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap" }}>
+                          {f.name}
                         </span>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
                         <button
                           type="button"
-                          onClick={() => handleRemoveFile(idx)}
+                          onClick={() => setProofModalOpen(true)}
+                          className="btn btn-outline"
+                          style={{ padding: "0.25rem 0.5rem", fontSize: "0.75rem", display: "flex", alignItems: "center", gap: "0.25rem" }}
+                        >
+                          <Eye size={12} /> Inspect Proof
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveArtwork(idx)}
                           style={{
                             background: "none",
                             border: "none",
                             color: "hsl(var(--destructive-hsl))",
                             cursor: "pointer",
-                            fontSize: "0.8rem",
-                            fontWeight: 600
+                            fontSize: "0.75rem",
+                            fontWeight: 700
                           }}
                         >
                           Remove
                         </button>
                       </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* Upload Trigger Area */}
-                <div style={{
-                  border: "2px dashed hsl(var(--border-hsl))",
-                  borderRadius: "var(--radius-md)",
-                  padding: "1.25rem",
-                  textAlign: "center",
-                  position: "relative",
-                  backgroundColor: "hsl(var(--background-hsl) / 0.3)",
-                  cursor: uploadingFile ? "not-allowed" : "pointer"
-                }}>
-                  <input
-                    type="file"
-                    accept=".pdf,.png,.jpg,.jpeg"
-                    onChange={handleFileUpload}
-                    disabled={uploadingFile}
-                    style={{
-                      position: "absolute",
-                      left: 0,
-                      top: 0,
-                      width: "100%",
-                      height: "100%",
-                      opacity: 0,
-                      cursor: "pointer"
-                    }}
-                  />
-                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "0.25rem" }}>
-                    {uploadingFile ? (
-                      <>
-                        <Loader2 className="animate-spin" size={20} style={{ animation: "spin 1s linear infinite", color: "hsl(var(--accent-hsl))" }} />
-                        <span style={{ fontSize: "0.85rem", fontWeight: 600 }}>Uploading file...</span>
-                      </>
-                    ) : (
-                      <>
-                        <span style={{ fontSize: "1.25rem" }}>📁</span>
-                        <span style={{ fontSize: "0.85rem", fontWeight: 600 }}>Click to upload file attachment</span>
-                      </>
-                    )}
-                  </div>
+                    </div>
+                  ))}
                 </div>
+              )}
 
-                {/* Digital Print Proof Action Button */}
-                {artworkFiles.length > 0 && (
-                  <div style={{ marginTop: "0.75rem" }}>
-                    {proofApproved ? (
-                      <div style={{ padding: "0.6rem 0.85rem", backgroundColor: "rgba(34, 197, 94, 0.1)", borderRadius: "var(--radius-sm)", color: "rgb(22, 163, 74)", fontSize: "0.8rem", fontWeight: 700, display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                        <FileCheck size={16} /> Digital Print Proof Verified & Approved ✓
-                      </div>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => setProofModalOpen(true)}
-                        className="btn btn-outline"
-                        style={{ width: "100%", fontSize: "0.85rem", padding: "0.6rem", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem", borderColor: "hsl(var(--accent-hsl))", color: "hsl(var(--accent-hsl))" }}
-                      >
-                        <Eye size={16} /> Inspect Digital Print Proof (Cut/Safe Area)
-                      </button>
-                    )}
-                  </div>
-                )}
-
-                {uploadError && (
-                  <p style={{ color: "hsl(var(--destructive-hsl))", fontSize: "0.75rem", marginTop: "0.5rem", fontWeight: 500 }}>
-                    {uploadError}
-                  </p>
-                )}
+              {/* Upload input button */}
+              <div style={{ position: "relative" }}>
+                <input
+                  type="file"
+                  accept=".pdf,.ai,.psd,.eps,.tiff,.tif,.jpg,.jpeg,.png"
+                  onChange={handleFileUpload}
+                  disabled={uploadingFile}
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    opacity: 0,
+                    cursor: uploadingFile ? "not-allowed" : "pointer"
+                  }}
+                />
+                <button
+                  type="button"
+                  disabled={uploadingFile}
+                  className="btn btn-outline"
+                  style={{ width: "100%", padding: "0.6rem", display: "flex", justifyContent: "center", alignItems: "center", gap: "0.5rem" }}
+                >
+                  {uploadingFile ? (
+                    <>
+                      <Loader2 className="animate-spin" size={16} /> Uploading Artwork File...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles size={16} /> + Attach Artwork / Print File
+                    </>
+                  )}
+                </button>
               </div>
 
-              {/* Add to Cart CTA */}
-              {(() => {
-                const currentPrice = effectivePriceData ? parseFloat(effectivePriceData.price || effectivePriceData.price?.price || 0) : null;
-                const priceIsZero = allSelected && effectivePriceData && currentPrice <= 0;
-                const isDisabled = calculatingPrice || !effectivePriceData || loadingOptions || !allSelected || uploadingFile || priceIsZero;
-                return (
-                  <button
-                    onClick={handleAddToCart}
-                    disabled={isDisabled}
-                    className="btn btn-primary"
-                    style={{
-                      width: "100%",
-                      padding: "0.85rem",
-                      fontSize: "1rem",
-                      opacity: priceIsZero ? 0.45 : 1,
-                      cursor: priceIsZero ? "not-allowed" : undefined
-                    }}
-                  >
-                    <ShoppingBag size={18} />
-                    {priceIsZero
-                      ? "Unavailable — Select Different Options"
-                      : artworkFiles.length > 0 && !proofApproved
-                        ? "Review Proof & Add to Cart"
-                        : "Add to Cart"}
-                  </button>
-                );
-              })()}
+              {uploadError && (
+                <p style={{ fontSize: "0.8rem", color: "hsl(var(--destructive-hsl))" }}>{uploadError}</p>
+              )}
             </div>
-            
-            {/* Guarantee Signal */}
-            <div style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "0.5rem",
-              fontSize: "0.8rem",
-              color: "hsl(var(--muted-hsl))",
-              justifyContent: "center"
-            }}>
-              <Sparkles size={16} style={{ color: "hsl(var(--accent-hsl))" }} />
-              <span>Free local GTA shipping lookup during checkout.</span>
-            </div>
-          </motion.div>
+
+            {/* Add to Cart CTA */}
+            <button
+              type="button"
+              onClick={handleAddToCart}
+              disabled={!allSelected || (effectivePriceData && parseFloat(effectivePriceData.price || effectivePriceData.price?.price || 0) <= 0)}
+              className="btn btn-primary"
+              style={{
+                width: "100%",
+                padding: "1rem",
+                fontSize: "1.1rem",
+                fontWeight: 800,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "0.5rem",
+                borderRadius: "var(--radius-md)",
+                boxShadow: "0 4px 14px hsl(var(--accent-hsl) / 0.25)"
+              }}
+            >
+              <ShoppingBag size={20} />
+              {!allSelected 
+                ? "Select All Options to Order" 
+                : effectivePriceData && parseFloat(effectivePriceData.price || effectivePriceData.price?.price || 0) <= 0 
+                  ? "Option Combination Unavailable" 
+                  : "Add to Shopping Cart"
+              }
+            </button>
+          </div>
         </div>
       </main>
 
-      <Footer />
+      {/* Proof Inspection Modal */}
+      <PrintProofModal
+        isOpen={proofModalOpen}
+        onClose={() => setProofModalOpen(false)}
+        artworkFile={artworkFiles[0] || null}
+        productName={productName}
+        productSpecs={selectedOptions}
+        onApprove={handleProofApproval}
+      />
 
-      {/* Digital Print Proof Modal */}
-      {proofModalOpen && artworkFiles.length > 0 && (
-        <PrintProofModal
-          isOpen={proofModalOpen}
-          onClose={() => setProofModalOpen(false)}
-          artworkUrl={artworkFiles[0]?.url}
-          productName={title}
-          onApproveProof={(proofPayload) => {
-            setProofApproved(true);
-            setProofDetails(proofPayload);
-            setProofModalOpen(false);
-          }}
-        />
-      )}
-      
-      <style>{`
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        @media (max-width: 768px) {
-          .product-grid {
-            grid-template-columns: 1fr !important;
-            gap: 2.5rem !important;
-          }
-        }
-      `}</style>
+      <Footer />
     </div>
   );
 }

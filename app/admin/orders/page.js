@@ -592,8 +592,38 @@ function AdminOrdersContent() {
                         </div>
                       )}
 
+                      {/* Custom Apparel Sizing Breakdown & Details */}
+                      {item.isApparel && (
+                        <div style={{ marginTop: "0.5rem", padding: "0.6rem 0.75rem", backgroundColor: "#F8FAFC", borderRadius: "6px", border: "1px solid #E2E8F0", display: "flex", flexDirection: "column", gap: "0.4rem" }}>
+                          {item.color && (
+                            <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.8rem" }}>
+                              <span style={{ color: "#64748B", fontWeight: 700 }}>Color:</span>
+                              <span style={{ width: "12px", height: "12px", borderRadius: "50%", backgroundColor: item.color.hex || "#FFFFFF", border: "1px solid rgba(0,0,0,0.2)" }} />
+                              <span style={{ fontWeight: 700 }}>{item.color.name}</span>
+                            </div>
+                          )}
+
+                          {item.sizeBreakdown && Object.keys(item.sizeBreakdown).length > 0 && (
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: "0.35rem", alignItems: "center", fontSize: "0.75rem" }}>
+                              <span style={{ color: "#64748B", fontWeight: 700 }}>Sizes:</span>
+                              {Object.entries(item.sizeBreakdown).filter(([_, q]) => q > 0).map(([sName, sQty]) => (
+                                <span key={sName} style={{ padding: "0.15rem 0.45rem", backgroundColor: "#EFF6FF", color: "#1D4ED8", borderRadius: "4px", fontWeight: 800, border: "1px solid #BFDBFE" }}>
+                                  {sName}: {sQty} pcs
+                                </span>
+                              ))}
+                            </div>
+                          )}
+
+                          {item.printLocation && (
+                            <div style={{ fontSize: "0.75rem", color: "#475569" }}>
+                              <span style={{ color: "#64748B", fontWeight: 700 }}>Print Location:</span> {item.printLocation.label || item.printLocation}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
                       {/* Mockup Preview for Custom Apparel */}
-                      {item.isCustom && item.mockupLayers && (
+                      {item.isApparel && (
                         <div style={{ marginTop: "0.5rem" }}>
                           <AdminApparelMockupRender item={item} />
                         </div>
@@ -631,17 +661,13 @@ function AdminOrdersContent() {
 }
 
 function AdminApparelMockupRender({ item }) {
-  const logos = item.mockupLayers?.logos || (item.artworkFiles || []).map((f, i) => ({
-    id: `logo-${i}`,
-    url: f.url,
-    name: f.name || `Logo ${i + 1}`,
-    side: f.side || item.selectedSide || "front",
-    sizeIn: f.sizeIn || 6,
-    placement: item.placement || { positionX: 0.5, positionY: 0.35 }
-  }));
+  const snapshots = item.mockupSnapshots || {};
+  const placementMeta = item.placementMetadata || {};
+  const artworkFiles = item.artworkFiles || [];
 
-  const side = item.selectedSide || item.mockupLayers?.side || "front";
-  const garmentImg = item.garmentViews?.[side]?.image || item.images?.[0] || null;
+  const sides = Object.keys(snapshots).length > 0
+    ? Object.keys(snapshots)
+    : ["front"];
 
   return (
     <div style={{
@@ -651,55 +677,58 @@ function AdminApparelMockupRender({ item }) {
       padding: "0.85rem",
       display: "flex",
       flexDirection: "column",
-      gap: "0.5rem"
+      gap: "0.75rem"
     }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <span style={{ fontSize: "0.75rem", fontWeight: 800, color: "#2563EB", textTransform: "uppercase" }}>
-          👕 Visual Garment Mockup ({side.toUpperCase()} VIEW)
+          👕 Visual Placement Mockups & Specs
         </span>
         <span style={{ fontSize: "0.7rem", fontWeight: 700, color: "#64748B" }}>
-          {logos.length} Attached Logo Layer(s)
+          {artworkFiles.length} Logo Attachment(s)
         </span>
       </div>
 
-      <div style={{
-        position: "relative",
-        width: "100%",
-        height: "220px",
-        backgroundColor: "white",
-        borderRadius: "6px",
-        border: "1px solid #CBD5E1",
-        overflow: "hidden",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center"
-      }}>
-        {garmentImg ? (
-          <img src={garmentImg} alt="Garment Base" style={{ width: "100%", height: "100%", objectFit: "contain", pointerEvents: "none" }} />
-        ) : (
-          <div style={{ fontSize: "0.8rem", color: "#94A3B8" }}>Custom Apparel Item</div>
-        )}
-
-        {logos.map((logo, idx) => {
-          const posX = logo.placement?.positionX ?? 0.5;
-          const posY = logo.placement?.positionY ?? 0.35;
-          const sizeW = Math.min(120, Math.max(30, (logo.sizeIn || 6) * 8));
+      {/* Grid of side mockups */}
+      <div style={{ display: "grid", gridTemplateColumns: `repeat(auto-fit, minmax(180px, 1fr))`, gap: "0.75rem" }}>
+        {sides.map((side) => {
+          const snapshotUrl = snapshots[side] || item.images?.[0];
+          const meta = placementMeta[side];
+          const sideArtwork = artworkFiles.find(a => a.side === side) || artworkFiles[0];
 
           return (
-            <div
-              key={idx}
-              style={{
-                position: "absolute",
-                left: `${posX * 100}%`,
-                top: `${posY * 100}%`,
-                transform: "translate(-50%, -50%)",
-                width: `${sizeW}px`,
-                height: `${sizeW}px`,
-                pointerEvents: "none"
-              }}
-            >
-              <img src={logo.url} alt={logo.name} style={{ width: "100%", height: "100%", objectFit: "contain" }} />
-              <div style={{ position: "absolute", inset: "-2px", border: "1px dashed #2563EB", borderRadius: "2px", pointerEvents: "none" }} />
+            <div key={side} style={{ backgroundColor: "#FFFFFF", borderRadius: "6px", border: "1px solid #CBD5E1", padding: "0.5rem", display: "flex", flexDirection: "column", gap: "0.4rem" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontSize: "0.7rem", fontWeight: 800, color: "#0F172A", textTransform: "capitalize" }}>
+                  {side} Side Placement
+                </span>
+                {meta && (
+                  <span style={{ fontSize: "0.65rem", color: "#64748B", fontWeight: 600 }}>
+                    X: {Math.round(meta.positionX)}% • Y: {Math.round(meta.positionY)}%
+                  </span>
+                )}
+              </div>
+
+              {snapshotUrl && (
+                <div style={{ width: "100%", height: "160px", backgroundColor: "#F8FAFC", borderRadius: "4px", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <img
+                    src={snapshotUrl}
+                    alt={`${side} Mockup`}
+                    style={{ width: "100%", height: "100%", objectFit: "contain" }}
+                  />
+                </div>
+              )}
+
+              {sideArtwork?.url && (
+                <a
+                  href={sideArtwork.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn btn-outline"
+                  style={{ padding: "0.25rem 0.5rem", fontSize: "0.7rem", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: "0.25rem", textDecoration: "none", color: "#2563EB", borderColor: "#BFDBFE" }}
+                >
+                  <FileText size={12} /> Download Raw {side.toUpperCase()} Logo
+                </a>
+              )}
             </div>
           );
         })}

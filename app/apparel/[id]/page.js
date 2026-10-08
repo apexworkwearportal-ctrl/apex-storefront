@@ -23,7 +23,7 @@ import {
   Layers
 } from "lucide-react";
 import { motion } from "framer-motion";
-import ApparelMockupEditor from "@/components/ApparelMockupEditor";
+import ApparelVisualCustomizer from "@/components/ApparelVisualCustomizer";
 
 export default function ApparelDetailPage({ params: paramsPromise }) {
   const params = use(paramsPromise);
@@ -224,20 +224,17 @@ export default function ApparelDetailPage({ params: paramsPromise }) {
       {/* Main Studio Area */}
       <main style={{ maxWidth: "1300px", margin: "0 auto", padding: "2rem 1.5rem 5rem", width: "100%", flex: 1, display: "flex", flexDirection: "column", gap: "2.5rem" }}>
         
-        {/* Visual Mockup Configurator & 2D/3D Positioning Engine */}
+        {/* Visual Mockup Configurator & 2-Step Customization Studio */}
         <div style={{
           background: "#FFFFFF",
           borderRadius: "16px",
           border: "1px solid #E2E8F0",
           boxShadow: "0 4px 20px -4px rgba(0,0,0,0.06)",
-          padding: "1.5rem",
+          padding: "1.75rem",
           overflow: "hidden"
         }}>
-          <ApparelMockupEditor
-            productName={title}
-            garmentViews={views}
-            moq={moq}
-            basePrice={startingPrice}
+          <ApparelVisualCustomizer
+            product={product}
             onAddToCart={handleApparelAddToCart}
           />
         </div>

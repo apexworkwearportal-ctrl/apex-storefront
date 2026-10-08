@@ -85,14 +85,34 @@ function CatalogContent() {
         });
         setCategories(catList);
 
-        const prodSnap = await getDocs(collection(db, "products"));
+        const [prodSnap, apparelSnap] = await Promise.all([
+          getDocs(collection(db, "products")),
+          getDocs(collection(db, "apparel_products")).catch(() => ({ forEach: () => {} }))
+        ]);
+        
         const prodList = [];
         prodSnap.forEach(doc => {
           const data = doc.data();
-          if (data.isVisible) {
-            prodList.push({ id: doc.id, ...data });
+          if (data.isVisible !== false) {
+            prodList.push({ id: doc.id, isApparel: false, ...data });
           }
         });
+        
+        apparelSnap.forEach(doc => {
+          const data = doc.data();
+          if (data.isVisible !== false) {
+            prodList.push({ 
+              id: doc.id, 
+              isApparel: true, 
+              isCustom: true, 
+              ...data,
+              images: (data.images && data.images.length > 0) 
+                ? data.images 
+                : (data.garmentViews?.front?.image ? [data.garmentViews.front.image] : [])
+            });
+          }
+        });
+
         setProducts(prodList);
 
         // Initial setup from current URL parameters
@@ -164,6 +184,103 @@ function CatalogContent() {
     return ids;
   };
 
+  // Robust category correlation helper that works seamlessly across standard print and apparel products
+  const checkCategoryMatch = (p, selectedCat, allCats) => {
+    if (!selectedCat || selectedCat === "all") return true;
+
+    const selectedNorm = selectedCat.toLowerCase().trim();
+
+    // 1. Direct apparel root alias match: "apparel", "custom-apparel", "apparel-promotional-wear", "promotional-wear"
+    const isApparelRoot = [
+      "apparel-promotional-wear",
+      "apparel",
+      "custom-apparel",
+      "promotional-wear"
+    ].includes(selectedNorm);
+
+    if (isApparelRoot && p.isApparel) {
+      return true;
+    }
+
+    // 2. Build target category IDs and aliases set
+    const targetCategoryIds = new Set([selectedNorm]);
+
+    // Find the matching category object in DB by ID, Slug, or Name
+    const matchedCategory = allCats.find(c => 
+      c.id.toLowerCase() === selectedNorm || 
+      (c.slug && c.slug.toLowerCase() === selectedNorm) ||
+      (c.name && c.name.toLowerCase() === selectedNorm)
+    );
+
+    if (matchedCategory) {
+      targetCategoryIds.add(matchedCategory.id.toLowerCase());
+      if (matchedCategory.slug) targetCategoryIds.add(matchedCategory.slug.toLowerCase());
+      if (matchedCategory.name) targetCategoryIds.add(matchedCategory.name.toLowerCase());
+
+      // Add all level-2 and level-3 children
+      allCats.forEach(c => {
+        if (c.parentId === matchedCategory.id) {
+          targetCategoryIds.add(c.id.toLowerCase());
+          if (c.slug) targetCategoryIds.add(c.slug.toLowerCase());
+          if (c.name) targetCategoryIds.add(c.name.toLowerCase());
+
+          // Level 3
+          allCats.forEach(l3 => {
+            if (l3.parentId === c.id) {
+              targetCategoryIds.add(l3.id.toLowerCase());
+              if (l3.slug) targetCategoryIds.add(l3.slug.toLowerCase());
+              if (l3.name) targetCategoryIds.add(l3.name.toLowerCase());
+            }
+          });
+        }
+      });
+    }
+
+    // 3. Apparel subcategory semantic aliases
+    const isTshirtCat = ["sub-t-shirts", "custom-tshirts", "t-shirts", "tshirts", "t-shirt", "tees", "shirt", "shirts"].some(s => targetCategoryIds.has(s));
+    const isHoodieCat = ["sub-hoodies-sweatshirts", "hoodies-sweats", "hoodies", "sweatshirts", "hoodie", "fleece"].some(s => targetCategoryIds.has(s));
+    const isHatCat = ["sub-headwear", "headwear", "hats", "caps", "beanies", "hat"].some(s => targetCategoryIds.has(s));
+    const isEmbroideredCat = ["sub-embroidered-apparel", "embroidered-apparel", "embroidery", "workwear", "uniforms", "polo", "polos"].some(s => targetCategoryIds.has(s));
+
+    if (p.isApparel) {
+      const pName = (p.name || "").toLowerCase();
+      const pCat = (p.category || "").toLowerCase();
+      const pSub = (p.subCategory || "").toLowerCase();
+      const pId = (p.categoryId || "").toLowerCase();
+
+      if (isTshirtCat && (pName.includes("t-shirt") || pName.includes("tee") || pCat.includes("t-shirt") || pCat.includes("tshirt") || pSub.includes("t-shirt") || pId.includes("t-shirt") || pId.includes("custom-tshirt") || pName.includes("shirt"))) {
+        return true;
+      }
+      if (isHoodieCat && (pName.includes("hoodie") || pName.includes("sweatshirt") || pCat.includes("hoodie") || pCat.includes("sweatshirt") || pSub.includes("hoodie") || pId.includes("hoodie") || pId.includes("sweats") || pName.includes("fleece"))) {
+        return true;
+      }
+      if (isHatCat && (pName.includes("hat") || pName.includes("cap") || pName.includes("beanie") || pCat.includes("hat") || pCat.includes("cap") || pSub.includes("headwear") || pId.includes("headwear"))) {
+        return true;
+      }
+      if (isEmbroideredCat && (pName.includes("embroider") || pName.includes("workwear") || pName.includes("uniform") || pCat.includes("embroider") || pCat.includes("workwear") || pSub.includes("embroider") || pId.includes("embroider") || pName.includes("polo"))) {
+        return true;
+      }
+    }
+
+    // 4. Product attributes matching against target set
+    const pCatId = (p.categoryId || "").toLowerCase().trim();
+    const pCatOverride = (p.categoryOverride || "").toLowerCase().trim();
+    const pSinaCat = (p.sinalite?.category || "").toLowerCase().trim();
+    const pCategory = (p.category || "").toLowerCase().trim();
+    const pSubCat = (p.subCategory || "").toLowerCase().trim();
+
+    for (const target of targetCategoryIds) {
+      if (!target) continue;
+      if (pCatId && (pCatId === target || pCatId.includes(target) || target.includes(pCatId))) return true;
+      if (pCatOverride && (pCatOverride === target || pCatOverride.includes(target) || target.includes(pCatOverride))) return true;
+      if (pSinaCat && (pSinaCat === target || pSinaCat.includes(target) || target.includes(pSinaCat))) return true;
+      if (pCategory && (pCategory === target || pCategory.includes(target) || target.includes(pCategory))) return true;
+      if (pSubCat && (pSubCat === target || pSubCat.includes(target) || target.includes(pSubCat))) return true;
+    }
+
+    return false;
+  };
+
   // Filter products client-side
   const filteredProducts = products.filter(p => {
     // 1. Specific product is selected
@@ -172,33 +289,18 @@ function CatalogContent() {
     }
 
     // 2. Category Filter
-    let catMatch = true;
-    if (selectedCategory !== "all") {
-      const targetCategoryIds = getDescendantCategoryIds(selectedCategory);
-
-      const pCatId = (p.categoryId || "").toLowerCase().trim();
-      const pCatOverride = (p.categoryOverride || "").toLowerCase().trim();
-      const pSinaCat = (p.sinalite?.category || "").toLowerCase().trim();
-
-      catMatch = targetCategoryIds.some(catId => {
-        const catObj = categories.find(c => c.id === catId);
-        const catName = (catObj?.name || "").toLowerCase().trim();
-        
-        return pCatId === catId.toLowerCase() || 
-               pCatOverride === catId.toLowerCase() ||
-               pCatOverride === catName ||
-               pSinaCat === catName ||
-               pSinaCat === catId.toLowerCase();
-      });
-    }
+    const catMatch = checkCategoryMatch(p, selectedCategory, categories);
 
     // 3. Search Query Filter
-    const searchLower = searchQuery.toLowerCase();
+    const searchLower = searchQuery.toLowerCase().trim();
+    if (!searchLower) return catMatch;
+
     const nameMatch = (p.name || p.sinalite?.name || "").toLowerCase().includes(searchLower) ||
                       (p.sku || p.sinalite?.sku || "").toLowerCase().includes(searchLower) ||
                       (p.shortDescription || "").toLowerCase().includes(searchLower) ||
                       (p.longDescription || "").toLowerCase().includes(searchLower) ||
-                      (p.description || "").toLowerCase().includes(searchLower);
+                      (p.description || "").toLowerCase().includes(searchLower) ||
+                      (p.category || "").toLowerCase().includes(searchLower);
 
     return catMatch && nameMatch;
   });
@@ -239,7 +341,11 @@ function CatalogContent() {
 
   if (selectedProduct) {
     activeProduct = selectedProduct;
-    const prodCat = categories.find(c => c.id === selectedProduct.categoryId || c.name.toLowerCase() === (selectedProduct.categoryOverride || "").toLowerCase());
+    const prodCat = categories.find(c => 
+      c.id.toLowerCase() === (selectedProduct.categoryId || "").toLowerCase() || 
+      (c.slug && c.slug.toLowerCase() === (selectedProduct.categoryId || "").toLowerCase()) ||
+      (c.name && c.name.toLowerCase() === (selectedProduct.categoryOverride || selectedProduct.category || "").toLowerCase())
+    );
     if (prodCat) {
       const level = getCategoryLevel(prodCat);
       if (level === 3) {
@@ -256,7 +362,17 @@ function CatalogContent() {
       }
     }
   } else if (selectedCategory !== "all") {
-    const catObj = categories.find(c => c.id === selectedCategory);
+    let catObj = categories.find(c => 
+      c.id.toLowerCase() === selectedCategory.toLowerCase() || 
+      (c.slug && c.slug.toLowerCase() === selectedCategory.toLowerCase()) ||
+      (c.name && c.name.toLowerCase() === selectedCategory.toLowerCase())
+    );
+
+    // Fallback alias resolution for apparel root
+    if (!catObj && (selectedCategory === "apparel" || selectedCategory === "custom-apparel")) {
+      catObj = categories.find(c => c.id === "apparel-promotional-wear");
+    }
+
     if (catObj) {
       const level = getCategoryLevel(catObj);
       if (level === 3) {
@@ -320,22 +436,7 @@ function CatalogContent() {
 
   // Get descendant category IDs and count total products under any node recursively
   const getProductCountForCategory = (catId) => {
-    const descendants = getDescendantCategoryIds(catId);
-    return products.filter(p => {
-      const pCatId = (p.categoryId || "").toLowerCase().trim();
-      const pCatOverride = (p.categoryOverride || "").toLowerCase().trim();
-      const pSinaCat = (p.sinalite?.category || "").toLowerCase().trim();
-
-      return descendants.some(descId => {
-        const descObj = categories.find(c => c.id === descId);
-        const descName = (descObj?.name || "").toLowerCase().trim();
-        return pCatId === descId.toLowerCase() || 
-               pCatOverride === descId.toLowerCase() ||
-               pCatOverride === descName ||
-               pSinaCat === descName ||
-               pSinaCat === descId.toLowerCase();
-      });
-    }).length;
+    return products.filter(p => checkCategoryMatch(p, catId, categories)).length;
   };
 
   // Category search filters
@@ -1088,7 +1189,24 @@ function CatalogContent() {
                             style={{ height: "100%" }}
                           >
                             <div className="card card-hover" style={{ display: "flex", flexDirection: "column", padding: 0, overflow: "hidden", height: "100%", border: "1px solid hsl(var(--border-hsl))", position: "relative" }}>
-                              {product.isCustom ? (
+                              {product.isApparel ? (
+                                <span style={{
+                                  position: "absolute",
+                                  top: "0.75rem",
+                                  left: "0.75rem",
+                                  backgroundColor: "rgba(37, 99, 235, 0.15)",
+                                  color: "#2563EB",
+                                  fontSize: "0.65rem",
+                                  fontWeight: 800,
+                                  textTransform: "uppercase",
+                                  padding: "0.2rem 0.5rem",
+                                  borderRadius: "4px",
+                                  zIndex: 2,
+                                  border: "1px solid rgba(37, 99, 235, 0.3)"
+                                }}>
+                                  Custom Apparel
+                                </span>
+                              ) : product.isCustom ? (
                                 <span style={{
                                   position: "absolute",
                                   top: "0.75rem",
@@ -1121,7 +1239,10 @@ function CatalogContent() {
                                   Instant Pricing
                                 </span>
                               )}
-                              <div style={{ width: "100%", height: "180px", overflow: "hidden", borderBottom: "1px solid hsl(var(--border-hsl))" }}>
+                              <Link 
+                                href={product.isApparel ? `/apparel/${product.id}` : `/products/${product.id}`}
+                                style={{ width: "100%", height: "180px", overflow: "hidden", borderBottom: "1px solid hsl(var(--border-hsl))", display: "block" }}
+                              >
                                 <img
                                   src={image}
                                   alt={product.name || product.sinalite?.name}
@@ -1135,9 +1256,14 @@ function CatalogContent() {
                                   }}
                                   className="product-card-img"
                                 />
-                              </div>
+                              </Link>
                               <div style={{ padding: "1.25rem", display: "flex", flexDirection: "column", flexGrow: 1, gap: "0.4rem" }}>
-                                <h3 style={{ fontSize: "0.95rem", fontWeight: 700, lineHeight: "1.4" }}>{product.name || product.sinalite?.name}</h3>
+                                <Link 
+                                  href={product.isApparel ? `/apparel/${product.id}` : `/products/${product.id}`}
+                                  style={{ textDecoration: "none", color: "inherit" }}
+                                >
+                                  <h3 style={{ fontSize: "0.95rem", fontWeight: 700, lineHeight: "1.4" }}>{product.name || product.sinalite?.name}</h3>
+                                </Link>
                                 <p style={{ color: "hsl(var(--muted-hsl))", fontSize: "0.8rem", overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", minHeight: "36px", lineHeight: "1.4" }}>
                                   {product.shortDescription || product.description || "Configure option weights, turnarounds, and coating options for custom prints."}
                                 </p>
@@ -1149,12 +1275,16 @@ function CatalogContent() {
                                       ${displayPrice.toFixed(2)} CAD
                                     </p>
                                   </div>
-                                  <Link href={`/products/${product.id}`} className="btn btn-primary" style={{
-                                    fontSize: "0.75rem",
-                                    padding: "0.45rem 0.95rem",
-                                    borderRadius: "var(--radius-sm)"
-                                  }}>
-                                    Configure
+                                  <Link 
+                                    href={product.isApparel ? `/apparel/${product.id}` : `/products/${product.id}`} 
+                                    className="btn btn-primary" 
+                                    style={{
+                                      fontSize: "0.75rem",
+                                      padding: "0.45rem 0.95rem",
+                                      borderRadius: "var(--radius-sm)"
+                                    }}
+                                  >
+                                    {product.isApparel ? "Customize & Size" : "Configure"}
                                   </Link>
                                 </div>
                               </div>

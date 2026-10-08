@@ -3,11 +3,66 @@
 import { useEffect, useState, use } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { db } from "@/lib/firebase";
-import { doc, getDoc, updateDoc, collection, getDocs, setDoc } from "firebase/firestore";
+import { doc, getDoc, updateDoc, collection, getDocs } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Upload, Trash2, Save, Loader2, AlertCircle, Plus, Ruler, Shirt } from "lucide-react";
+import { 
+  ArrowLeft, 
+  Upload, 
+  Trash2, 
+  Save, 
+  Loader2, 
+  AlertCircle, 
+  Plus, 
+  Ruler, 
+  Shirt, 
+  Palette, 
+  Layers, 
+  Eye, 
+  CheckCircle2,
+  Table as TableIcon
+} from "lucide-react";
 import AdminGarmentCalibration from "@/components/AdminGarmentCalibration";
+
+const DEFAULT_SIZES = [
+  { name: "S", priceUpcharge: 0 },
+  { name: "M", priceUpcharge: 0 },
+  { name: "L", priceUpcharge: 0 },
+  { name: "XL", priceUpcharge: 0 },
+  { name: "2XL", priceUpcharge: 3.50 },
+  { name: "3XL", priceUpcharge: 5.00 },
+];
+
+const STANDARD_COLORS_PRESET = [
+  { name: "White", hex: "#FFFFFF" },
+  { name: "Black", hex: "#111827" },
+  { name: "Navy Blue", hex: "#1E293B" },
+  { name: "Heather Grey", hex: "#94A3B8" },
+  { name: "Royal Blue", hex: "#2563EB" },
+  { name: "Forest Green", hex: "#15803D" },
+  { name: "Crimson Red", hex: "#DC2626" },
+  { name: "Maroon", hex: "#831843" },
+  { name: "Charcoal", hex: "#374151" },
+  { name: "Sand / Khaki", hex: "#D6C7B2" },
+  { name: "Pastel Pink", hex: "#F472B6" },
+  { name: "Sky Blue", hex: "#38BDF8" },
+];
+
+const DEFAULT_PRINT_LOCATIONS = [
+  { id: "front", label: "Front Only", priceUpcharge: 0, sides: ["front"] },
+  { id: "back", label: "Back Only", priceUpcharge: 0, sides: ["back"] },
+  { id: "front_back", label: "Front & Back", priceUpcharge: 5.00, sides: ["front", "back"] },
+  { id: "left_chest_back", label: "Left Chest + Full Back", priceUpcharge: 6.00, sides: ["left", "back"] },
+];
+
+const DEFAULT_SIZE_CHART_TABLE = [
+  { size: "S", chest: "36 - 38\"", length: "28\"", sleeve: "15.5\"" },
+  { size: "M", chest: "40 - 42\"", length: "29\"", sleeve: "17\"" },
+  { size: "L", chest: "44 - 46\"", length: "30\"", sleeve: "18.5\"" },
+  { size: "XL", chest: "48 - 50\"", length: "31\"", sleeve: "20\"" },
+  { size: "2XL", chest: "52 - 54\"", length: "32\"", sleeve: "21.5\"" },
+  { size: "3XL", chest: "56 - 58\"", length: "33\"", sleeve: "23\"" },
+];
 
 export default function AdminApparelProductEditPage({ params: paramsPromise }) {
   const params = use(paramsPromise);
@@ -19,6 +74,7 @@ export default function AdminApparelProductEditPage({ params: paramsPromise }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadingSizeChart, setUploadingSizeChart] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
 
@@ -36,7 +92,17 @@ export default function AdminApparelProductEditPage({ params: paramsPromise }) {
   const [basePrice, setBasePrice] = useState("");
   const [minimumOrderQuantity, setMinimumOrderQuantity] = useState(12);
   const [images, setImages] = useState([]);
-  const [optionGroups, setOptionGroups] = useState([]);
+
+  // Apparel specific states
+  const [fit, setFit] = useState("Semi-fitted");
+  const [sizes, setSizes] = useState(DEFAULT_SIZES);
+  const [colors, setColors] = useState(STANDARD_COLORS_PRESET.slice(0, 6));
+  const [printLocations, setPrintLocations] = useState(DEFAULT_PRINT_LOCATIONS);
+
+  // Size chart
+  const [sizeChartType, setSizeChartType] = useState("table");
+  const [sizeChartUrl, setSizeChartUrl] = useState("");
+  const [sizeChartTable, setSizeChartTable] = useState(DEFAULT_SIZE_CHART_TABLE);
 
   // Product Markup Overrides
   const [useCustomMarkup, setUseCustomMarkup] = useState(false);
@@ -57,7 +123,6 @@ export default function AdminApparelProductEditPage({ params: paramsPromise }) {
     const fetchProductAndCategories = async () => {
       setLoading(true);
       try {
-        // Fetch categories list
         const catSnap = await getDocs(collection(db, "categories"));
         const catList = [];
         catSnap.forEach(d => {
@@ -65,12 +130,10 @@ export default function AdminApparelProductEditPage({ params: paramsPromise }) {
         });
         setCategories(catList);
 
-        // Fetch apparel product from 'apparel_products' (or fallback to 'products')
         let docRef = doc(db, "apparel_products", productId);
         let snap = await getDoc(docRef);
 
         if (!snap.exists()) {
-          // Fallback to products collection
           docRef = doc(db, "products", productId);
           snap = await getDoc(docRef);
         }
@@ -85,10 +148,43 @@ export default function AdminApparelProductEditPage({ params: paramsPromise }) {
           setDisplayOrder(data.displayOrder || 0);
           setIsVisible(data.isVisible !== undefined ? data.isVisible : true);
           setCategoryId(data.categoryId || "");
-          setBasePrice(data.pricing?.startingPrice || data.pricing?.basePrice || "35.00");
+          setBasePrice(data.pricing?.startingPrice || data.pricing?.basePrice || data.basePrice || "28.00");
           setMinimumOrderQuantity(data.minimumOrderQuantity || 12);
           setImages(data.images || []);
-          setOptionGroups(data.options || []);
+          
+          // Fit & Sizes
+          setFit(data.fit || "Semi-fitted");
+          if (data.sizes && data.sizes.length > 0) {
+            setSizes(data.sizes);
+          } else if (data.options?.find(o => o.name?.toLowerCase().includes("size"))) {
+            const sizeGroup = data.options.find(o => o.name?.toLowerCase().includes("size"));
+            setSizes(sizeGroup.choices.map(c => ({ name: c.name, priceUpcharge: c.priceUpcharge || 0 })));
+          }
+
+          // Colors
+          if (data.colors && data.colors.length > 0) {
+            setColors(data.colors);
+          } else if (data.options?.find(o => o.name?.toLowerCase().includes("color") || o.name?.toLowerCase().includes("colour"))) {
+            const colGroup = data.options.find(o => o.name?.toLowerCase().includes("color") || o.name?.toLowerCase().includes("colour"));
+            setColors(colGroup.choices.map(c => {
+              const matchedPreset = STANDARD_COLORS_PRESET.find(p => p.name.toLowerCase() === c.name.toLowerCase());
+              return { name: c.name, hex: matchedPreset?.hex || "#1E293B" };
+            }));
+          }
+
+          // Size Chart
+          if (data.sizeChart) {
+            setSizeChartType(data.sizeChart.type || "table");
+            setSizeChartUrl(data.sizeChart.url || "");
+            if (data.sizeChart.tableData && data.sizeChart.tableData.length > 0) {
+              setSizeChartTable(data.sizeChart.tableData);
+            }
+          }
+
+          // Print Locations
+          if (data.printLocations && data.printLocations.length > 0) {
+            setPrintLocations(data.printLocations);
+          }
 
           setUseCustomMarkup(data.useCustomMarkup || false);
           setMarkupPercent(data.markupPercent !== undefined ? data.markupPercent : 35);
@@ -151,61 +247,6 @@ export default function AdminApparelProductEditPage({ params: paramsPromise }) {
     setImages(prev => prev.filter((_, idx) => idx !== index));
   };
 
-  // Option group handlers
-  const addOptionGroup = () => {
-    setOptionGroups(prev => [...prev, { name: "", choices: [{ name: "", priceUpcharge: 0 }] }]);
-  };
-
-  const removeOptionGroup = (groupIndex) => {
-    setOptionGroups(prev => prev.filter((_, idx) => idx !== groupIndex));
-  };
-
-  const handleGroupNameChange = (groupIndex, value) => {
-    setOptionGroups(prev => prev.map((g, idx) => idx === groupIndex ? { ...g, name: value } : g));
-  };
-
-  const addChoice = (groupIndex) => {
-    setOptionGroups(prev => prev.map((g, idx) => {
-      if (idx === groupIndex) {
-        return {
-          ...g,
-          choices: [...g.choices, { name: "", priceUpcharge: 0 }]
-        };
-      }
-      return g;
-    }));
-  };
-
-  const removeChoice = (groupIndex, choiceIndex) => {
-    setOptionGroups(prev => prev.map((g, idx) => {
-      if (idx === groupIndex) {
-        return {
-          ...g,
-          choices: g.choices.filter((_, cIdx) => cIdx !== choiceIndex)
-        };
-      }
-      return g;
-    }));
-  };
-
-  const handleChoiceChange = (groupIndex, choiceIndex, field, value) => {
-    setOptionGroups(prev => prev.map((g, idx) => {
-      if (idx === groupIndex) {
-        const updatedChoices = g.choices.map((c, cIdx) => {
-          if (cIdx === choiceIndex) {
-            return {
-              ...c,
-              [field]: field === "priceUpcharge" ? parseFloat(value) || 0 : value
-            };
-          }
-          return c;
-        });
-        return { ...g, choices: updatedChoices };
-      }
-      return g;
-    }));
-  };
-
   const handleUploadGarmentImage = async (side, file) => {
     if (!file) return;
     setUploading(true);
@@ -237,12 +278,122 @@ export default function AdminApparelProductEditPage({ params: paramsPromise }) {
           calibration: prev[side]?.calibration || { isCalibrated: false }
         }
       }));
+
+      if (side === "front" && images.length === 0) {
+        setImages([data.url]);
+      }
     } catch (err) {
       console.error(err);
       setError(err.message || "Garment image upload failed.");
     } finally {
       setUploading(false);
     }
+  };
+
+  const handleUploadSizeChart = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    setUploadingSizeChart(true);
+    setError("");
+
+    try {
+      const idToken = await user.getIdToken();
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await fetch("/api/admin/upload", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${idToken}`,
+        },
+        body: formData,
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to upload size chart file.");
+      }
+
+      setSizeChartUrl(data.url);
+      if (file.type.includes("pdf")) {
+        setSizeChartType("pdf");
+      } else {
+        setSizeChartType("image");
+      }
+    } catch (err) {
+      console.error(err);
+      setError(err.message || "Size chart upload failed.");
+    } finally {
+      setUploadingSizeChart(false);
+    }
+  };
+
+  // Sizing handlers
+  const handleAddSize = () => {
+    setSizes(prev => [...prev, { name: "", priceUpcharge: 0 }]);
+  };
+
+  const handleRemoveSize = (index) => {
+    setSizes(prev => prev.filter((_, idx) => idx !== index));
+  };
+
+  const handleSizeChange = (index, field, val) => {
+    setSizes(prev => prev.map((s, idx) => {
+      if (idx === index) {
+        return {
+          ...s,
+          [field]: field === "priceUpcharge" ? (parseFloat(val) || 0) : val
+        };
+      }
+      return s;
+    }));
+  };
+
+  // Color handlers
+  const handleAddColor = () => {
+    setColors(prev => [...prev, { name: "Custom Color", hex: "#3B82F6" }]);
+  };
+
+  const handleRemoveColor = (index) => {
+    setColors(prev => prev.filter((_, idx) => idx !== index));
+  };
+
+  const handleColorChange = (index, field, val) => {
+    setColors(prev => prev.map((c, idx) => {
+      if (idx === index) {
+        return { ...c, [field]: val };
+      }
+      return c;
+    }));
+  };
+
+  const handleLoadFullColorPreset = () => {
+    setColors(STANDARD_COLORS_PRESET);
+  };
+
+  // Print Location handlers
+  const handleAddPrintLocation = () => {
+    setPrintLocations(prev => [
+      ...prev,
+      { id: `custom_${Date.now()}`, label: "Custom Print Placement", priceUpcharge: 4.50, sides: ["front"] }
+    ]);
+  };
+
+  const handleRemovePrintLocation = (index) => {
+    setPrintLocations(prev => prev.filter((_, idx) => idx !== index));
+  };
+
+  const handlePrintLocationChange = (index, field, val) => {
+    setPrintLocations(prev => prev.map((loc, idx) => {
+      if (idx === index) {
+        return {
+          ...loc,
+          [field]: field === "priceUpcharge" ? (parseFloat(val) || 0) : val
+        };
+      }
+      return loc;
+    }));
   };
 
   const handleSaveGarmentCalibration = (calibrationPayload) => {
@@ -262,62 +413,81 @@ export default function AdminApparelProductEditPage({ params: paramsPromise }) {
     setSuccess(false);
     setError("");
 
+    if (!categoryId) {
+      setError("Please select a category.");
+      setSaving(false);
+      return;
+    }
+
+    if (sizes.length === 0) {
+      setError("Please add at least one available size.");
+      setSaving(false);
+      return;
+    }
+
+    if (colors.length === 0) {
+      setError("Please add at least one color option.");
+      setSaving(false);
+      return;
+    }
+
     try {
       const docRef = doc(db, "apparel_products", productId);
 
-      // Validate option groups
-      for (const group of optionGroups) {
-        if (!group.name.trim()) {
-          throw new Error("Option groups must have a name.");
-        }
-        if (group.choices.length === 0) {
-          throw new Error(`Option group "${group.name}" must have at least one choice.`);
-        }
-        for (const choice of group.choices) {
-          if (!choice.name.trim()) {
-            throw new Error(`All choices in option group "${group.name}" must have a name.`);
-          }
-        }
-      }
-
       const isFrontCalibrated = garmentViews.front?.calibration?.isCalibrated;
-      const finalIsVisible = isVisible;
       const needsAttention = images.length === 0 || (!shortDescription && !longDescription) || !isFrontCalibrated;
 
-      const updateData = {
-        id: productId,
+      const matchedCatObj = categories.find(c => c.id === categoryId);
+      const catName = matchedCatObj?.name || "Custom Apparel";
+
+      const productPayload = {
         name: name.trim(),
         sku: sku.trim(),
         shortDescription,
         longDescription,
         description: longDescription || shortDescription,
+        displayOrder: parseInt(displayOrder) || 0,
+        isVisible,
         categoryId,
+        category: catName,
+        categoryOverride: catName,
+        subCategory: matchedCatObj?.parentId ? catName : "",
         pricing: {
           startingPrice: parseFloat(basePrice) || 0,
           basePrice: parseFloat(basePrice) || 0,
         },
-        displayOrder: parseInt(displayOrder) || 0,
-        isVisible: finalIsVisible,
-        images,
-        options: optionGroups,
+        basePrice: parseFloat(basePrice) || 0,
+        minimumOrderQuantity: parseInt(minimumOrderQuantity) || 12,
+        images: images.length > 0 ? images : (garmentViews.front?.image ? [garmentViews.front.image] : []),
+        
+        fit: fit.trim() || "Semi-fitted",
+        sizes: sizes.filter(s => s.name.trim()),
+        colors: colors.filter(c => c.name.trim()),
+        
+        sizeChart: {
+          type: sizeChartType,
+          url: sizeChartUrl,
+          tableData: sizeChartTable
+        },
+        
+        printLocations: printLocations.filter(p => p.label.trim()),
+
         useCustomMarkup,
         markupPercent: parseFloat(markupPercent) || 0,
-        isApparel: true,
-        minimumOrderQuantity: parseInt(minimumOrderQuantity) || 12,
         garmentViews,
         needsAttention,
+        updatedAt: new Date(),
       };
 
-      await setDoc(docRef, updateData, { merge: true });
+      await updateDoc(docRef, productPayload);
 
       setSuccess(true);
-      const freshSnap = await getDoc(docRef);
-      if (freshSnap.exists()) {
-        setProduct(freshSnap.data());
-      }
+      setTimeout(() => {
+        setSuccess(false);
+      }, 3000);
     } catch (err) {
-      console.error("Error saving apparel product:", err);
-      setError("Failed to save changes: " + err.message);
+      console.error("Error updating apparel product:", err);
+      setError("Failed to update apparel product: " + err.message);
     } finally {
       setSaving(false);
     }
@@ -325,21 +495,9 @@ export default function AdminApparelProductEditPage({ params: paramsPromise }) {
 
   if (loading) {
     return (
-      <div style={{ textAlign: "center", padding: "4rem", color: "hsl(var(--muted-hsl))" }}>
-        Loading apparel product details...
-      </div>
-    );
-  }
-
-  if (error && !product) {
-    return (
-      <div className="card" style={{ textAlign: "center", padding: "3rem", borderColor: "hsl(var(--destructive-hsl))" }}>
-        <AlertCircle size={40} style={{ color: "hsl(var(--destructive-hsl))", marginBottom: "1rem" }} />
-        <h2>Error</h2>
-        <p>{error}</p>
-        <Link href="/admin/apparel" className="btn btn-secondary" style={{ marginTop: "1rem", display: "inline-flex" }}>
-          Back to Apparel Catalog
-        </Link>
+      <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "50vh", flexDirection: "column", gap: "1rem" }}>
+        <Loader2 className="animate-spin" size={32} style={{ color: "hsl(var(--accent-hsl))" }} />
+        <p style={{ color: "hsl(var(--muted-hsl))", fontSize: "0.95rem" }}>Loading apparel product...</p>
       </div>
     );
   }
@@ -359,28 +517,37 @@ export default function AdminApparelProductEditPage({ params: paramsPromise }) {
           <span style={{ fontSize: "0.75rem", fontWeight: 800, textTransform: "uppercase", color: "hsl(var(--accent-hsl))", letterSpacing: "0.05em", display: "block", marginBottom: "0.25rem" }}>
             Dedicated Apparel Engine
           </span>
-          <h1 style={{ fontSize: "2rem", marginBottom: "0.25rem", fontWeight: 900, color: "hsl(var(--primary-hsl))" }}>
+          <h1 style={{ fontSize: "2rem", fontWeight: 900, marginBottom: "0.25rem", color: "hsl(var(--primary-hsl))", letterSpacing: "-0.02em" }}>
             Edit Apparel Product
           </h1>
           <p style={{ color: "hsl(var(--muted-hsl))", fontSize: "0.95rem" }}>
-            <span style={{ fontSize: "0.85rem", padding: "0.2rem 0.5rem", marginRight: "0.5rem", backgroundColor: "hsl(var(--accent-hsl) / 0.15)", color: "hsl(var(--accent-hsl))", borderRadius: "4px", fontWeight: 700 }}>Apparel Product</span>
-            {name} <span style={{ fontSize: "0.8rem", padding: "0.1rem 0.4rem", backgroundColor: "hsl(var(--secondary-hsl))", borderRadius: "4px" }}>SKU: {sku}</span>
+            {product?.name} ({product?.sku})
           </p>
         </div>
-        <button
-          onClick={handleSave}
-          className="btn btn-primary"
-          disabled={saving}
-          style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.75rem 1.5rem" }}
-        >
-          {saving ? <Loader2 size={18} className="animate-spin" style={{ animation: "spin 1s linear infinite" }} /> : <Save size={18} />}
-          {saving ? "Saving Changes..." : "Save Apparel Product"}
-        </button>
+        <div style={{ display: "flex", gap: "0.75rem" }}>
+          <Link
+            href={`/apparel/${productId}`}
+            target="_blank"
+            className="btn btn-outline"
+            style={{ display: "flex", alignItems: "center", gap: "0.4rem", padding: "0.75rem 1.25rem" }}
+          >
+            <Eye size={16} /> Preview on Storefront
+          </Link>
+          <button
+            onClick={handleSave}
+            className="btn btn-primary"
+            disabled={saving}
+            style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.75rem 1.5rem" }}
+          >
+            {saving ? <Loader2 size={18} className="animate-spin" style={{ animation: "spin 1s linear infinite" }} /> : <Save size={18} />}
+            {saving ? "Saving Changes..." : "Save Changes"}
+          </button>
+        </div>
       </div>
 
       {success && (
         <div className="card" style={{ borderColor: "hsl(var(--success-hsl))", backgroundColor: "hsl(var(--success-hsl) / 0.05)", padding: "1rem 1.5rem", marginBottom: "1.5rem", color: "hsl(var(--success-hsl))", fontWeight: 600 }}>
-          Apparel product changes saved successfully!
+          Apparel product updated successfully!
         </div>
       )}
 
@@ -391,208 +558,549 @@ export default function AdminApparelProductEditPage({ params: paramsPromise }) {
       )}
 
       <form onSubmit={handleSave} style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr", gap: "2rem" }}>
-        {/* Left column */}
+        {/* Left column: Content details */}
         <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
           
           {/* Identification Details */}
           <div className="card" style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-            <h2 style={{ fontSize: "1.2rem", margin: 0 }}>Product Information</h2>
+            <h2 style={{ fontSize: "1.2rem", margin: 0, fontWeight: 700 }}>Garment Identification</h2>
             <div>
-              <label className="label">Apparel Name (Required)</label>
-              <input className="input" value={name} onChange={(e) => setName(e.target.value)} required />
+              <label className="label">Apparel Product Name (Required)</label>
+              <input 
+                className="input" 
+                value={name} 
+                onChange={(e) => setName(e.target.value)} 
+                required 
+              />
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
               <div>
                 <label className="label">SKU</label>
-                <input className="input" value={sku} onChange={(e) => setSku(e.target.value)} required />
+                <input 
+                  className="input" 
+                  value={sku} 
+                  onChange={(e) => setSku(e.target.value)} 
+                  required 
+                />
               </div>
               <div>
                 <label className="label">Minimum Order Quantity (MOQ)</label>
-                <input type="number" min="1" className="input" value={minimumOrderQuantity} onChange={(e) => setMinimumOrderQuantity(e.target.value)} required />
+                <input 
+                  type="number"
+                  min="1"
+                  className="input" 
+                  value={minimumOrderQuantity} 
+                  onChange={(e) => setMinimumOrderQuantity(e.target.value)} 
+                  required 
+                />
               </div>
+            </div>
+          </div>
+
+          {/* Sizing & Fit Matrix Section */}
+          <div className="card" style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid hsl(var(--border-hsl))", paddingBottom: "0.75rem" }}>
+              <div>
+                <h2 style={{ fontSize: "1.2rem", margin: 0, fontWeight: 700, display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                  <Shirt size={18} style={{ color: "hsl(var(--accent-hsl))" }} /> Sizing & Fit Matrix
+                </h2>
+                <p style={{ fontSize: "0.8rem", color: "hsl(var(--muted-hsl))", margin: "0.2rem 0 0" }}>
+                  Customers can enter quantities across multiple sizes in a single order.
+                </p>
+              </div>
+              <button type="button" onClick={handleAddSize} className="btn btn-outline" style={{ padding: "0.35rem 0.75rem", fontSize: "0.8rem", display: "flex", alignItems: "center", gap: "0.25rem" }}>
+                <Plus size={14} /> Add Size
+              </button>
+            </div>
+
+            {/* Fit description */}
+            <div>
+              <label className="label">Fit Description (Displayed under Size header on product page)</label>
+              <input
+                className="input"
+                value={fit}
+                onChange={(e) => setFit(e.target.value)}
+                placeholder="e.g. Fit: Semi-fitted, Fit: Regular unisex, Fit: Athletic"
+              />
+            </div>
+
+            {/* Sizes list */}
+            <div>
+              <label className="label">Available Sizes & Upcharges (CAD)</label>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: "0.75rem" }}>
+                {sizes.map((sz, sIdx) => (
+                  <div key={sIdx} style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.6rem 0.75rem", backgroundColor: "hsl(var(--secondary-hsl) / 0.3)", borderRadius: "var(--radius-sm)", border: "1px solid hsl(var(--border-hsl))" }}>
+                    <input
+                      className="input"
+                      value={sz.name}
+                      onChange={(e) => handleSizeChange(sIdx, "name", e.target.value)}
+                      placeholder="Size"
+                      style={{ width: "70px", fontWeight: 700, textAlign: "center", padding: "0.3rem" }}
+                    />
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.2rem" }}>
+                      <span style={{ fontSize: "0.75rem", color: "hsl(var(--muted-hsl))" }}>+$</span>
+                      <input
+                        type="number"
+                        step="0.50"
+                        min="0"
+                        className="input"
+                        value={sz.priceUpcharge}
+                        onChange={(e) => handleSizeChange(sIdx, "priceUpcharge", e.target.value)}
+                        placeholder="0.00"
+                        style={{ width: "65px", padding: "0.3rem", fontSize: "0.85rem" }}
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveSize(sIdx)}
+                      style={{ color: "hsl(var(--destructive-hsl))", background: "none", border: "none", cursor: "pointer", padding: "0.2rem" }}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Colors & Swatches Configuration */}
+          <div className="card" style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid hsl(var(--border-hsl))", paddingBottom: "0.75rem", flexWrap: "wrap", gap: "0.5rem" }}>
+              <div>
+                <h2 style={{ fontSize: "1.2rem", margin: 0, fontWeight: 700, display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                  <Palette size={18} style={{ color: "hsl(var(--accent-hsl))" }} /> Color Palette & Swatches
+                </h2>
+                <p style={{ fontSize: "0.8rem", color: "hsl(var(--muted-hsl))", margin: "0.2rem 0 0" }}>
+                  Renders interactive circular swatches on the customer product page.
+                </p>
+              </div>
+              <div style={{ display: "flex", gap: "0.5rem" }}>
+                <button type="button" onClick={handleLoadFullColorPreset} className="btn btn-secondary" style={{ padding: "0.35rem 0.65rem", fontSize: "0.75rem" }}>
+                  Load 12 Preset Colors
+                </button>
+                <button type="button" onClick={handleAddColor} className="btn btn-outline" style={{ padding: "0.35rem 0.65rem", fontSize: "0.75rem", display: "flex", alignItems: "center", gap: "0.25rem" }}>
+                  <Plus size={13} /> Add Color
+                </button>
+              </div>
+            </div>
+
+            {/* Colors Preview Row */}
+            <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", flexWrap: "wrap", padding: "0.75rem", backgroundColor: "hsl(var(--secondary-hsl) / 0.2)", borderRadius: "var(--radius-md)", border: "1px solid hsl(var(--border-hsl))" }}>
+              <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "hsl(var(--muted-hsl))", marginRight: "0.25rem" }}>Storefront Preview:</span>
+              {colors.map((c, idx) => (
+                <div
+                  key={idx}
+                  title={`${c.name} (${c.hex})`}
+                  style={{
+                    width: "28px",
+                    height: "28px",
+                    borderRadius: "50%",
+                    backgroundColor: c.hex,
+                    border: "1px solid rgba(0,0,0,0.15)",
+                    boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+                    cursor: "pointer",
+                    position: "relative"
+                  }}
+                />
+              ))}
+            </div>
+
+            {/* Colors List Editor */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: "0.75rem" }}>
+              {colors.map((col, cIdx) => (
+                <div key={cIdx} style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.5rem 0.75rem", backgroundColor: "hsl(var(--secondary-hsl) / 0.3)", borderRadius: "var(--radius-sm)", border: "1px solid hsl(var(--border-hsl))" }}>
+                  <input
+                    type="color"
+                    value={col.hex.startsWith("#") ? col.hex : "#000000"}
+                    onChange={(e) => handleColorChange(cIdx, "hex", e.target.value)}
+                    style={{ width: "32px", height: "32px", border: "none", borderRadius: "50%", cursor: "pointer", padding: 0, backgroundColor: "transparent" }}
+                  />
+                  <div style={{ display: "flex", flexDirection: "column", flexGrow: 1, gap: "0.2rem" }}>
+                    <input
+                      className="input"
+                      value={col.name}
+                      onChange={(e) => handleColorChange(cIdx, "name", e.target.value)}
+                      placeholder="Color Name"
+                      style={{ padding: "0.25rem 0.5rem", fontSize: "0.85rem", fontWeight: 600 }}
+                    />
+                    <input
+                      className="input"
+                      value={col.hex}
+                      onChange={(e) => handleColorChange(cIdx, "hex", e.target.value)}
+                      placeholder="#FFFFFF"
+                      style={{ padding: "0.15rem 0.5rem", fontSize: "0.75rem", fontFamily: "monospace" }}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveColor(cIdx)}
+                    style={{ color: "hsl(var(--destructive-hsl))", background: "none", border: "none", cursor: "pointer" }}
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Size Chart Setup */}
+          <div className="card" style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid hsl(var(--border-hsl))", paddingBottom: "0.75rem" }}>
+              <div>
+                <h2 style={{ fontSize: "1.2rem", margin: 0, fontWeight: 700, display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                  <Ruler size={18} style={{ color: "hsl(var(--accent-hsl))" }} /> Size Chart Modal Configuration
+                </h2>
+                <p style={{ fontSize: "0.8rem", color: "hsl(var(--muted-hsl))", margin: "0.2rem 0 0" }}>
+                  Opens when customer clicks &quot;Size chart&quot; on the product page.
+                </p>
+              </div>
+            </div>
+
+            <div style={{ display: "flex", gap: "1rem" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.85rem", cursor: "pointer" }}>
+                <input
+                  type="radio"
+                  name="sizeChartType"
+                  checked={sizeChartType === "table"}
+                  onChange={() => setSizeChartType("table")}
+                />
+                Formatted Measurement Table
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.85rem", cursor: "pointer" }}>
+                <input
+                  type="radio"
+                  name="sizeChartType"
+                  checked={sizeChartType === "image" || sizeChartType === "pdf"}
+                  onChange={() => setSizeChartType("image")}
+                />
+                Uploaded Image / PDF Chart
+              </label>
+            </div>
+
+            {sizeChartType === "table" ? (
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
+                  <thead>
+                    <tr style={{ backgroundColor: "hsl(var(--secondary-hsl) / 0.5)", textAlign: "left" }}>
+                      <th style={{ padding: "0.5rem 0.75rem", border: "1px solid hsl(var(--border-hsl))" }}>Size</th>
+                      <th style={{ padding: "0.5rem 0.75rem", border: "1px solid hsl(var(--border-hsl))" }}>Chest (Pit to Pit)</th>
+                      <th style={{ padding: "0.5rem 0.75rem", border: "1px solid hsl(var(--border-hsl))" }}>Body Length</th>
+                      <th style={{ padding: "0.5rem 0.75rem", border: "1px solid hsl(var(--border-hsl))" }}>Sleeve</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sizeChartTable.map((row, rIdx) => (
+                      <tr key={rIdx}>
+                        <td style={{ padding: "0.35rem 0.5rem", border: "1px solid hsl(var(--border-hsl))" }}>
+                          <input
+                            className="input"
+                            value={row.size}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setSizeChartTable(prev => prev.map((r, i) => i === rIdx ? { ...r, size: val } : r));
+                            }}
+                            style={{ padding: "0.25rem", fontWeight: 700 }}
+                          />
+                        </td>
+                        <td style={{ padding: "0.35rem 0.5rem", border: "1px solid hsl(var(--border-hsl))" }}>
+                          <input
+                            className="input"
+                            value={row.chest}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setSizeChartTable(prev => prev.map((r, i) => i === rIdx ? { ...r, chest: val } : r));
+                            }}
+                            style={{ padding: "0.25rem" }}
+                          />
+                        </td>
+                        <td style={{ padding: "0.35rem 0.5rem", border: "1px solid hsl(var(--border-hsl))" }}>
+                          <input
+                            className="input"
+                            value={row.length}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setSizeChartTable(prev => prev.map((r, i) => i === rIdx ? { ...r, length: val } : r));
+                            }}
+                            style={{ padding: "0.25rem" }}
+                          />
+                        </td>
+                        <td style={{ padding: "0.35rem 0.5rem", border: "1px solid hsl(var(--border-hsl))" }}>
+                          <input
+                            className="input"
+                            value={row.sleeve}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setSizeChartTable(prev => prev.map((r, i) => i === rIdx ? { ...r, sleeve: val } : r));
+                            }}
+                            style={{ padding: "0.25rem" }}
+                          />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+                  <div style={{ position: "relative" }}>
+                    <input
+                      type="file"
+                      accept=".pdf,image/png,image/jpeg,image/webp"
+                      onChange={handleUploadSizeChart}
+                      disabled={uploadingSizeChart}
+                      style={{ position: "absolute", inset: 0, opacity: 0, cursor: "pointer" }}
+                    />
+                    <button type="button" className="btn btn-outline" disabled={uploadingSizeChart} style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                      {uploadingSizeChart ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
+                      Upload Size Chart (PDF or Image)
+                    </button>
+                  </div>
+                  {sizeChartUrl && (
+                    <a href={sizeChartUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: "0.85rem", color: "hsl(var(--accent-hsl))", textDecoration: "underline", display: "flex", alignItems: "center", gap: "0.25rem" }}>
+                      <Eye size={14} /> View Current Size Chart File
+                    </a>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Print Locations / Decoration Types Configurator */}
+          <div className="card" style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid hsl(var(--border-hsl))", paddingBottom: "0.75rem" }}>
+              <div>
+                <h2 style={{ fontSize: "1.2rem", margin: 0, fontWeight: 700, display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                  <Layers size={18} style={{ color: "hsl(var(--accent-hsl))" }} /> Print Locations & Decoration Options
+                </h2>
+                <p style={{ fontSize: "0.8rem", color: "hsl(var(--muted-hsl))", margin: "0.2rem 0 0" }}>
+                  Options the customer selects before placing artwork (e.g. Front Only, Front & Back).
+                </p>
+              </div>
+              <button type="button" onClick={handleAddPrintLocation} className="btn btn-outline" style={{ padding: "0.35rem 0.75rem", fontSize: "0.8rem", display: "flex", alignItems: "center", gap: "0.25rem" }}>
+                <Plus size={14} /> Add Placement Choice
+              </button>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+              {printLocations.map((loc, lIdx) => (
+                <div key={lIdx} style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "0.75rem", backgroundColor: "hsl(var(--secondary-hsl) / 0.25)", borderRadius: "var(--radius-sm)", border: "1px solid hsl(var(--border-hsl))" }}>
+                  <input
+                    className="input"
+                    value={loc.label}
+                    onChange={(e) => handlePrintLocationChange(lIdx, "label", e.target.value)}
+                    placeholder="Option Label"
+                    style={{ flexGrow: 1, fontWeight: 600 }}
+                  />
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
+                    <span style={{ fontSize: "0.8rem", color: "hsl(var(--muted-hsl))" }}>Upcharge (CAD): +$</span>
+                    <input
+                      type="number"
+                      step="0.50"
+                      min="0"
+                      className="input"
+                      value={loc.priceUpcharge}
+                      onChange={(e) => handlePrintLocationChange(lIdx, "priceUpcharge", e.target.value)}
+                      placeholder="0.00"
+                      style={{ width: "80px" }}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleRemovePrintLocation(lIdx)}
+                    style={{ color: "hsl(var(--destructive-hsl))", background: "none", border: "none", cursor: "pointer" }}
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              ))}
             </div>
           </div>
 
           {/* Descriptions Card */}
           <div className="card" style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
             <div>
-              <h2 style={{ fontSize: "1.2rem", marginBottom: "0.25rem" }}>Short Description (Catalog Summary)</h2>
+              <h2 style={{ fontSize: "1.2rem", marginBottom: "0.25rem", fontWeight: 700 }}>Short Description (Catalog Summary)</h2>
               <textarea
                 className="input"
                 value={shortDescription}
                 onChange={(e) => setShortDescription(e.target.value)}
-                placeholder="e.g. 400 GSM heavy fleece hoodie with double-stitched pouch pocket."
                 rows={2}
                 style={{ resize: "vertical", fontFamily: "inherit" }}
               />
             </div>
 
             <div>
-              <h2 style={{ fontSize: "1.2rem", marginBottom: "0.25rem" }}>Detailed Specifications & Fabric Breakdown</h2>
+              <h2 style={{ fontSize: "1.2rem", marginBottom: "0.25rem", fontWeight: 700 }}>Detailed Specifications & Fabric Breakdown</h2>
               <textarea
                 className="input"
                 value={longDescription}
                 onChange={(e) => setLongDescription(e.target.value)}
-                placeholder="Fabric weight, ring-spun cotton blends, rib cuffs, sizing instructions, decoration embroidery/print guidelines..."
-                rows={6}
+                rows={5}
                 style={{ resize: "vertical", fontFamily: "inherit" }}
               />
             </div>
           </div>
+        </div>
 
-          {/* Sizing & Options Configurator */}
-          <div className="card">
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.25rem" }}>
-              <div>
-                <h2 style={{ fontSize: "1.2rem", margin: 0 }}>Sizing & Option Matrix</h2>
-                <p style={{ fontSize: "0.8rem", color: "hsl(var(--muted-hsl))", margin: "0.2rem 0 0" }}>
-                  Configure garment sizes (with upcharges for 2XL/3XL) and fabric colors.
-                </p>
-              </div>
-              <button type="button" onClick={addOptionGroup} className="btn btn-outline" style={{ padding: "0.4rem 0.85rem", fontSize: "0.8rem", display: "flex", alignItems: "center", gap: "0.25rem" }}>
-                <Plus size={14} /> Add Option Group
-              </button>
+        {/* Right column: Garment views, calibration & pricing */}
+        <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+          
+          {/* Base Pricing & Category */}
+          <div className="card" style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+            <h2 style={{ fontSize: "1.2rem", margin: 0, fontWeight: 700 }}>Category & Base Price</h2>
+            <div>
+              <label className="label">Category</label>
+              <select
+                className="input"
+                value={categoryId}
+                onChange={(e) => setCategoryId(e.target.value)}
+              >
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
             </div>
 
-            <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
-              {optionGroups.map((group, gIdx) => (
-                <div key={gIdx} className="card" style={{ padding: "1.25rem", backgroundColor: "hsl(var(--secondary-hsl) / 0.15)", position: "relative" }}>
-                  <button
-                    type="button"
-                    onClick={() => removeOptionGroup(gIdx)}
-                    className="btn"
-                    style={{
-                      position: "absolute",
-                      top: "1rem",
-                      right: "1rem",
-                      padding: "0.3rem",
-                      backgroundColor: "rgba(220, 38, 38, 0.1)",
-                      color: "hsl(var(--destructive-hsl))",
-                      border: "none",
-                      cursor: "pointer",
-                      borderRadius: "var(--radius-sm)"
-                    }}
-                  >
-                    <Trash2 size={14} />
-                  </button>
+            <div>
+              <label className="label">Starting Base Unit Price (CAD)</label>
+              <div style={{ position: "relative" }}>
+                <span style={{ position: "absolute", left: "0.75rem", top: "50%", transform: "translateY(-50%)", color: "hsl(var(--muted-hsl))", fontWeight: 700 }}>$</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  className="input"
+                  value={basePrice}
+                  onChange={(e) => setBasePrice(e.target.value)}
+                  placeholder="28.00"
+                  style={{ paddingLeft: "1.75rem", fontWeight: 800, fontSize: "1.1rem" }}
+                  required
+                />
+              </div>
+            </div>
 
-                  <div style={{ maxWidth: "75%", marginBottom: "1rem" }}>
-                    <label className="label">Group Name</label>
-                    <input className="input" value={group.name} onChange={(e) => handleGroupNameChange(gIdx, e.target.value)} required />
-                  </div>
+            <div>
+              <label className="label">Catalog Display Order</label>
+              <input
+                type="number"
+                className="input"
+                value={displayOrder}
+                onChange={(e) => setDisplayOrder(e.target.value)}
+              />
+            </div>
 
-                  <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
-                    <label className="label">Choices & Upcharges</label>
-                    {group.choices.map((choice, cIdx) => (
-                      <div key={cIdx} style={{ display: "flex", gap: "0.75rem", alignItems: "center" }}>
-                        <input
-                          className="input"
-                          value={choice.name}
-                          onChange={(e) => handleChoiceChange(gIdx, cIdx, "name", e.target.value)}
-                          placeholder="Choice name (e.g. 2XL, Navy)"
-                          style={{ flex: 2 }}
-                          required
-                        />
-                        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flex: 1 }}>
-                          <span style={{ fontSize: "0.85rem", fontWeight: 700 }}>+$</span>
-                          <input
-                            type="number"
-                            step="0.01"
-                            className="input"
-                            value={choice.priceUpcharge}
-                            onChange={(e) => handleChoiceChange(gIdx, cIdx, "priceUpcharge", e.target.value)}
-                          />
-                        </div>
-                        {group.choices.length > 1 && (
-                          <button type="button" onClick={() => removeChoice(gIdx, cIdx)} className="btn btn-outline" style={{ padding: "0.5rem", color: "hsl(var(--destructive-hsl))" }}>
-                            <Trash2 size={14} />
-                          </button>
-                        )}
-                      </div>
-                    ))}
-                    <button type="button" onClick={() => addChoice(gIdx)} className="btn btn-outline" style={{ padding: "0.4rem 0.85rem", fontSize: "0.8rem", width: "fit-content", marginTop: "0.25rem", display: "flex", alignItems: "center", gap: "0.25rem" }}>
-                      <Plus size={12} /> Add Choice Row
-                    </button>
-                  </div>
-                </div>
-              ))}
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              <input
+                type="checkbox"
+                id="isVisibleCheck"
+                checked={isVisible}
+                onChange={(e) => setIsVisible(e.target.checked)}
+              />
+              <label htmlFor="isVisibleCheck" style={{ fontSize: "0.85rem", fontWeight: 600, cursor: "pointer" }}>
+                Visible in Storefront Catalog
+              </label>
             </div>
           </div>
 
-          {/* Garment Angles & Calibration */}
-          <div className="card">
-            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.25rem" }}>
-              <Shirt size={20} style={{ color: "hsl(var(--accent-hsl))" }} />
-              <h2 style={{ fontSize: "1.2rem", margin: 0 }}>Interactive Garment Calibration</h2>
+          {/* Dedicated Garment Angle Views & Calibration */}
+          <div className="card" style={{ display: "flex", flexDirection: "column", gap: "1.25rem", borderColor: "hsl(var(--accent-hsl) / 0.3)" }}>
+            <div style={{ borderBottom: "1px solid hsl(var(--border-hsl))", paddingBottom: "0.75rem" }}>
+              <span style={{ fontSize: "0.7rem", fontWeight: 800, color: "hsl(var(--accent-hsl))", textTransform: "uppercase" }}>High-Precision Setup</span>
+              <h2 style={{ fontSize: "1.2rem", margin: "0.15rem 0 0", fontWeight: 800, display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <Ruler size={18} /> Garment Views & Calibration
+              </h2>
+              <p style={{ fontSize: "0.8rem", color: "hsl(var(--muted-hsl))", margin: "0.2rem 0 0" }}>
+                Upload clear view angles (Front, Back, Sleeves) and calibrate real-world inches.
+              </p>
             </div>
-            <p style={{ fontSize: "0.85rem", color: "hsl(var(--muted-hsl))", marginBottom: "1.25rem" }}>
-              Upload blank garment view angles and calibrate the printable chest/back bounds.
-            </p>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
-              {["front", "back", "left", "right"].map(side => {
-                const view = garmentViews[side];
-                const isCalibrated = view?.calibration?.isCalibrated;
+            {/* View angle upload cards */}
+            <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+              {["front", "back", "left", "right"].map((sideKey) => {
+                const view = garmentViews[sideKey];
+                const hasImg = !!view?.image;
+                const isCalibrated = !!view?.calibration?.isCalibrated;
+                const sideLabel = sideKey.charAt(0).toUpperCase() + sideKey.slice(1) + " View";
 
                 return (
-                  <div key={side} className="card" style={{ padding: "1rem", backgroundColor: "hsl(var(--secondary-hsl) / 0.15)", display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+                  <div
+                    key={sideKey}
+                    style={{
+                      border: "1px solid hsl(var(--border-hsl))",
+                      borderRadius: "var(--radius-md)",
+                      padding: "0.85rem",
+                      backgroundColor: hasImg ? "hsl(var(--secondary-hsl) / 0.15)" : "transparent",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "0.5rem"
+                    }}
+                  >
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <span style={{ fontWeight: 800, textTransform: "uppercase", fontSize: "0.8rem", color: "hsl(var(--primary-hsl))" }}>
-                        {side} Angle {side === "front" ? "(Primary)" : ""}
-                      </span>
-                      {view?.image && (
+                      <span style={{ fontWeight: 700, fontSize: "0.9rem" }}>{sideLabel}</span>
+                      {hasImg && (
                         <span style={{
                           fontSize: "0.7rem",
                           fontWeight: 700,
-                          padding: "0.15rem 0.45rem",
+                          padding: "0.2rem 0.5rem",
                           borderRadius: "4px",
-                          backgroundColor: isCalibrated ? "hsl(var(--success-hsl) / 0.12)" : "rgba(239, 68, 68, 0.1)",
+                          backgroundColor: isCalibrated ? "hsl(var(--success-hsl) / 0.15)" : "hsl(var(--destructive-hsl) / 0.1)",
                           color: isCalibrated ? "hsl(var(--success-hsl))" : "hsl(var(--destructive-hsl))"
                         }}>
-                          {isCalibrated ? "Calibrated ✓" : "Uncalibrated ✗"}
+                          {isCalibrated ? "✓ Calibrated" : "⚠ Uncalibrated"}
                         </span>
                       )}
                     </div>
 
-                    {view?.image ? (
-                      <div style={{ position: "relative", height: "140px", backgroundColor: "#ffffff", borderRadius: "var(--radius-sm)", border: "1px solid hsl(var(--border-hsl))", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
-                        <img src={view.image} alt={`${side} view`} style={{ maxHeight: "100%", maxWidth: "100%", objectFit: "contain" }} />
+                    {hasImg ? (
+                      <div style={{ display: "flex", gap: "0.75rem", alignItems: "center" }}>
+                        <img
+                          src={view.image}
+                          alt={sideLabel}
+                          style={{ width: "64px", height: "64px", objectFit: "contain", backgroundColor: "white", borderRadius: "4px", border: "1px solid hsl(var(--border-hsl))", padding: "2px" }}
+                        />
+                        <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                          <button
+                            type="button"
+                            onClick={() => setActiveCalibrateSide(sideKey)}
+                            className="btn btn-outline"
+                            style={{ padding: "0.35rem 0.75rem", fontSize: "0.8rem", display: "flex", alignItems: "center", gap: "0.35rem", borderColor: "hsl(var(--accent-hsl))", color: "hsl(var(--accent-hsl))" }}
+                          >
+                            <Ruler size={14} /> {isCalibrated ? "Re-Calibrate" : "Calibrate"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setGarmentViews(prev => ({
+                                ...prev,
+                                [sideKey]: { image: "", calibration: { isCalibrated: false } }
+                              }));
+                            }}
+                            style={{ background: "none", border: "none", color: "hsl(var(--destructive-hsl))", cursor: "pointer", fontSize: "0.8rem", fontWeight: 600 }}
+                          >
+                            Remove
+                          </button>
+                        </div>
                       </div>
                     ) : (
-                      <label style={{
-                        height: "140px",
-                        border: "2px dashed hsl(var(--border-hsl))",
-                        borderRadius: "var(--radius-sm)",
-                        display: "flex",
-                        flexDirection: "column",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        cursor: "pointer",
-                        gap: "0.5rem",
-                        color: "hsl(var(--muted-hsl))",
-                        fontSize: "0.8rem",
-                        backgroundColor: "#ffffff"
-                      }}>
-                        <Upload size={20} />
-                        <span>Upload {side} image</span>
-                        <input type="file" accept="image/*" onChange={(e) => handleUploadGarmentImage(side, e.target.files[0])} style={{ display: "none" }} />
-                      </label>
-                    )}
-
-                    {view?.image && (
-                      <div style={{ display: "flex", gap: "0.5rem" }}>
+                      <div style={{ position: "relative" }}>
+                        <input
+                          type="file"
+                          accept="image/png,image/jpeg,image/webp"
+                          disabled={uploading}
+                          onChange={(e) => handleUploadGarmentImage(sideKey, e.target.files[0])}
+                          style={{ position: "absolute", inset: 0, opacity: 0, cursor: "pointer" }}
+                        />
                         <button
                           type="button"
-                          onClick={() => setActiveCalibrateSide(side)}
                           className="btn btn-outline"
-                          style={{ flex: 1, padding: "0.4rem", fontSize: "0.75rem", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.25rem" }}
+                          disabled={uploading}
+                          style={{ width: "100%", fontSize: "0.8rem", padding: "0.45rem", borderStyle: "dashed", display: "flex", justifyContent: "center", alignItems: "center", gap: "0.4rem" }}
                         >
-                          <Ruler size={13} /> {isCalibrated ? "Re-Calibrate" : "Calibrate"}
+                          <Upload size={14} /> Upload {sideLabel} Photo
                         </button>
-                        <label className="btn btn-outline" style={{ padding: "0.4rem 0.6rem", fontSize: "0.75rem", cursor: "pointer" }}>
-                          Replace
-                          <input type="file" accept="image/*" onChange={(e) => handleUploadGarmentImage(side, e.target.files[0])} style={{ display: "none" }} />
-                        </label>
                       </div>
                     )}
                   </div>
@@ -600,57 +1108,45 @@ export default function AdminApparelProductEditPage({ params: paramsPromise }) {
               })}
             </div>
           </div>
-        </div>
 
-        {/* Right column */}
-        <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
-          
-          {/* Base Pricing Card */}
+          {/* Primary Gallery Images */}
           <div className="card" style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-            <h2 style={{ fontSize: "1.2rem", margin: 0 }}>Base Starting Price</h2>
-            <div>
-              <label className="label">Base Blank Price (CAD $)</label>
-              <input 
-                type="number" 
-                step="0.01" 
-                className="input" 
-                value={basePrice} 
-                onChange={(e) => setBasePrice(e.target.value)} 
-                required 
-              />
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <h2 style={{ fontSize: "1.2rem", margin: 0, fontWeight: 700 }}>Gallery Photos</h2>
+              <div style={{ position: "relative" }}>
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  onChange={handleUploadImage}
+                  disabled={uploading}
+                  style={{ position: "absolute", inset: 0, opacity: 0, cursor: "pointer" }}
+                />
+                <button type="button" className="btn btn-outline" disabled={uploading} style={{ padding: "0.35rem 0.75rem", fontSize: "0.8rem", display: "flex", alignItems: "center", gap: "0.35rem" }}>
+                  <Upload size={14} /> Add Photo
+                </button>
+              </div>
             </div>
 
-            <div>
-              <label className="label">Category</label>
-              <select className="input" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
-                {categories.map(c => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
+            {images.length > 0 ? (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "0.5rem" }}>
+                {images.map((img, idx) => (
+                  <div key={idx} style={{ position: "relative", width: "100%", paddingTop: "100%", border: "1px solid hsl(var(--border-hsl))", borderRadius: "4px", overflow: "hidden", backgroundColor: "white" }}>
+                    <img src={img} alt="Product" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain" }} />
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteImage(idx)}
+                      style={{ position: "absolute", top: "4px", right: "4px", backgroundColor: "rgba(0,0,0,0.6)", color: "white", border: "none", borderRadius: "50%", width: "20px", height: "20px", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
                 ))}
-              </select>
-            </div>
-          </div>
-
-          {/* Gallery Photos */}
-          <div className="card">
-            <h2 style={{ fontSize: "1.2rem", marginBottom: "0.5rem" }}>Catalog Gallery Photos</h2>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginBottom: "1rem" }}>
-              {images.map((img, idx) => (
-                <div key={idx} style={{ position: "relative", width: "80px", height: "80px", borderRadius: "6px", overflow: "hidden", border: "1px solid hsl(var(--border-hsl))" }}>
-                  <img src={img} alt="preview" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteImage(idx)}
-                    style={{ position: "absolute", top: "2px", right: "2px", background: "rgba(0,0,0,0.6)", color: "white", border: "none", borderRadius: "50%", width: "20px", height: "20px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
-                  >
-                    <Trash2 size={11} />
-                  </button>
-                </div>
-              ))}
-            </div>
-            <label className="btn btn-outline" style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem", cursor: "pointer", width: "100%", justifyContent: "center" }}>
-              <Upload size={14} /> {uploading ? "Uploading..." : "Upload Photo"}
-              <input type="file" accept="image/*" onChange={handleUploadImage} style={{ display: "none" }} />
-            </label>
+              </div>
+            ) : (
+              <p style={{ fontSize: "0.8rem", color: "hsl(var(--muted-hsl))", margin: 0 }}>
+                No extra gallery images uploaded. (Front garment view will be used by default).
+              </p>
+            )}
           </div>
         </div>
       </form>
@@ -659,12 +1155,18 @@ export default function AdminApparelProductEditPage({ params: paramsPromise }) {
       {activeCalibrateSide && garmentViews[activeCalibrateSide]?.image && (
         <AdminGarmentCalibration
           isOpen={true}
-          imageUrl={garmentViews[activeCalibrateSide].image}
-          sideName={activeCalibrateSide}
-          initialCalibration={garmentViews[activeCalibrateSide].calibration}
-          onSave={handleSaveGarmentCalibration}
-          onSaveCalibration={handleSaveGarmentCalibration}
           onClose={() => setActiveCalibrateSide(null)}
+          imageUrl={garmentViews[activeCalibrateSide].image}
+          sideName={activeCalibrateSide.charAt(0).toUpperCase() + activeCalibrateSide.slice(1) + " View"}
+          initialCalibration={garmentViews[activeCalibrateSide].calibration}
+          onSave={(calPayload) => {
+            handleSaveGarmentCalibration(calPayload);
+            setActiveCalibrateSide(null);
+          }}
+          onSaveCalibration={(calPayload) => {
+            handleSaveGarmentCalibration(calPayload);
+            setActiveCalibrateSide(null);
+          }}
         />
       )}
     </div>

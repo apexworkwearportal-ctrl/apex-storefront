@@ -104,14 +104,32 @@ export default function Header() {
           setMegaMenu(DEFAULT_MEGA_MENU);
         }
 
-        const prodSnap = await getDocs(collection(db, "products"));
+        const [prodSnap, apparelSnap] = await Promise.all([
+          getDocs(collection(db, "products")),
+          getDocs(collection(db, "apparel_products")).catch(() => ({ forEach: () => {} }))
+        ]);
+        
         const prodList = [];
         prodSnap.forEach(doc => {
           const data = doc.data();
           if (data.isVisible !== false) {
-            prodList.push({ id: doc.id, ...data });
+            prodList.push({ id: doc.id, isApparel: false, ...data });
           }
         });
+        
+        apparelSnap.forEach(doc => {
+          const data = doc.data();
+          if (data.isVisible !== false) {
+            prodList.push({ 
+              id: doc.id, 
+              isApparel: true, 
+              isCustom: true, 
+              ...data,
+              image: (data.images && data.images[0]) || data.garmentViews?.front?.image || data.imageUrl
+            });
+          }
+        });
+
         setProducts(prodList);
       } catch (e) {
         console.error("Error loading header data:", e);
@@ -140,11 +158,24 @@ export default function Header() {
   // Search filter logic
   const matchingProducts = products.filter(p => {
     if (!searchQuery.trim()) return false;
-    const matchesText = p.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                        p.description?.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCategory = selectedSearchCat === "all" || p.categoryId === selectedSearchCat;
+    const q = searchQuery.toLowerCase().trim();
+    const matchesText = (p.name || "").toLowerCase().includes(q) ||
+                        (p.description || "").toLowerCase().includes(q) ||
+                        (p.category || "").toLowerCase().includes(q) ||
+                        (p.sku || "").toLowerCase().includes(q);
+
+    let matchesCategory = true;
+    if (selectedSearchCat !== "all") {
+      const isApparelRoot = ["apparel", "custom-apparel", "apparel-promotional-wear"].includes(selectedSearchCat.toLowerCase());
+      if (isApparelRoot && p.isApparel) {
+        matchesCategory = true;
+      } else {
+        matchesCategory = p.categoryId === selectedSearchCat || 
+                          (p.category && p.category.toLowerCase().includes(selectedSearchCat.toLowerCase()));
+      }
+    }
     return matchesText && matchesCategory;
-  }).slice(0, 5);
+  }).slice(0, 6);
 
   const handleSearchSubmit = (e) => {
     e?.preventDefault();
@@ -251,26 +282,31 @@ export default function Header() {
       </div>
 
       {/* 2. MAIN HEADER BAR */}
-      <div style={{
-        backgroundColor: "#ffffff",
-        borderBottom: "1px solid hsl(var(--border-hsl))",
-        padding: "0.75rem 1.5rem",
-        boxShadow: "0 2px 10px rgba(0, 0, 0, 0.03)"
-      }}>
-        <div style={{
-          maxWidth: "1380px",
-          margin: "0 auto",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: "1.5rem"
-        }}>
+      <div 
+        style={{
+          backgroundColor: "#ffffff",
+          borderBottom: "1px solid hsl(var(--border-hsl))",
+          boxShadow: "0 2px 10px rgba(0, 0, 0, 0.03)"
+        }}
+        className="header-main-bar"
+      >
+        <div 
+          style={{
+            maxWidth: "1380px",
+            margin: "0 auto",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+          className="header-main-inner"
+        >
           {/* Logo Section */}
-          <Link href="/" style={{ display: "flex", alignItems: "center", gap: "0.75rem", textDecoration: "none", flexShrink: 0 }}>
+          <Link href="/" style={{ display: "flex", alignItems: "center", textDecoration: "none", flexShrink: 0 }}>
             <img 
               src="/Apex-Workwear-Logo-Horizontal.webp" 
               alt="Apex Workwear Logo" 
-              style={{ height: "46px", width: "auto", display: "block" }} 
+              className="header-logo-img"
+              style={{ height: "44px", width: "auto", display: "block", objectFit: "contain" }} 
             />
           </Link>
 
@@ -433,7 +469,7 @@ export default function Header() {
                         {matchingProducts.map((p) => (
                           <Link
                             key={p.id}
-                            href={`/products?product=${p.id}`}
+                            href={p.isApparel ? `/apparel/${p.id}` : `/products?product=${p.id}`}
                             onClick={() => setIsSearchFocused(false)}
                             style={{
                               display: "flex",
@@ -498,11 +534,11 @@ export default function Header() {
           </div>
 
           {/* Right side Action Group */}
-          <div style={{ display: "flex", alignItems: "center", gap: "1.25rem" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "1.25rem" }} className="header-action-group">
             {/* Custom Apparel Builder CTA */}
             <Link
               href="/products?category=apparel-promotional-wear"
-              className="btn btn-primary"
+              className="btn btn-primary header-cta-btn"
               style={{
                 padding: "0.55rem 1.15rem",
                 fontSize: "0.85rem",
@@ -1143,23 +1179,68 @@ export default function Header() {
           opacity: 0.95 !important;
           transform: translateY(-1px) !important;
         }
-        .icon-btn-hover:hover {
-          background-color: hsl(var(--secondary-hsl)) !important;
+        .mobile-toggle {
+          display: none;
+        }
+        .header-main-bar {
+          padding: 0.75rem 1.5rem;
+        }
+        .header-main-inner {
+          gap: 1.5rem;
+        }
+        .header-logo-img {
+          height: 44px;
+          max-width: 175px;
         }
         @media (max-width: 1024px) {
           .desktop-search-container {
-            max-width: 380px !important;
+            max-width: 320px !important;
           }
           .cta-btn-text {
             display: none;
           }
         }
-        @media (max-width: 840px) {
-          .desktop-mega-nav, .desktop-search-container, .header-top-left, .header-top-right, .account-text, .cart-text {
+        @media (max-width: 860px) {
+          .desktop-mega-nav, 
+          .desktop-search-container, 
+          .header-top-left, 
+          .header-top-right, 
+          .account-text, 
+          .cart-text,
+          .header-cta-btn {
             display: none !important;
           }
+          .header-main-bar {
+            padding: 0.55rem 0.85rem !important;
+          }
+          .header-main-inner {
+            gap: 0.5rem !important;
+          }
+          .header-logo-img {
+            height: 34px !important;
+            max-width: 125px !important;
+          }
+          .header-action-group {
+            gap: 0.45rem !important;
+          }
           .mobile-toggle {
-            display: block !important;
+            display: flex !important;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            width: 38px;
+            height: 38px;
+            border-radius: var(--radius-sm);
+            background-color: hsl(var(--secondary-hsl) / 0.5);
+          }
+        }
+        @media (max-width: 480px) {
+          .header-logo-img {
+            height: 30px !important;
+            max-width: 110px !important;
+          }
+          .header-action-group {
+            gap: 0.35rem !important;
           }
         }
       `}</style>

@@ -39,11 +39,27 @@ async function getFeaturedProducts(homeCategories) {
   let allProducts = [];
   if (adminDb) {
     try {
-      const snap = await adminDb.collection("products").get();
-      snap.forEach(doc => {
+      const [prodSnap, apparelSnap] = await Promise.all([
+        adminDb.collection("products").get(),
+        adminDb.collection("apparel_products").get().catch(() => ({ forEach: () => {} }))
+      ]);
+      
+      prodSnap.forEach(doc => {
         const data = doc.data();
         if (data.isVisible !== false) {
-          allProducts.push({ id: doc.id, ...data });
+          allProducts.push({ id: doc.id, isApparel: false, ...data });
+        }
+      });
+
+      apparelSnap.forEach(doc => {
+        const data = doc.data();
+        if (data.isVisible !== false) {
+          allProducts.push({ 
+            id: doc.id, 
+            isApparel: true, 
+            ...data,
+            image: (data.images && data.images[0]) || data.garmentViews?.front?.image || data.imageUrl
+          });
         }
       });
     } catch (err) {
@@ -65,7 +81,10 @@ async function getFeaturedProducts(homeCategories) {
     const matchingProducts = allProducts.filter(p => {
       const pCatId = String(p.categoryId || p.category || "").toLowerCase();
       const pCatName = String(p.categoryName || "").toLowerCase();
-      return pCatId === catIdStr || pCatName === catNameStr || (pCatId && catIdStr && (pCatId.includes(catIdStr) || catIdStr.includes(pCatId)));
+      return pCatId === catIdStr || 
+             pCatName === catNameStr || 
+             (pCatId && catIdStr && (pCatId.includes(catIdStr) || catIdStr.includes(pCatId))) ||
+             (catNameStr && (pCatId.includes(catNameStr) || (p.category && String(p.category).toLowerCase().includes(catNameStr))));
     });
 
     if (matchingProducts.length > 0) {
@@ -75,6 +94,8 @@ async function getFeaturedProducts(homeCategories) {
       let priceDisplay = "$14.99";
       if (selected.startingPrice) {
         priceDisplay = `$${selected.startingPrice}`;
+      } else if (selected.basePrice) {
+        priceDisplay = `$${parseFloat(selected.basePrice).toFixed(2)}`;
       } else if (selected.price) {
         priceDisplay = typeof selected.price === "number" ? `$${selected.price.toFixed(2)}` : String(selected.price);
       }
@@ -87,7 +108,7 @@ async function getFeaturedProducts(homeCategories) {
         price: priceDisplay,
         image: selected.image || (selected.images && selected.images[0]) || selected.heroImage || cat.heroImage || "https://images.unsplash.com/photo-1589254065878-42c9da997008?q=80&w=600&auto=format&fit=crop",
         badge: selected.badge || badgesList[index % badgesList.length],
-        href: `/products/${selected.id}`
+        href: selected.isApparel ? `/apparel/${selected.id}` : `/products/${selected.id}`
       });
     } else {
       // Fallback 1 dynamic product per visible home category if no product document exists yet in Firestore
@@ -99,7 +120,7 @@ async function getFeaturedProducts(homeCategories) {
         price: "$19.99",
         image: cat.heroImage || "https://images.unsplash.com/photo-1589254065878-42c9da997008?q=80&w=600&auto=format&fit=crop",
         badge: badgesList[index % badgesList.length],
-        href: `/products?category=${cat.id}`
+        href: cat.id === "apparel" || cat.id === "custom-apparel" ? `/apparel` : `/products?category=${cat.id}`
       });
     }
   });
