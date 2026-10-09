@@ -1097,13 +1097,49 @@ export default function Header() {
             </div>
 
             {/* Mobile Links */}
-            <div style={{ flex: 1, padding: "1rem 1.25rem", display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+            <div style={{ flex: 1, padding: "1rem 1.25rem", display: "flex", flexDirection: "column", gap: "1.1rem" }}>
               <Link href="/" onClick={() => setMenuOpen(false)} style={{ fontWeight: 700, fontSize: "1rem" }}>
                 Home
               </Link>
               
               <Link href="/products?category=apparel-promotional-wear" onClick={() => setMenuOpen(false)} style={{ fontWeight: 700, fontSize: "1rem", color: "hsl(var(--accent-hsl))", display: "flex", alignItems: "center", gap: "0.5rem" }}>
                 <Sparkles size={18} /> Design Custom Apparel
+              </Link>
+
+              {/* 3 Hour Printing Quick Rush Button */}
+              <Link
+                href="/products?category=3-hour-printing"
+                onClick={() => setMenuOpen(false)}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  padding: "0.65rem 0.95rem",
+                  borderRadius: "10px",
+                  backgroundColor: "hsl(var(--accent-hsl) / 0.1)",
+                  color: "hsl(var(--accent-hsl))",
+                  fontSize: "0.925rem",
+                  fontWeight: 700,
+                  textDecoration: "none",
+                  border: "1px solid hsl(var(--accent-hsl) / 0.25)",
+                  boxShadow: "0 2px 6px hsl(var(--accent-hsl) / 0.1)"
+                }}
+              >
+                <span style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                  <Tag size={16} /> 3 Hour Printing
+                </span>
+                <span style={{
+                  fontSize: "0.7rem",
+                  backgroundColor: "hsl(var(--accent-hsl))",
+                  color: "white",
+                  padding: "0.2rem 0.5rem",
+                  borderRadius: "20px",
+                  fontWeight: 800,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.04em"
+                }}>
+                  Rush
+                </span>
               </Link>
 
               <div>
