@@ -23,7 +23,8 @@ import {
   Users,
   Ticket,
   Sparkles,
-  Shirt
+  Shirt,
+  AlertCircle
 } from "lucide-react";
 
 function AdminNavList({ pathname, navSections }) {
@@ -78,8 +79,12 @@ function AdminNavList({ pathname, navSections }) {
     if (href.startsWith("/admin/orders")) {
       if (pathname !== "/admin/orders") return false;
       const isProofs = href.includes("tab=proofs");
+      const isAbandoned = href.includes("tab=abandoned");
       if (isProofs) {
         return currentTab === "proofs";
+      }
+      if (isAbandoned) {
+        return currentTab === "abandoned";
       }
       return !currentTab || currentTab === "all" || currentTab === "unsubmitted" || currentTab === "shipped";
     }
@@ -243,6 +248,7 @@ export default function AdminLayout({ children }) {
       items: [
         { label: "Order Manager", href: "/admin/orders?tab=all", icon: ShoppingBag },
         { label: "Print Proof Review", href: "/admin/orders?tab=proofs", icon: Printer },
+        { label: "Abandoned Checkouts", href: "/admin/orders?tab=abandoned", icon: AlertCircle },
       ]
     },
     {

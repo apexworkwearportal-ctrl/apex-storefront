@@ -62,9 +62,10 @@ service cloud.firestore {
       allow update, delete: if isAdmin();
     }
 
-    // Pending Orders (Proof approvals & admin queue): Admin access
+    // Pending Orders (Proof approvals, abandoned checkouts & pending payment)
     match /pendingOrders/{orderId} {
-      allow read, write: if isAdmin();
+      allow read: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow write: if isAdmin();
     }
 
     // Carts: Customer manages their own cart

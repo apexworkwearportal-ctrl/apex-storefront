@@ -34,7 +34,8 @@ import {
   LayoutDashboard,
   Shirt,
   Building,
-  Phone
+  Phone,
+  AlertCircle
 } from "lucide-react";
 import Link from "next/link";
 import { motion } from "framer-motion";
@@ -46,6 +47,30 @@ export default function AccountDashboard() {
   const [activeTab, setActiveTab] = useState("overview"); // overview, orders, addresses, profile
   const [orders, setOrders] = useState([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
+  const [orderFilter, setOrderFilter] = useState("all"); // all, paid, pending
+  const [resumingOrderId, setResumingOrderId] = useState(null);
+
+  const handleResumePayment = async (orderId) => {
+    setResumingOrderId(orderId);
+    try {
+      const res = await fetch("/api/checkout/resume", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId })
+      });
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        alert(data.error || "Unable to resume checkout session. Please try again.");
+      }
+    } catch (err) {
+      console.error("Resume payment error:", err);
+      alert("Network error resuming payment. Please try again.");
+    } finally {
+      setResumingOrderId(null);
+    }
+  };
 
   // Profile Edit states
   const [isEditingProfile, setIsEditingProfile] = useState(false);
@@ -112,6 +137,21 @@ export default function AccountDashboard() {
   const [phone, setPhone] = useState("");
   const [isDefault, setIsDefault] = useState(false);
   
+  // Read URL query params (?tab=orders&filter=pending)
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const tab = params.get("tab");
+      if (tab && ["overview", "orders", "addresses", "profile"].includes(tab)) {
+        setActiveTab(tab);
+      }
+      const filter = params.get("filter");
+      if (filter && ["all", "paid", "pending"].includes(filter)) {
+        setOrderFilter(filter);
+      }
+    }
+  }, []);
+
   // Guard route
   useEffect(() => {
     if (!loading && !user) {
@@ -142,7 +182,7 @@ export default function AccountDashboard() {
           try {
             const q1 = query(collection(db, "orders"), where("userId", "==", user.uid));
             const snap1 = await getDocs(q1);
-            snap1.forEach((doc) => orderMap.set(doc.id, { id: doc.id, ...doc.data() }));
+            snap1.forEach((doc) => orderMap.set(doc.id, { id: doc.id, isPendingCollection: false, ...doc.data() }));
           } catch (e1) {
             console.error("Error fetching orders by userId:", e1);
           }
@@ -152,7 +192,7 @@ export default function AccountDashboard() {
             try {
               const q2 = query(collection(db, "orders"), where("shippingAddress.ShipEmail", "==", user.email));
               const snap2 = await getDocs(q2);
-              snap2.forEach((doc) => orderMap.set(doc.id, { id: doc.id, ...doc.data() }));
+              snap2.forEach((doc) => orderMap.set(doc.id, { id: doc.id, isPendingCollection: false, ...doc.data() }));
             } catch (e2) {
               console.error("Error fetching orders by email:", e2);
             }
@@ -162,7 +202,11 @@ export default function AccountDashboard() {
           try {
             const q3 = query(collection(db, "pendingOrders"), where("userId", "==", user.uid));
             const snap3 = await getDocs(q3);
-            snap3.forEach((doc) => orderMap.set(doc.id, { id: doc.id, ...doc.data() }));
+            snap3.forEach((doc) => {
+              if (!orderMap.has(doc.id)) {
+                orderMap.set(doc.id, { id: doc.id, isPendingCollection: true, ...doc.data() });
+              }
+            });
           } catch (e3) {
             console.error("Error fetching pendingOrders by userId:", e3);
           }
@@ -172,7 +216,11 @@ export default function AccountDashboard() {
             try {
               const q4 = query(collection(db, "pendingOrders"), where("shippingAddress.ShipEmail", "==", user.email));
               const snap4 = await getDocs(q4);
-              snap4.forEach((doc) => orderMap.set(doc.id, { id: doc.id, ...doc.data() }));
+              snap4.forEach((doc) => {
+                if (!orderMap.has(doc.id)) {
+                  orderMap.set(doc.id, { id: doc.id, isPendingCollection: true, ...doc.data() });
+                }
+              });
             } catch (e4) {
               console.error("Error fetching pendingOrders by email:", e4);
             }
@@ -308,10 +356,20 @@ export default function AccountDashboard() {
     }
   };
 
-  // Compute Order KPIs
-  const activeOrdersCount = orders.filter(o => !["completed", "shipped", "delivered"].includes((o.status || "").toLowerCase())).length;
-  const completedOrdersCount = orders.filter(o => ["completed", "shipped", "delivered"].includes((o.status || "").toLowerCase())).length;
-  const totalSpent = orders.reduce((sum, o) => sum + parseFloat(o.totals?.grandTotal || o.grandTotal || 0), 0);
+  // Helper for paid status vs abandoned checkout
+  const isOrderPaid = (o) => {
+    if (o.isPendingCollection) return false;
+    if (o.paymentStatus === "pending" || o.status === "payment_pending") return false;
+    return true;
+  };
+
+  const paidOrders = orders.filter(isOrderPaid);
+  const pendingOrders = orders.filter(o => !isOrderPaid(o));
+
+  // Compute Order KPIs based on paid/actual orders
+  const activeOrdersCount = paidOrders.filter(o => !["completed", "shipped", "delivered"].includes((o.status || "").toLowerCase())).length;
+  const completedOrdersCount = paidOrders.filter(o => ["completed", "shipped", "delivered"].includes((o.status || "").toLowerCase())).length;
+  const totalSpent = paidOrders.reduce((sum, o) => sum + parseFloat(o.totals?.grandTotal || o.grandTotal || 0), 0);
 
   return (
     <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", backgroundColor: "hsl(var(--background-hsl))" }}>
@@ -403,9 +461,27 @@ export default function AccountDashboard() {
                 textAlign: "center",
                 minWidth: "110px"
               }}>
-                <p style={{ fontSize: "1.5rem", fontWeight: 900, color: "#ffffff", lineHeight: 1 }}>{orders.length}</p>
-                <p style={{ fontSize: "0.7rem", color: "#94a3b8", fontWeight: 700, textTransform: "uppercase", marginTop: "0.3rem" }}>Total Orders</p>
+                <p style={{ fontSize: "1.5rem", fontWeight: 900, color: "#ffffff", lineHeight: 1 }}>{paidOrders.length}</p>
+                <p style={{ fontSize: "0.7rem", color: "#94a3b8", fontWeight: 700, textTransform: "uppercase", marginTop: "0.3rem" }}>Confirmed Orders</p>
               </div>
+
+              {pendingOrders.length > 0 && (
+                <div 
+                  onClick={() => { setActiveTab("orders"); setOrderFilter("pending"); }}
+                  style={{
+                    backgroundColor: "rgba(245, 158, 11, 0.18)",
+                    padding: "0.85rem 1.25rem",
+                    borderRadius: "var(--radius-md)",
+                    border: "1px solid rgba(245, 158, 11, 0.4)",
+                    textAlign: "center",
+                    minWidth: "110px",
+                    cursor: "pointer"
+                  }}
+                >
+                  <p style={{ fontSize: "1.5rem", fontWeight: 900, color: "#fbbf24", lineHeight: 1 }}>{pendingOrders.length}</p>
+                  <p style={{ fontSize: "0.7rem", color: "#fef3c7", fontWeight: 700, textTransform: "uppercase", marginTop: "0.3rem" }}>Pending Payment</p>
+                </div>
+              )}
 
               <div style={{
                 backgroundColor: "rgba(255, 255, 255, 0.08)",
@@ -475,17 +551,31 @@ export default function AccountDashboard() {
               <ShoppingBag size={18} style={{ color: activeTab === "orders" ? "#ffffff" : "hsl(var(--muted-hsl))" }} />
               Orders & Proof Approval
               {orders.length > 0 && (
-                <span style={{
-                  marginLeft: "auto",
-                  backgroundColor: activeTab === "orders" ? "hsl(var(--accent-hsl))" : "hsl(var(--secondary-hsl))",
-                  color: activeTab === "orders" ? "#ffffff" : "hsl(var(--foreground-hsl))",
-                  fontSize: "0.7rem",
-                  fontWeight: 800,
-                  padding: "0.15rem 0.5rem",
-                  borderRadius: "10px"
-                }}>
-                  {orders.length}
-                </span>
+                <div style={{ marginLeft: "auto", display: "flex", gap: "0.35rem", alignItems: "center" }}>
+                  {pendingOrders.length > 0 && (
+                    <span style={{
+                      backgroundColor: "#FEF3C7",
+                      color: "#92400E",
+                      fontSize: "0.68rem",
+                      fontWeight: 800,
+                      padding: "0.15rem 0.45rem",
+                      borderRadius: "10px",
+                      border: "1px solid #FCD34D"
+                    }}>
+                      {pendingOrders.length} Pending
+                    </span>
+                  )}
+                  <span style={{
+                    backgroundColor: activeTab === "orders" ? "hsl(var(--accent-hsl))" : "hsl(var(--secondary-hsl))",
+                    color: activeTab === "orders" ? "#ffffff" : "hsl(var(--foreground-hsl))",
+                    fontSize: "0.7rem",
+                    fontWeight: 800,
+                    padding: "0.15rem 0.5rem",
+                    borderRadius: "10px"
+                  }}>
+                    {paidOrders.length}
+                  </span>
+                </div>
               )}
             </button>
 
@@ -596,51 +686,88 @@ export default function AccountDashboard() {
                     </div>
                   ) : (
                     <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-                      {orders.slice(0, 3).map((order) => (
-                        <div
-                          key={order.id}
-                          style={{
-                            padding: "1rem",
-                            borderRadius: "var(--radius-md)",
-                            backgroundColor: "hsl(var(--secondary-hsl) / 0.4)",
-                            border: "1px solid hsl(var(--border-hsl) / 0.6)",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "space-between",
-                            flexWrap: "wrap",
-                            gap: "1rem"
-                          }}
-                        >
-                          <div>
-                            <p style={{ fontWeight: 700, fontSize: "0.9rem" }}>Order #{order.id.slice(0, 8)}</p>
-                            <p style={{ fontSize: "0.775rem", color: "hsl(var(--muted-hsl))" }}>
-                              {order.items?.length || 0} item(s) • Placed on {order.createdAt?.seconds ? new Date(order.createdAt.seconds * 1000).toLocaleDateString() : "Recent"}
-                            </p>
+                      {orders.slice(0, 4).map((order) => {
+                        const isPaid = isOrderPaid(order);
+                        return (
+                          <div
+                            key={order.id}
+                            style={{
+                              padding: "1rem",
+                              borderRadius: "var(--radius-md)",
+                              backgroundColor: !isPaid ? "#FEF3C722" : "hsl(var(--secondary-hsl) / 0.4)",
+                              border: !isPaid ? "1px solid #FCD34D" : "1px solid hsl(var(--border-hsl) / 0.6)",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                              flexWrap: "wrap",
+                              gap: "1rem"
+                            }}
+                          >
+                            <div>
+                              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                                <p style={{ fontWeight: 700, fontSize: "0.9rem", margin: 0 }}>Order #{order.id.slice(0, 8)}</p>
+                                {!isPaid && (
+                                  <span style={{ fontSize: "0.68rem", fontWeight: 800, padding: "0.15rem 0.45rem", borderRadius: "4px", backgroundColor: "#FEF3C7", color: "#92400E" }}>
+                                    UNPAID
+                                  </span>
+                                )}
+                              </div>
+                              <p style={{ fontSize: "0.775rem", color: "hsl(var(--muted-hsl))", marginTop: "0.2rem" }}>
+                                {order.items?.length || 0} item(s) • Placed on {order.createdAt?.seconds ? new Date(order.createdAt.seconds * 1000).toLocaleDateString() : "Recent"}
+                              </p>
+                            </div>
+
+                            <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+                              <span style={{
+                                padding: "0.2rem 0.65rem",
+                                borderRadius: "12px",
+                                fontSize: "0.725rem",
+                                fontWeight: 800,
+                                textTransform: "uppercase",
+                                backgroundColor: !isPaid ? "#FEF3C7" : (["completed", "shipped"].includes((order.status || "").toLowerCase()) ? "hsl(var(--success-hsl) / 0.15)" : "hsl(var(--accent-hsl) / 0.15)"),
+                                color: !isPaid ? "#92400E" : (["completed", "shipped"].includes((order.status || "").toLowerCase()) ? "hsl(var(--success-hsl))" : "hsl(var(--accent-hsl))"),
+                                border: !isPaid ? "1px solid #FCD34D" : "none"
+                              }}>
+                                {!isPaid ? "PAYMENT PENDING" : (order.status || "PROCESSING")}
+                              </span>
+
+                              <span style={{ fontWeight: 800, fontSize: "0.95rem" }}>
+                                ${parseFloat(order.totals?.grandTotal || order.grandTotal || 0).toFixed(2)}
+                              </span>
+
+                              {!isPaid ? (
+                                <button
+                                  onClick={() => handleResumePayment(order.id)}
+                                  disabled={resumingOrderId === order.id}
+                                  className="btn btn-primary"
+                                  style={{
+                                    padding: "0.35rem 0.85rem",
+                                    fontSize: "0.775rem",
+                                    fontWeight: 800,
+                                    backgroundColor: "#D97706",
+                                    borderColor: "#B45309",
+                                    color: "white",
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: "0.35rem"
+                                  }}
+                                >
+                                  {resumingOrderId === order.id ? (
+                                    <RefreshCw size={12} style={{ animation: "spin 1s linear infinite" }} />
+                                  ) : (
+                                    <CreditCard size={12} />
+                                  )}
+                                  Pay Now
+                                </button>
+                              ) : (
+                                <button onClick={() => setActiveTab("orders")} className="btn btn-outline" style={{ padding: "0.35rem 0.75rem", fontSize: "0.775rem" }}>
+                                  Details
+                                </button>
+                              )}
+                            </div>
                           </div>
-
-                          <div style={{ display: "flex", alignItems: "center", gap: "1.25rem" }}>
-                            <span style={{
-                              padding: "0.2rem 0.65rem",
-                              borderRadius: "12px",
-                              fontSize: "0.725rem",
-                              fontWeight: 800,
-                              textTransform: "uppercase",
-                              backgroundColor: ["completed", "shipped"].includes((order.status || "").toLowerCase()) ? "hsl(var(--success-hsl) / 0.15)" : "hsl(var(--accent-hsl) / 0.15)",
-                              color: ["completed", "shipped"].includes((order.status || "").toLowerCase()) ? "hsl(var(--success-hsl))" : "hsl(var(--accent-hsl))"
-                            }}>
-                              {order.status || "PROCESSING"}
-                            </span>
-
-                            <span style={{ fontWeight: 800, fontSize: "0.95rem" }}>
-                              ${parseFloat(order.totals?.grandTotal || order.grandTotal || 0).toFixed(2)}
-                            </span>
-
-                            <button onClick={() => setActiveTab("orders")} className="btn btn-outline" style={{ padding: "0.35rem 0.75rem", fontSize: "0.775rem" }}>
-                              Details
-                            </button>
-                          </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -650,12 +777,64 @@ export default function AccountDashboard() {
             {/* TAB 2: ORDER HISTORY & PROOFS */}
             {activeTab === "orders" && (
               <div className="card" style={{ padding: "2rem", border: "1px solid hsl(var(--border-hsl))" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.5rem", borderBottom: "1px solid hsl(var(--border-hsl))", paddingBottom: "1rem" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.25rem", borderBottom: "1px solid hsl(var(--border-hsl))", paddingBottom: "1rem", flexWrap: "wrap", gap: "1rem" }}>
                   <div>
                     <h2 style={{ fontSize: "1.35rem", fontWeight: 800, color: "hsl(var(--primary-hsl))" }}>Order History & Print Proofs</h2>
                     <p style={{ fontSize: "0.825rem", color: "hsl(var(--muted-hsl))", marginTop: "0.2rem" }}>
                       Track SinaLite print status, inspect digital proofs, and view custom apparel mockups.
                     </p>
+                  </div>
+
+                  {/* Filter Pills */}
+                  <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                    <button
+                      onClick={() => setOrderFilter("all")}
+                      style={{
+                        padding: "0.45rem 1rem",
+                        fontSize: "0.825rem",
+                        fontWeight: orderFilter === "all" ? 800 : 600,
+                        borderRadius: "20px",
+                        border: "1px solid",
+                        borderColor: orderFilter === "all" ? "hsl(var(--primary-hsl))" : "hsl(var(--border-hsl))",
+                        backgroundColor: orderFilter === "all" ? "hsl(var(--primary-hsl))" : "white",
+                        color: orderFilter === "all" ? "#ffffff" : "hsl(var(--foreground-hsl))",
+                        cursor: "pointer"
+                      }}
+                    >
+                      All ({orders.length})
+                    </button>
+                    <button
+                      onClick={() => setOrderFilter("paid")}
+                      style={{
+                        padding: "0.45rem 1rem",
+                        fontSize: "0.825rem",
+                        fontWeight: orderFilter === "paid" ? 800 : 600,
+                        borderRadius: "20px",
+                        border: "1px solid",
+                        borderColor: orderFilter === "paid" ? "#10B981" : "hsl(var(--border-hsl))",
+                        backgroundColor: orderFilter === "paid" ? "#10B981" : "white",
+                        color: orderFilter === "paid" ? "#ffffff" : "hsl(var(--foreground-hsl))",
+                        cursor: "pointer"
+                      }}
+                    >
+                      Confirmed ({paidOrders.length})
+                    </button>
+                    <button
+                      onClick={() => setOrderFilter("pending")}
+                      style={{
+                        padding: "0.45rem 1rem",
+                        fontSize: "0.825rem",
+                        fontWeight: orderFilter === "pending" ? 800 : 600,
+                        borderRadius: "20px",
+                        border: "1px solid",
+                        borderColor: orderFilter === "pending" ? "#D97706" : (pendingOrders.length > 0 ? "#FCD34D" : "hsl(var(--border-hsl))"),
+                        backgroundColor: orderFilter === "pending" ? "#D97706" : (pendingOrders.length > 0 ? "#FEF3C7" : "white"),
+                        color: orderFilter === "pending" ? "#ffffff" : (pendingOrders.length > 0 ? "#92400E" : "hsl(var(--muted-hsl))"),
+                        cursor: "pointer"
+                      }}
+                    >
+                      ⚠️ Payment Pending ({pendingOrders.length})
+                    </button>
                   </div>
                 </div>
 
@@ -664,18 +843,29 @@ export default function AccountDashboard() {
                     <RefreshCw size={24} style={{ animation: "spin 1.5s linear infinite", margin: "0 auto 0.5rem auto" }} />
                     Loading orders...
                   </div>
-                ) : orders.length === 0 ? (
+                ) : (orderFilter === "paid" ? paidOrders : orderFilter === "pending" ? pendingOrders : orders).length === 0 ? (
                   <div style={{ textAlign: "center", padding: "4rem", color: "hsl(var(--muted-hsl))" }}>
                     <ShoppingBag size={48} style={{ margin: "0 auto 1rem auto", opacity: 0.4 }} />
-                    <h3 style={{ fontWeight: 700, fontSize: "1.1rem" }}>No print orders found</h3>
-                    <p style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>Start browsing commercial business cards, banners, and apparel.</p>
+                    <h3 style={{ fontWeight: 700, fontSize: "1.1rem" }}>
+                      {orderFilter === "pending"
+                        ? "No checkouts pending payment"
+                        : orderFilter === "paid"
+                          ? "No confirmed paid orders found"
+                          : "No print orders found"}
+                    </h3>
+                    <p style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
+                      {orderFilter === "pending"
+                        ? "You have completed payment for all initiated orders."
+                        : "Start browsing commercial business cards, banners, and apparel."}
+                    </p>
                     <Link href="/products" className="btn btn-primary" style={{ marginTop: "1.25rem", display: "inline-flex" }}>
                       Browse Products
                     </Link>
                   </div>
                 ) : (
                   <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
-                    {orders.map((order) => {
+                    {(orderFilter === "paid" ? paidOrders : orderFilter === "pending" ? pendingOrders : orders).map((order) => {
+                      const isPaid = isOrderPaid(order);
                       const statusUpper = (order.status || "PROCESSING").toUpperCase();
                       const isShipped = ["SHIPPED", "COMPLETED", "DELIVERED"].includes(statusUpper);
 
@@ -684,12 +874,65 @@ export default function AccountDashboard() {
                           key={order.id} 
                           style={{
                             borderRadius: "var(--radius-md)",
-                            border: "1px solid hsl(var(--border-hsl))",
+                            border: !isPaid ? "1px solid #FCD34D" : "1px solid hsl(var(--border-hsl))",
                             backgroundColor: "#ffffff",
                             overflow: "hidden",
                             boxShadow: "0 4px 15px rgba(0, 0, 0, 0.03)"
                           }}
                         >
+                          {/* Payment Pending Alert Callout Banner */}
+                          {!isPaid && (
+                            <div style={{
+                              padding: "0.9rem 1.25rem",
+                              backgroundColor: "#FEF3C7",
+                              borderBottom: "1px solid #FCD34D",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                              flexWrap: "wrap",
+                              gap: "0.75rem"
+                            }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
+                                <AlertCircle size={20} style={{ color: "#D97706", flexShrink: 0 }} />
+                                <div>
+                                  <span style={{ fontWeight: 800, fontSize: "0.85rem", color: "#92400E", display: "block" }}>
+                                    Payment Pending — Checkout Not Completed
+                                  </span>
+                                  <p style={{ fontSize: "0.75rem", color: "#78350F", margin: 0 }}>
+                                    Your configured options and artwork are saved. Complete your Stripe payment to send this to production.
+                                  </p>
+                                </div>
+                              </div>
+                              <button
+                                onClick={() => handleResumePayment(order.id)}
+                                disabled={resumingOrderId === order.id}
+                                className="btn btn-primary"
+                                style={{
+                                  padding: "0.45rem 1.15rem",
+                                  fontSize: "0.825rem",
+                                  fontWeight: 800,
+                                  backgroundColor: "#D97706",
+                                  borderColor: "#B45309",
+                                  color: "white",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: "0.4rem"
+                                }}
+                              >
+                                {resumingOrderId === order.id ? (
+                                  <>
+                                    <RefreshCw size={14} style={{ animation: "spin 1s linear infinite" }} />
+                                    Opening Stripe...
+                                  </>
+                                ) : (
+                                  <>
+                                    <CreditCard size={14} /> Complete Payment Now
+                                  </>
+                                )}
+                              </button>
+                            </div>
+                          )}
+
                           {/* Order Card Header */}
                           <div style={{
                             padding: "1rem 1.25rem",
@@ -703,7 +946,9 @@ export default function AccountDashboard() {
                           }}>
                             <div>
                               <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
-                                <span style={{ fontWeight: 800, fontSize: "0.95rem" }}>Order #{order.id}</span>
+                                <span style={{ fontWeight: 800, fontSize: "0.95rem" }}>
+                                  {!isPaid ? `Checkout #${order.id}` : `Order #${order.id}`}
+                                </span>
                                 {order.sinaliteOrderId && (
                                   <span style={{ fontSize: "0.725rem", backgroundColor: "hsl(var(--primary-hsl) / 0.1)", color: "hsl(var(--primary-hsl))", fontWeight: 700, padding: "0.15rem 0.5rem", borderRadius: "4px" }}>
                                     SinaLite Job #{order.sinaliteOrderId}
@@ -722,10 +967,15 @@ export default function AccountDashboard() {
                                 fontSize: "0.75rem",
                                 fontWeight: 800,
                                 textTransform: "uppercase",
-                                backgroundColor: isShipped ? "hsl(var(--success-hsl) / 0.15)" : "hsl(var(--accent-hsl) / 0.15)",
-                                color: isShipped ? "hsl(var(--success-hsl))" : "hsl(var(--accent-hsl))"
+                                backgroundColor: !isPaid
+                                  ? "#FEF3C7"
+                                  : (isShipped ? "hsl(var(--success-hsl) / 0.15)" : "hsl(var(--accent-hsl) / 0.15)"),
+                                color: !isPaid
+                                  ? "#92400E"
+                                  : (isShipped ? "hsl(var(--success-hsl))" : "hsl(var(--accent-hsl))"),
+                                border: !isPaid ? "1px solid #FCD34D" : "none"
                               }}>
-                                {statusUpper}
+                                {!isPaid ? "PAYMENT PENDING" : statusUpper}
                               </span>
 
                               <span style={{ fontSize: "1.1rem", fontWeight: 900, color: "hsl(var(--primary-hsl))" }}>

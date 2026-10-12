@@ -143,23 +143,35 @@ function AdminOrdersContent() {
     router.push(url);
   };
 
-  // Filter orders by active tab
-  const proofOrders = orders.filter(o => 
+  // Separate Paid Orders vs Abandoned / Pending Payment
+  const isPaidOrder = (o) => {
+    if (o.isPendingCollection) return false;
+    if (o.paymentStatus === "pending" || o.status === "payment_pending") return false;
+    return true;
+  };
+
+  const paidOrders = orders.filter(isPaidOrder);
+  const abandonedOrders = orders.filter(o => !isPaidOrder(o));
+
+  // Filter paid orders by active tab
+  const proofOrders = paidOrders.filter(o => 
     o.sinaliteReviewURL || 
     (o.items && o.items.some(i => i.artworkFiles && i.artworkFiles.length > 0)) ||
     o.sinaliteProofStatus
   );
 
-  const unsubmittedOrders = orders.filter(o => 
+  const unsubmittedOrders = paidOrders.filter(o => 
     !o.sinaliteOrderId && o.status !== "completed" && o.status !== "shipped"
   );
 
-  const completedOrders = orders.filter(o => 
+  const completedOrders = paidOrders.filter(o => 
     o.status === "completed" || o.status === "shipped" || o.sinaliteTrackingNumber
   );
 
-  let displayedOrders = orders;
-  if (currentTab === "proofs") {
+  let displayedOrders = paidOrders;
+  if (currentTab === "abandoned") {
+    displayedOrders = abandonedOrders;
+  } else if (currentTab === "proofs") {
     displayedOrders = proofOrders;
   } else if (currentTab === "unsubmitted") {
     displayedOrders = unsubmittedOrders;
@@ -172,12 +184,18 @@ function AdminOrdersContent() {
       {/* Header */}
       <div style={{ marginBottom: "1.5rem" }}>
         <h1 style={{ fontSize: "2rem", marginBottom: "0.25rem", color: "hsl(var(--primary-hsl))", fontWeight: 900 }}>
-          {currentTab === "proofs" ? "Print Proof Review Queue" : "Order Manager"}
+          {currentTab === "proofs" 
+            ? "Print Proof Review Queue" 
+            : currentTab === "abandoned"
+              ? "Abandoned Checkouts"
+              : "Order Manager"}
         </h1>
         <p style={{ color: "hsl(var(--muted-hsl))", fontSize: "0.95rem" }}>
           {currentTab === "proofs"
             ? "Inspect customer uploaded artwork files, digital SinaLite proof links, and grant print approvals."
-            : "Inspect customer orders, live SinaLite transmission statuses, proofs, and shipping trackings."}
+            : currentTab === "abandoned"
+              ? "Checkouts initiated by customers where payment was not completed on Stripe. These are NOT active production orders."
+              : "Inspect paid customer orders, live SinaLite transmission statuses, proofs, and shipping tracking."}
         </p>
       </div>
 
@@ -207,7 +225,7 @@ function AdminOrdersContent() {
             transition: "all 0.2s ease"
           }}
         >
-          <ShoppingBag size={16} /> All Orders ({orders.length})
+          <ShoppingBag size={16} /> All Orders ({paidOrders.length})
         </button>
 
         <button
@@ -269,6 +287,26 @@ function AdminOrdersContent() {
         >
           <Truck size={16} /> Shipped & Completed ({completedOrders.length})
         </button>
+
+        <button
+          onClick={() => handleTabChange("abandoned")}
+          style={{
+            padding: "0.65rem 1.25rem",
+            fontSize: "0.85rem",
+            fontWeight: currentTab === "abandoned" ? 800 : 600,
+            border: "none",
+            background: "none",
+            cursor: "pointer",
+            borderBottom: currentTab === "abandoned" ? "3px solid #D97706" : "3px solid transparent",
+            color: currentTab === "abandoned" ? "#D97706" : "hsl(var(--muted-hsl))",
+            display: "flex",
+            alignItems: "center",
+            gap: "0.4rem",
+            transition: "all 0.2s ease"
+          }}
+        >
+          <AlertCircle size={16} /> Abandoned Checkouts ({abandonedOrders.length})
+        </button>
       </div>
 
       {currentTab === "proofs" && (
@@ -311,7 +349,13 @@ function AdminOrdersContent() {
               <tbody>
                 {displayedOrders.map(order => {
                   const hasArtwork = order.items && order.items.some(i => i.artworkFiles && i.artworkFiles.length > 0);
-                  const hasSinaliteProof = !!order.sinaliteReviewURL;
+                  const orderProofUrl = order.sinaliteReviewURL || 
+                    order.reviewURL || 
+                    order.proofUrl ||
+                    order.sinaliteReviewFILE ||
+                    (order.items && order.items.find(i => i.reviewURL || i.reviewFILE)?.reviewURL) ||
+                    (order.items && order.items.find(i => i.reviewURL || i.reviewFILE)?.reviewFILE);
+                  const hasSinaliteProof = !!orderProofUrl;
                   const isProofApproved = order.sinaliteProofStatus === "approved";
 
                   return (
@@ -346,34 +390,49 @@ function AdminOrdersContent() {
 
                       <td style={{ padding: "1.25rem 1.5rem" }}>
                         {hasSinaliteProof ? (
-                          <span style={{
-                            fontSize: "0.7rem",
-                            fontWeight: 800,
-                            padding: "0.2rem 0.5rem",
-                            borderRadius: "4px",
-                            backgroundColor: isProofApproved ? "#D1FAE5" : "#FEF3C7",
-                            color: isProofApproved ? "#065F46" : "#92400E",
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: "0.25rem"
-                          }}>
+                          <a
+                            href={orderProofUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            style={{
+                              fontSize: "0.7rem",
+                              fontWeight: 800,
+                              padding: "0.25rem 0.55rem",
+                              borderRadius: "4px",
+                              backgroundColor: isProofApproved ? "#D1FAE5" : "#FEF3C7",
+                              color: isProofApproved ? "#065F46" : "#92400E",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "0.3rem",
+                              textDecoration: "none",
+                              border: isProofApproved ? "1px solid #A7F3D0" : "1px solid #FCD34D",
+                              cursor: "pointer"
+                            }}
+                          >
                             {isProofApproved ? <CheckCircle2 size={12} /> : <Printer size={12} />}
-                            {isProofApproved ? "Proof Approved" : "Proof Ready"}
-                          </span>
+                            {isProofApproved ? "Proof Approved" : "Inspect Proof"} <ExternalLink size={11} />
+                          </a>
                         ) : hasArtwork ? (
-                          <span style={{
-                            fontSize: "0.7rem",
-                            fontWeight: 700,
-                            padding: "0.2rem 0.5rem",
-                            borderRadius: "4px",
-                            backgroundColor: "hsl(var(--primary-hsl) / 0.1)",
-                            color: "hsl(var(--primary-hsl))",
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: "0.25rem"
-                          }}>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedOrder(order)}
+                            style={{
+                              fontSize: "0.7rem",
+                              fontWeight: 700,
+                              padding: "0.25rem 0.55rem",
+                              borderRadius: "4px",
+                              backgroundColor: "hsl(var(--primary-hsl) / 0.1)",
+                              color: "hsl(var(--primary-hsl))",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "0.25rem",
+                              border: "none",
+                              cursor: "pointer"
+                            }}
+                          >
                             <FileText size={12} /> Customer Artwork
-                          </span>
+                          </button>
                         ) : (
                           <span style={{ fontSize: "0.75rem", color: "hsl(var(--muted-hsl))" }}>No Artwork</span>
                         )}
@@ -388,18 +447,34 @@ function AdminOrdersContent() {
                       </td>
 
                       <td style={{ padding: "1.25rem 1.5rem" }}>
-                        <span style={{
-                          display: "inline-block",
-                          fontSize: "0.75rem",
-                          fontWeight: 700,
-                          textTransform: "uppercase",
-                          padding: "0.2rem 0.5rem",
-                          borderRadius: "4px",
-                          backgroundColor: order.status === "completed" ? "hsl(var(--success-hsl) / 0.1)" : "hsl(var(--accent-hsl) / 0.1)",
-                          color: order.status === "completed" ? "hsl(var(--success-hsl))" : "hsl(var(--accent-hsl))"
-                        }}>
-                          {order.status}
-                        </span>
+                        {!isPaidOrder(order) ? (
+                          <span style={{
+                            display: "inline-block",
+                            fontSize: "0.72rem",
+                            fontWeight: 800,
+                            textTransform: "uppercase",
+                            padding: "0.25rem 0.55rem",
+                            borderRadius: "4px",
+                            backgroundColor: "#FEF3C7",
+                            color: "#92400E",
+                            border: "1px solid #FCD34D"
+                          }}>
+                            ⚠️ Payment Pending
+                          </span>
+                        ) : (
+                          <span style={{
+                            display: "inline-block",
+                            fontSize: "0.75rem",
+                            fontWeight: 700,
+                            textTransform: "uppercase",
+                            padding: "0.2rem 0.5rem",
+                            borderRadius: "4px",
+                            backgroundColor: order.status === "completed" ? "hsl(var(--success-hsl) / 0.1)" : "hsl(var(--accent-hsl) / 0.1)",
+                            color: order.status === "completed" ? "hsl(var(--success-hsl))" : "hsl(var(--accent-hsl))"
+                          }}>
+                            {order.status}
+                          </span>
+                        )}
                       </td>
 
                       <td style={{ padding: "1.25rem 1.5rem" }}>
@@ -422,16 +497,63 @@ function AdminOrdersContent() {
           {selectedOrder && (
             <div className="card" style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid hsl(var(--border-hsl))", paddingBottom: "0.75rem" }}>
-                <h2 style={{ fontSize: "1.3rem" }}>Order Details</h2>
+                <h2 style={{ fontSize: "1.3rem" }}>
+                  {!isPaidOrder(selectedOrder) ? "Abandoned Checkout Details" : "Order Details"}
+                </h2>
                 <button onClick={() => setSelectedOrder(null)} className="btn btn-secondary" style={{ padding: "0.25rem 0.75rem", fontSize: "0.8rem" }}>
                   Close
                 </button>
               </div>
 
+              {/* Abandoned / Unpaid Notice */}
+              {!isPaidOrder(selectedOrder) && (
+                <div style={{
+                  padding: "1rem",
+                  backgroundColor: "#FEF3C7",
+                  border: "1px solid #FCD34D",
+                  borderRadius: "8px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "0.5rem"
+                }}>
+                  <span style={{ fontSize: "0.85rem", fontWeight: 800, color: "#92400E", display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                    <AlertCircle size={16} /> Payment Pending / Abandoned Checkout
+                  </span>
+                  <p style={{ fontSize: "0.75rem", color: "#78350F", margin: 0, lineHeight: 1.4 }}>
+                    The customer initiated checkout but did not complete payment on Stripe. This is not an active production order.
+                  </p>
+                  {selectedOrder.stripeCheckoutUrl && (
+                    <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.35rem", flexWrap: "wrap" }}>
+                      <a
+                        href={selectedOrder.stripeCheckoutUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="btn btn-primary"
+                        style={{ padding: "0.4rem 0.85rem", fontSize: "0.75rem", display: "inline-flex", alignItems: "center", gap: "0.35rem", backgroundColor: "#D97706", borderColor: "#B45309", color: "white" }}
+                      >
+                        <ExternalLink size={13} /> Open Stripe Payment Link
+                      </a>
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(selectedOrder.stripeCheckoutUrl);
+                          alert("Stripe Checkout URL copied to clipboard!");
+                        }}
+                        className="btn btn-outline"
+                        style={{ padding: "0.4rem 0.85rem", fontSize: "0.75rem" }}
+                      >
+                        Copy Payment Link
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Order IDs & Linkage Display */}
               <div style={{ padding: "0.85rem", backgroundColor: "#F8FAFC", borderRadius: "8px", border: "1px solid #E2E8F0", display: "flex", flexDirection: "column", gap: "0.4rem" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span style={{ fontSize: "0.75rem", color: "#64748B", textTransform: "uppercase", fontWeight: 700 }}>Storefront Order ID</span>
+                  <span style={{ fontSize: "0.75rem", color: "#64748B", textTransform: "uppercase", fontWeight: 700 }}>
+                    {!isPaidOrder(selectedOrder) ? "Checkout ID" : "Storefront Order ID"}
+                  </span>
                   <span style={{ fontFamily: "monospace", fontWeight: 700, fontSize: "0.9rem", color: "#0F172A" }}>{selectedOrder.id}</span>
                 </div>
 
@@ -442,16 +564,16 @@ function AdminOrdersContent() {
                   </div>
                 ) : (
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px dashed #E2E8F0", paddingTop: "0.35rem" }}>
-                    <span style={{ fontSize: "0.75rem", color: "#64748B", textTransform: "uppercase", fontWeight: 700 }}>Order Type / Fulfillment</span>
-                    <span style={{ fontWeight: 700, fontSize: "0.8rem", color: "#D97706" }}>
-                      {selectedOrder.orderType === "apparel" ? "Apparel Workshop (In-house)" : "Awaiting SinaLite Transmission"}
+                    <span style={{ fontSize: "0.75rem", color: "#64748B", textTransform: "uppercase", fontWeight: 700 }}>Order Type / Status</span>
+                    <span style={{ fontWeight: 700, fontSize: "0.8rem", color: !isPaidOrder(selectedOrder) ? "#D97706" : "#2563EB" }}>
+                      {!isPaidOrder(selectedOrder) ? "Unpaid (Awaiting Payment)" : (selectedOrder.orderType === "apparel" ? "Apparel Workshop (In-house)" : "Awaiting SinaLite Transmission")}
                     </span>
                   </div>
                 )}
               </div>
 
-              {/* SinaLite Submission Box */}
-              {!selectedOrder.sinaliteOrderId && selectedOrder.orderType !== "apparel" && (
+              {/* SinaLite Submission Box - Only for Paid Orders */}
+              {isPaidOrder(selectedOrder) && !selectedOrder.sinaliteOrderId && selectedOrder.orderType !== "apparel" && (
                 <div style={{ padding: "1rem", backgroundColor: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: "8px", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
                   <span style={{ fontSize: "0.8rem", fontWeight: 700, color: "#1E40AF" }}>
                     ⚡ SinaLite Order Dispatch
@@ -471,70 +593,83 @@ function AdminOrdersContent() {
               )}
 
               {/* Proof Review Box */}
-              {selectedOrder.sinaliteReviewURL && (
-                <div style={{ padding: "1rem", backgroundColor: "#FEF3C7", border: "1px solid #FCD34D", borderRadius: "8px", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                  <span style={{ fontSize: "0.8rem", fontWeight: 800, color: "#92400E", display: "flex", alignItems: "center", gap: "0.35rem" }}>
-                    <Printer size={15} /> Digital Proof Approval Required
-                  </span>
-                  <p style={{ fontSize: "0.75rem", color: "#78350F", margin: 0 }}>
-                    SinaLite has generated a digital proof file for this print job. Review and approve to proceed to production.
-                  </p>
-                  <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginTop: "0.25rem" }}>
-                    <a
-                      href={selectedOrder.sinaliteReviewURL}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="btn btn-outline"
-                      style={{ padding: "0.4rem 0.85rem", fontSize: "0.8rem", display: "inline-flex", alignItems: "center", gap: "0.35rem" }}
-                    >
-                      <Eye size={14} /> Open Digital Proof <ExternalLink size={12} />
-                    </a>
+              {(() => {
+                const selectedProofUrl = selectedOrder.sinaliteReviewURL || 
+                  selectedOrder.reviewURL || 
+                  selectedOrder.proofUrl ||
+                  selectedOrder.sinaliteReviewFILE ||
+                  (selectedOrder.items && selectedOrder.items.find(i => i.reviewURL || i.reviewFILE)?.reviewURL) ||
+                  (selectedOrder.items && selectedOrder.items.find(i => i.reviewURL || i.reviewFILE)?.reviewFILE);
 
-                    {selectedOrder.sinaliteProofStatus !== "approved" ? (
-                      <button
-                        onClick={() => handleApproveProof(selectedOrder.id)}
-                        disabled={approvingProof}
-                        className="btn btn-primary"
+                if (!isPaidOrder(selectedOrder) || !selectedProofUrl) return null;
+
+                return (
+                  <div style={{ padding: "1rem", backgroundColor: "#FEF3C7", border: "1px solid #FCD34D", borderRadius: "8px", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                    <span style={{ fontSize: "0.8rem", fontWeight: 800, color: "#92400E", display: "flex", alignItems: "center", gap: "0.35rem" }}>
+                      <Printer size={15} /> Digital Proof Approval Required
+                    </span>
+                    <p style={{ fontSize: "0.75rem", color: "#78350F", margin: 0 }}>
+                      SinaLite has generated a digital proof file for this print job. Review and approve to proceed to production.
+                    </p>
+                    <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginTop: "0.25rem" }}>
+                      <a
+                        href={selectedProofUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="btn btn-outline"
                         style={{ padding: "0.4rem 0.85rem", fontSize: "0.8rem", display: "inline-flex", alignItems: "center", gap: "0.35rem" }}
                       >
-                        {approvingProof ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
-                        Approve Proof for Production
+                        <Eye size={14} /> Open Digital Proof <ExternalLink size={12} />
+                      </a>
+
+                      {selectedOrder.sinaliteProofStatus !== "approved" ? (
+                        <button
+                          onClick={() => handleApproveProof(selectedOrder.id)}
+                          disabled={approvingProof}
+                          className="btn btn-primary"
+                          style={{ padding: "0.4rem 0.85rem", fontSize: "0.8rem", display: "inline-flex", alignItems: "center", gap: "0.35rem" }}
+                        >
+                          {approvingProof ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+                          Approve Proof for Production
+                        </button>
+                      ) : (
+                        <span style={{ padding: "0.4rem 0.85rem", fontSize: "0.8rem", fontWeight: 800, color: "#065F46", backgroundColor: "#D1FAE5", borderRadius: "4px", display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
+                          <CheckCircle2 size={14} /> Proof Approved
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Status Updater - Only for Paid Orders */}
+              {isPaidOrder(selectedOrder) && (
+                <div>
+                  <label className="label">Update Order Status</label>
+                  <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                    {["pending", "processing", "submitted", "in_production", "shipped", "completed", "cancelled"].map(status => (
+                      <button
+                        key={status}
+                        onClick={() => handleUpdateStatus(selectedOrder.id, status)}
+                        style={{
+                          padding: "0.35rem 0.65rem",
+                          fontSize: "0.75rem",
+                          fontWeight: 700,
+                          textTransform: "uppercase",
+                          borderRadius: "4px",
+                          border: "1px solid",
+                          borderColor: selectedOrder.status === status ? "hsl(var(--accent-hsl))" : "hsl(var(--border-hsl))",
+                          backgroundColor: selectedOrder.status === status ? "hsl(var(--accent-hsl) / 0.1)" : "transparent",
+                          color: selectedOrder.status === status ? "hsl(var(--accent-hsl))" : "hsl(var(--muted-hsl))",
+                          cursor: "pointer"
+                        }}
+                      >
+                        {status}
                       </button>
-                    ) : (
-                      <span style={{ padding: "0.4rem 0.85rem", fontSize: "0.8rem", fontWeight: 800, color: "#065F46", backgroundColor: "#D1FAE5", borderRadius: "4px", display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
-                        <CheckCircle2 size={14} /> Proof Approved
-                      </span>
-                    )}
+                    ))}
                   </div>
                 </div>
               )}
-
-              {/* Status Updater */}
-              <div>
-                <label className="label">Update Order Status</label>
-                <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-                  {["pending", "processing", "submitted", "in_production", "shipped", "completed", "cancelled"].map(status => (
-                    <button
-                      key={status}
-                      onClick={() => handleUpdateStatus(selectedOrder.id, status)}
-                      style={{
-                        padding: "0.35rem 0.65rem",
-                        fontSize: "0.75rem",
-                        fontWeight: 700,
-                        textTransform: "uppercase",
-                        borderRadius: "4px",
-                        border: "1px solid",
-                        borderColor: selectedOrder.status === status ? "hsl(var(--accent-hsl))" : "hsl(var(--border-hsl))",
-                        backgroundColor: selectedOrder.status === status ? "hsl(var(--accent-hsl) / 0.1)" : "transparent",
-                        color: selectedOrder.status === status ? "hsl(var(--accent-hsl))" : "hsl(var(--muted-hsl))",
-                        cursor: "pointer"
-                      }}
-                    >
-                      {status}
-                    </button>
-                  ))}
-                </div>
-              </div>
 
               {/* Shipping Address Details */}
               <div>
@@ -589,6 +724,21 @@ function AdminOrdersContent() {
                               </a>
                             ))}
                           </div>
+                        </div>
+                      )}
+
+                      {/* Item-level SinaLite Digital Proof Link */}
+                      {(item.reviewURL || item.reviewFILE) && (
+                        <div style={{ marginTop: "0.35rem" }}>
+                          <a
+                            href={item.reviewURL || item.reviewFILE}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="btn btn-outline"
+                            style={{ padding: "0.25rem 0.6rem", fontSize: "0.75rem", display: "inline-flex", alignItems: "center", gap: "0.3rem", backgroundColor: "#FEF3C7", color: "#92400E", borderColor: "#FCD34D" }}
+                          >
+                            <Printer size={12} /> Inspect Item Digital Proof <ExternalLink size={11} />
+                          </a>
                         </div>
                       )}
 

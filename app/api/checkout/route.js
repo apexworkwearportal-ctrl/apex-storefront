@@ -118,7 +118,8 @@ export async function POST(req) {
 
     const orderData = {
       userId: userId || "guest",
-      status: "pending",
+      status: "payment_pending",
+      paymentStatus: "pending",
       items: items.map(i => ({
         productId: i.productId,
         name: i.name,
@@ -206,14 +207,8 @@ export async function POST(req) {
       return Response.json({ url: `/checkout/success?orderId=${mainOrderId}` });
     }
 
-    // 3. Create Pending Order in Firestore
+    // 3. Create Stripe Checkout Session
     const pendingRef = adminDb.collection("pendingOrders").doc();
-    await pendingRef.set({
-      ...orderData,
-      id: pendingRef.id,
-    });
-
-    // 4. Create Stripe Checkout Session
     const origin = req.nextUrl.origin;
     
     // Construct Line Items for Stripe
@@ -267,7 +262,18 @@ export async function POST(req) {
       },
     });
 
-    return Response.json({ url: session.url });
+    // 4. Save Pending Order with Stripe Checkout URL and Payment Pending Status
+    await pendingRef.set({
+      ...orderData,
+      id: pendingRef.id,
+      status: "payment_pending",
+      paymentStatus: "pending",
+      stripeSessionId: session.id,
+      stripeCheckoutUrl: session.url,
+      createdAt: new Date(),
+    });
+
+    return Response.json({ url: session.url, orderId: pendingRef.id });
   } catch (error) {
     console.error("Stripe Checkout Session creation failed:", error);
     return Response.json({ error: error.message }, { status: 500 });

@@ -41,6 +41,7 @@ export default function ProductDetailPage({ params: paramsPromise }) {
   // File Upload & Print Proof states
   const [uploadingFile, setUploadingFile] = useState(false);
   const [artworkFiles, setArtworkFiles] = useState([]); // Array of { name, url }
+  const [selectedArtworkForProof, setSelectedArtworkForProof] = useState(null);
   const [uploadError, setUploadError] = useState("");
   const [proofModalOpen, setProofModalOpen] = useState(false);
   const [proofApproved, setProofApproved] = useState(false);
@@ -115,6 +116,7 @@ export default function ProductDetailPage({ params: paramsPromise }) {
 
     // Print Proof Enforcement
     if (artworkFiles.length > 0 && !proofApproved) {
+      setSelectedArtworkForProof(artworkFiles[0]);
       setProofModalOpen(true);
       return;
     }
@@ -763,7 +765,10 @@ export default function ProductDetailPage({ params: paramsPromise }) {
                       <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
                         <button
                           type="button"
-                          onClick={() => setProofModalOpen(true)}
+                          onClick={() => {
+                            setSelectedArtworkForProof(f);
+                            setProofModalOpen(true);
+                          }}
                           className="btn btn-outline"
                           style={{ padding: "0.25rem 0.5rem", fontSize: "0.75rem", display: "flex", alignItems: "center", gap: "0.25rem" }}
                         >
@@ -861,10 +866,13 @@ export default function ProductDetailPage({ params: paramsPromise }) {
       <PrintProofModal
         isOpen={proofModalOpen}
         onClose={() => setProofModalOpen(false)}
-        artworkFile={artworkFiles[0] || null}
+        artworkFile={selectedArtworkForProof || artworkFiles[0] || null}
+        fileUrl={(selectedArtworkForProof || artworkFiles[0])?.url}
+        fileName={(selectedArtworkForProof || artworkFiles[0])?.name || "artwork"}
         productName={productName}
         productSpecs={selectedOptions}
         onApprove={handleProofApproval}
+        onApproveProof={handleProofApproval}
       />
 
       <Footer />
