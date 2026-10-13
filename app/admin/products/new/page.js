@@ -47,6 +47,17 @@ export default function AdminNewProductPage() {
     { id: "bw", name: "Black & White (Grayscale)", type: "bw" }
   ]);
 
+  // Quantity Presets (what customers see in the Quantity dropdown)
+  const [quantityOptions, setQuantityOptions] = useState([
+    { id: "50",   name: "50 Units",    value: 50 },
+    { id: "100",  name: "100 Units",   value: 100 },
+    { id: "250",  name: "250 Units",   value: 250 },
+    { id: "500",  name: "500 Units",   value: 500 },
+    { id: "1000", name: "1,000 Units", value: 1000 },
+    { id: "2500", name: "2,500 Units", value: 2500 },
+    { id: "5000", name: "5,000 Units", value: 5000 }
+  ]);
+
   // Optional Additional Custom Option Groups (Finishing, Folding, etc.)
   const [optionGroups, setOptionGroups] = useState([]);
 
@@ -137,6 +148,29 @@ export default function AdminNewProductPage() {
 
   const handleDeleteImage = (index) => {
     setImages(prev => prev.filter((_, idx) => idx !== index));
+  };
+
+  // Quantity Presets Handlers
+  const addQtyRow = () => {
+    setQuantityOptions(prev => [
+      ...prev,
+      { id: `qty_${Date.now()}`, name: "New Option", value: 0 }
+    ]);
+  };
+
+  const removeQtyRow = (idx) => {
+    setQuantityOptions(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  const handleQtyChange = (idx, field, value) => {
+    setQuantityOptions(prev => prev.map((q, i) => {
+      if (i !== idx) return q;
+      if (field === "value") {
+        const numVal = parseFloat(value) || 0;
+        return { ...q, value: numVal, id: String(numVal || q.id), name: `${numVal.toLocaleString()} Units` };
+      }
+      return { ...q, [field]: value };
+    }));
   };
 
   // Custom Print Sizes Handlers
@@ -335,6 +369,7 @@ export default function AdminNewProductPage() {
         },
         images,
         customPrintSizes,
+        quantityOptions,
         sidesPagesOptions,
         printModeOptions,
         options: optionGroups,
@@ -553,6 +588,82 @@ export default function AdminNewProductPage() {
                       onClick={() => removeSizeRow(idx)}
                       style={{ background: "none", border: "none", color: "#EF4444", cursor: "pointer", padding: "0.25rem" }}
                       title="Remove size"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* 1b. Quantity Presets */}
+          <div className="card" style={{ display: "flex", flexDirection: "column", gap: "1.25rem", border: "1.5px solid #CBD5E1" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                  <Layers size={18} style={{ color: "#7C3AED" }} />
+                  <h2 style={{ fontSize: "1.15rem", fontWeight: 800, margin: 0 }}>
+                    1b. Quantity Presets
+                  </h2>
+                </div>
+                <p style={{ fontSize: "0.8rem", color: "hsl(var(--muted-hsl))", margin: "0.2rem 0 0" }}>
+                  These are the quantity options customers can choose from. Edit the label and the numeric value freely — e.g. 1, 2, 3, 5, 10 for banners; or 50, 100, 500 for flyers.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={addQtyRow}
+                className="btn btn-outline"
+                style={{ padding: "0.4rem 0.85rem", fontSize: "0.8rem", display: "flex", alignItems: "center", gap: "0.25rem" }}
+              >
+                <Plus size={14} /> Add Quantity
+              </button>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "2fr 1.2fr auto", gap: "0.75rem", padding: "0 0.5rem", fontSize: "0.75rem", fontWeight: 800, color: "#64748B" }}>
+                <span>LABEL (CUSTOMER SEES)</span>
+                <span>NUMERIC VALUE</span>
+                <span></span>
+              </div>
+              {quantityOptions.map((q, idx) => (
+                <div
+                  key={q.id || idx}
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "2fr 1.2fr auto",
+                    gap: "0.75rem",
+                    alignItems: "center",
+                    backgroundColor: "#F8FAFC",
+                    padding: "0.6rem 0.75rem",
+                    borderRadius: "8px",
+                    border: "1px solid #E2E8F0"
+                  }}
+                >
+                  <input
+                    type="text"
+                    className="input"
+                    value={q.name}
+                    onChange={(e) => handleQtyChange(idx, "name", e.target.value)}
+                    placeholder="e.g. 50 Units, Small Pack, 1 Banner"
+                    style={{ fontWeight: 700, padding: "0.4rem 0.6rem", fontSize: "0.85rem" }}
+                  />
+                  <input
+                    type="number"
+                    min="1"
+                    className="input"
+                    value={q.value}
+                    onChange={(e) => handleQtyChange(idx, "value", e.target.value)}
+                    placeholder="e.g. 50"
+                    style={{ padding: "0.4rem 0.6rem", fontSize: "0.85rem" }}
+                  />
+                  {quantityOptions.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => removeQtyRow(idx)}
+                      style={{ background: "none", border: "none", color: "#EF4444", cursor: "pointer", padding: "0.25rem" }}
+                      title="Remove quantity option"
                     >
                       <Trash2 size={16} />
                     </button>

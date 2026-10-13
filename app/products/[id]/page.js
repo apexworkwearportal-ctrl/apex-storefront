@@ -206,16 +206,23 @@ export default function ProductDetailPage({ params: paramsPromise }) {
           // Build custom options structure for Custom Print Engine
           const customGroups = {};
 
-          // 1. Quantity Choices
-          customGroups["Quantity"] = [
-            { id: "50", name: "50 Units", value: 50 },
-            { id: "100", name: "100 Units", value: 100 },
-            { id: "250", name: "250 Units", value: 250 },
-            { id: "500", name: "500 Units", value: 500 },
-            { id: "1000", name: "1,000 Units", value: 1000 },
-            { id: "2500", name: "2,500 Units", value: 2500 },
-            { id: "5000", name: "5,000 Units", value: 5000 }
-          ];
+          // 1. Quantity Choices — use admin-configured presets if available, else defaults
+          const qtyPresets = Array.isArray(data.quantityOptions) && data.quantityOptions.length > 0
+            ? data.quantityOptions
+            : [
+                { id: "50",   name: "50 Units",     value: 50 },
+                { id: "100",  name: "100 Units",    value: 100 },
+                { id: "250",  name: "250 Units",    value: 250 },
+                { id: "500",  name: "500 Units",    value: 500 },
+                { id: "1000", name: "1,000 Units",  value: 1000 },
+                { id: "2500", name: "2,500 Units",  value: 2500 },
+                { id: "5000", name: "5,000 Units",  value: 5000 }
+              ];
+          customGroups["Quantity"] = qtyPresets.map(q => ({
+            id: String(q.id || q.value),
+            name: q.name || `${q.value} Units`,
+            value: parseFloat(q.value) || 0
+          }));
 
           // 2. Size Choices (Customer sees only name, backend uses imposition and costPerM)
           const sizesList = Array.isArray(data.customPrintSizes) && data.customPrintSizes.length > 0
@@ -279,9 +286,9 @@ export default function ProductDetailPage({ params: paramsPromise }) {
           const defaultSelections = {};
           Object.entries(customGroups).forEach(([gName, opts]) => {
             if (opts.length > 0) {
-              // For quantity, default to 500 or 100 if present
+              // For quantity, default to 500 if present, skip "custom" as default
               if (gName === "Quantity") {
-                const preferred = opts.find(o => o.id === "500") || opts[0];
+                const preferred = opts.find(o => o.id === "500") || opts.find(o => o.id !== "custom") || opts[0];
                 defaultSelections[gName] = preferred.id.toString();
               } else {
                 defaultSelections[gName] = opts[0].id.toString();
@@ -555,15 +562,16 @@ export default function ProductDetailPage({ params: paramsPromise }) {
                   const isQuantity = groupName.toLowerCase().includes("qty") || groupName.toLowerCase().includes("quantity");
 
                   if (isQuantity) {
+                    const selectedQtyVal = selectedOptions[groupName] || "";
                     return (
-                      <div key={groupName}>
+                      <div key={groupName} style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
                         <label className="label" htmlFor={`opt-${groupName}`} style={{ textTransform: "capitalize", fontWeight: 700 }}>
                           {groupName}
                         </label>
                         <select
                           id={`opt-${groupName}`}
                           className="input"
-                          value={selectedOptions[groupName] || ""}
+                          value={selectedQtyVal}
                           onChange={(e) => handleOptionChange(groupName, e.target.value)}
                         >
                           <option value="">Select quantity...</option>
