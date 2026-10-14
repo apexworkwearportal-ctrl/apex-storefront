@@ -52,6 +52,71 @@ export default function ProductDetailPage({ params: paramsPromise }) {
   const selectedCount = Object.keys(selectedOptions).filter(k => selectedOptions[k] !== "").length;
   const allSelected = totalGroupsCount > 0 && selectedCount === totalGroupsCount;
 
+  // Derive the currently selected size dimensions for the print proof frame.
+  // Handles both Custom Print products (where ID is often the size string) and
+  // SinaLite API products (where ID is numeric e.g. 48102, and name is "24 x 36").
+  // Automatically detects any group containing "size" or "dimension", falls back to scanning
+  // all selected options, and finally product name.
+  const selectedSizeDimensions = useMemo(() => {
+    let matchedName = "";
+    const dimRegex = /(\d+(?:\.\d+)?)\s*["\u2019\u201d']?\s*[xX\u00d7]\s*(\d+(?:\.\d+)?)/;
+
+    // 1. Look for group named "Size", "Sizes", "Flat Size", "Finished Size", "Dimensions", etc.
+    const sizeGroupEntry = Object.entries(optionGroups).find(([gName]) => {
+      const lower = gName.toLowerCase();
+      return lower === "size" || lower === "sizes" || lower.includes("size") || lower.includes("dimension");
+    });
+
+    if (sizeGroupEntry) {
+      const [gName, opts] = sizeGroupEntry;
+      const selectedVal = selectedOptions[gName];
+      if (selectedVal !== undefined && selectedVal !== null && selectedVal !== "") {
+        const match = (opts || []).find(o => String(o.id) === String(selectedVal) || String(o.name) === String(selectedVal));
+        if (match?.name) {
+          matchedName = match.name;
+        } else if (typeof selectedVal === "string" && dimRegex.test(selectedVal)) {
+          matchedName = selectedVal;
+        }
+      }
+    }
+
+    // 2. If not found in a size group, check all other selected options for any dimension string
+    if (!matchedName || !dimRegex.test(matchedName)) {
+      for (const [gName, opts] of Object.entries(optionGroups)) {
+        const selectedVal = selectedOptions[gName];
+        if (!selectedVal) continue;
+        const match = (opts || []).find(o => String(o.id) === String(selectedVal) || String(o.name) === String(selectedVal));
+        const candidate = match?.name || (typeof selectedVal === "string" ? selectedVal : "");
+        if (dimRegex.test(candidate)) {
+          matchedName = candidate;
+          break;
+        }
+      }
+    }
+
+    // 3. Fallback to product title if it includes a dimension (e.g. "Yard Signs 18x24")
+    const prodTitle = product?.name || product?.sinalite?.name || "";
+    if ((!matchedName || !dimRegex.test(matchedName)) && prodTitle) {
+      if (dimRegex.test(prodTitle)) {
+        matchedName = prodTitle;
+      }
+    }
+
+    // 4. Parse width and height from the matched string
+    if (matchedName) {
+      const m = String(matchedName).match(dimRegex);
+      if (m) {
+        const w = parseFloat(m[1]);
+        const h = parseFloat(m[2]);
+        if (w > 0 && h > 0) {
+          return { w, h, sizeName: `${w}" × ${h}"` };
+        }
+      }
+    }
+
+    return { w: 3.5, h: 2.0, sizeName: `3.5" × 2"` }; // default: business card
+  }, [optionGroups, selectedOptions, product]);
+
   // Compute custom product price with useMemo using the Custom Print Pricing Engine
   const customCalculatedPrice = useMemo(() => {
     if (!product?.isCustom) return null;
@@ -413,7 +478,10 @@ export default function ProductDetailPage({ params: paramsPromise }) {
 
   const handleProofApproval = (details) => {
     setProofApproved(true);
-    setProofDetails(details);
+    setProofDetails({
+      ...details,
+      finishedSize: selectedSizeDimensions.sizeName
+    });
     setProofModalOpen(false);
   };
 
@@ -878,7 +946,12 @@ export default function ProductDetailPage({ params: paramsPromise }) {
         fileUrl={(selectedArtworkForProof || artworkFiles[0])?.url}
         fileName={(selectedArtworkForProof || artworkFiles[0])?.name || "artwork"}
         productName={productName}
-        productSpecs={selectedOptions}
+        productSpecs={{
+          ...selectedOptions,
+          Size: selectedSizeDimensions.sizeName
+        }}
+        finishedWidthIn={selectedSizeDimensions.w}
+        finishedHeightIn={selectedSizeDimensions.h}
         onApprove={handleProofApproval}
         onApproveProof={handleProofApproval}
       />
