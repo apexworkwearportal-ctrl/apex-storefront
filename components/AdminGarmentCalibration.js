@@ -5,10 +5,19 @@ import { Ruler, Check, AlertCircle, Crosshair, Wand2, X, Info, RotateCcw, CheckC
 
 const REFERENCE_KINDS = [
   { id: "chest", label: "Chest width (laid flat, pit to pit)", help: "The size-chart chest width. Measure straight across, 1\" below the armholes.", axis: "horizontal" },
-  { id: "length", label: "Body length (HPS to hem)", help: "High point of shoulder to bottom hem. Measure vertically down the centre.", axis: "vertical" },
-  { id: "fullWidth", label: "Full width (sleeve to sleeve)", help: "Widest part of the garment, sleeve tip to sleeve tip.", axis: "horizontal" },
-  { id: "collar", label: "Collar width", help: "Collar opening width across seam.", axis: "horizontal" },
+  { id: "length", label: "Body length (HPS to hem)", help: "Size-chart body length: highest point of the shoulder straight down to the bottom hem.", axis: "vertical" },
+  { id: "shoulder", label: "Shoulder to shoulder", help: "Seam to seam across the top of the garment.", axis: "horizontal" },
+  { id: "fullWidth", label: "Sleeve tip to sleeve tip", help: "The full width of the garment as it lies in the photo.", axis: "horizontal" },
+  { id: "custom", label: "Something else in the photo", help: "A ruler, a tape measure, or a known object (e.g. 11\" paper) laid on the garment.", axis: "free" },
 ];
+
+const KIND_DEFAULTS = {
+  chest: { a: { x: 20, y: 35 }, b: { x: 80, y: 35 }, refIn: 22 },
+  length: { a: { x: 50, y: 15 }, b: { x: 50, y: 85 }, refIn: 29 },
+  shoulder: { a: { x: 28, y: 18 }, b: { x: 72, y: 18 }, refIn: 18 },
+  fullWidth: { a: { x: 5, y: 25 }, b: { x: 95, y: 25 }, refIn: 38 },
+  custom: { a: { x: 25, y: 55 }, b: { x: 75, y: 55 }, refIn: 11 },
+};
 
 const CHECKER =
   "linear-gradient(45deg,#e2e8f0 25%,transparent 25%)," +
@@ -29,15 +38,26 @@ export default function AdminGarmentCalibration({
   onSave
 }) {
   const frameRef = useRef(null);
+  const dragStartRef = useRef({ x: 0, y: 0, a: { x: 0, y: 0 }, b: { x: 0, y: 0 } });
   const [frameW, setFrameW] = useState(0);
   const [step, setStep] = useState("scale"); // 'scale' or 'collar'
   const [refKind, setRefKind] = useState(initialCalibration?.refKind || "chest");
   const [trueLengthIn, setTrueLengthIn] = useState(initialCalibration?.referenceInches || 22);
   const [sizeLabel, setSizeLabel] = useState(initialCalibration?.calSize || "M");
 
+  // Keep a per-kind measurement store so switching kinds doesn't discard custom lines
+  const [measurements, setMeasurements] = useState(() => ({
+    chest: { a: initialCalibration?.lineStart || KIND_DEFAULTS.chest.a, b: initialCalibration?.lineEnd || KIND_DEFAULTS.chest.b, refIn: initialCalibration?.referenceInches || 22 },
+    length: KIND_DEFAULTS.length,
+    shoulder: KIND_DEFAULTS.shoulder,
+    fullWidth: KIND_DEFAULTS.fullWidth,
+    custom: KIND_DEFAULTS.custom,
+    ...(initialCalibration?.refKind ? { [initialCalibration.refKind]: { a: initialCalibration.lineStart, b: initialCalibration.lineEnd, refIn: initialCalibration.referenceInches } } : {})
+  }));
+
   // Handle coordinates in percentages (0 to 100)
-  const [lineA, setLineA] = useState(() => initialCalibration?.lineStart || { x: 20, y: 35 });
-  const [lineB, setLineB] = useState(() => initialCalibration?.lineEnd || { x: 80, y: 35 });
+  const [lineA, setLineA] = useState(() => initialCalibration?.lineStart || KIND_DEFAULTS.chest.a);
+  const [lineB, setLineB] = useState(() => initialCalibration?.lineEnd || KIND_DEFAULTS.chest.b);
   const [anchor, setAnchor] = useState(() => initialCalibration?.anchor || { x: 50, y: 15 });
 
   const [dragging, setDragging] = useState(null); // 'a' or 'b' or 'anchor'
@@ -60,25 +80,50 @@ export default function AdminGarmentCalibration({
 
   const currentKind = REFERENCE_KINDS.find(k => k.id === refKind) || REFERENCE_KINDS[0];
 
-  // Calculations
-  const linePctX = Math.abs(lineB.x - lineA.x) / 100;
-  const linePctY = Math.abs(lineB.y - lineA.y) / 100;
-  const linePctHypot = Math.hypot(linePctX, linePctY) || 1;
+  // Frame height in pixels
+  const frameH = frameW * (imgAspect || 1);
+
+  // Exact Euclidean distance in pixels between Line A and Line B
+  const dxPx = ((lineB.x - lineA.x) / 100) * frameW;
+  const dyPx = ((lineB.y - lineA.y) / 100) * frameH;
+  const lineDistancePx = Math.hypot(dxPx, dyPx);
 
   const refInNum = parseFloat(trueLengthIn) || 22;
 
-  // Garment dimensions in physical inches based on line scale
-  const totalImageWidthIn = linePctX > 0.05 ? (refInNum / linePctX) : (refInNum / 0.6);
-  const totalImageHeightIn = totalImageWidthIn * imgAspect;
+  // Scale: pixels per real-world inch
+  const scalePxPerInch = lineDistancePx > 0 && refInNum > 0 ? (lineDistancePx / refInNum) : 0;
 
-  const framePpi = frameW > 0 ? (frameW / totalImageWidthIn) : 0;
-  const scalePxPerInch = framePpi;
+  // Real-world physical dimensions of the garment photo
+  const totalImageWidthIn = scalePxPerInch > 0 ? (frameW / scalePxPerInch) : 22;
+  const totalImageHeightIn = scalePxPerInch > 0 ? (frameH / scalePxPerInch) : (22 * (imgAspect || 1));
+  const framePpi = scalePxPerInch;
+
+  // Handle kind selection
+  const handleSelectKind = (nextKindId) => {
+    // Save current kind measurement
+    setMeasurements(prev => ({
+      ...prev,
+      [refKind]: { a: lineA, b: lineB, refIn: trueLengthIn }
+    }));
+
+    setRefKind(nextKindId);
+    const stored = measurements[nextKindId] || KIND_DEFAULTS[nextKindId] || KIND_DEFAULTS.chest;
+    setLineA(stored.a);
+    setLineB(stored.b);
+    setTrueLengthIn(stored.refIn);
+  };
 
   // Pointer drag logic
   const handlePointerDown = (handle, e) => {
     e.preventDefault();
     e.stopPropagation();
     setDragging(handle);
+    dragStartRef.current = {
+      x: e.clientX,
+      y: e.clientY,
+      a: { ...lineA },
+      b: { ...lineB }
+    };
   };
 
   const handlePointerMove = (e) => {
@@ -87,10 +132,39 @@ export default function AdminGarmentCalibration({
     const x = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
     const y = Math.max(0, Math.min(100, ((e.clientY - rect.top) / rect.height) * 100));
 
-    if (dragging === "a") {
-      setLineA({ x, y: currentKind.axis === "horizontal" ? lineB.y : y });
+    if (dragging === "line") {
+      const dxPct = ((e.clientX - dragStartRef.current.x) / rect.width) * 100;
+      const dyPct = ((e.clientY - dragStartRef.current.y) / rect.height) * 100;
+
+      const newAx = Math.max(0, Math.min(100, dragStartRef.current.a.x + dxPct));
+      const newAy = Math.max(0, Math.min(100, dragStartRef.current.a.y + dyPct));
+      const newBx = Math.max(0, Math.min(100, dragStartRef.current.b.x + dxPct));
+      const newBy = Math.max(0, Math.min(100, dragStartRef.current.b.y + dyPct));
+
+      setLineA({ x: newAx, y: newAy });
+      setLineB({ x: newBx, y: newBy });
+    } else if (dragging === "a") {
+      if (currentKind.axis === "horizontal") {
+        setLineA({ x, y });
+        setLineB(prev => ({ ...prev, y }));
+      } else if (currentKind.axis === "vertical") {
+        setLineA({ x, y });
+        setLineB(prev => ({ ...prev, x }));
+      } else {
+        // free axis (something else in photo): place point anywhere!
+        setLineA({ x, y });
+      }
     } else if (dragging === "b") {
-      setLineB({ x, y: currentKind.axis === "horizontal" ? lineA.y : y });
+      if (currentKind.axis === "horizontal") {
+        setLineB({ x, y });
+        setLineA(prev => ({ ...prev, y }));
+      } else if (currentKind.axis === "vertical") {
+        setLineB({ x, y });
+        setLineA(prev => ({ ...prev, x }));
+      } else {
+        // free axis (something else in photo): place point anywhere!
+        setLineB({ x, y });
+      }
     } else if (dragging === "anchor") {
       setAnchor({ x, y });
     }
@@ -110,24 +184,27 @@ export default function AdminGarmentCalibration({
   };
 
   const handleSnapToEdges = () => {
-    setLineA({ x: 15, y: lineA.y });
-    setLineB({ x: 85, y: lineB.y });
+    if (currentKind.axis === "vertical") {
+      setLineA({ x: lineA.x, y: 5 });
+      setLineB({ x: lineA.x, y: 95 });
+    } else {
+      setLineA({ x: 5, y: lineA.y });
+      setLineB({ x: 95, y: lineA.y });
+    }
   };
 
   const handleResetLine = () => {
-    if (currentKind.axis === "vertical") {
-      setLineA({ x: 50, y: 15 });
-      setLineB({ x: 50, y: 85 });
-    } else {
-      setLineA({ x: 20, y: 35 });
-      setLineB({ x: 80, y: 35 });
-    }
+    const def = KIND_DEFAULTS[refKind] || KIND_DEFAULTS.chest;
+    setLineA(def.a);
+    setLineB(def.b);
+    setTrueLengthIn(def.refIn);
   };
 
   const handleSave = () => {
     const calibrationPayload = {
       isCalibrated: true,
       scaleUnitsPerInch: scalePxPerInch,
+      pxPerInch: scalePxPerInch,
       garmentWidthIn: totalImageWidthIn,
       garmentHeightIn: totalImageHeightIn,
       referenceInches: refInNum,
@@ -136,6 +213,8 @@ export default function AdminGarmentCalibration({
       lineStart: lineA,
       lineEnd: lineB,
       anchor,
+      anchorX: anchor ? anchor.x / 100 : 0.5,
+      anchorY: anchor ? anchor.y / 100 : 0.2,
       calibratedAt: new Date().toISOString()
     };
 
@@ -151,10 +230,9 @@ export default function AdminGarmentCalibration({
 
   // Convert percentage coordinates to frame pixels
   const ax = (lineA.x / 100) * frameW;
-  const ay = (lineA.y / 100) * (frameW * imgAspect);
+  const ay = (lineA.y / 100) * frameH;
   const bx = (lineB.x / 100) * frameW;
-  const by = (lineB.y / 100) * (frameW * imgAspect);
-  const frameH = frameW * imgAspect;
+  const by = (lineB.y / 100) * frameH;
 
   return (
     <div
@@ -287,8 +365,16 @@ export default function AdminGarmentCalibration({
               {step === "scale" && frameH > 0 && (
                 <>
                   <svg style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", pointerEvents: "none" }}>
-                    <line x1={ax} y1={ay} x2={bx} y2={by} stroke="#ffffff" strokeWidth="5" opacity="0.8" strokeLinecap="round" />
+                    <line x1={ax} y1={ay} x2={bx} y2={by} stroke="#ffffff" strokeWidth="6" opacity="0.8" strokeLinecap="round" />
                     <line x1={ax} y1={ay} x2={bx} y2={by} stroke="#2563eb" strokeWidth="3" strokeLinecap="round" />
+                    {/* Interactive hit area line to drag entire line */}
+                    <line
+                      x1={ax} y1={ay} x2={bx} y2={by}
+                      stroke="transparent"
+                      strokeWidth="24"
+                      style={{ pointerEvents: "stroke", cursor: "move" }}
+                      onPointerDown={(e) => handlePointerDown("line", e)}
+                    />
                   </svg>
 
                   {/* Handle A */}
@@ -416,7 +502,7 @@ export default function AdminGarmentCalibration({
                   <select
                     className="input"
                     value={refKind}
-                    onChange={(e) => setRefKind(e.target.value)}
+                    onChange={(e) => handleSelectKind(e.target.value)}
                     style={{ fontSize: "0.85rem" }}
                   >
                     {REFERENCE_KINDS.map(k => (

@@ -22,10 +22,17 @@ import {
   Info,
   Maximize2,
   Minimize2,
-  Crosshair
+  Crosshair,
+  Grid3x3,
+  Download,
+  Plus,
+  Check,
+  AlertTriangle
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import ApparelSizeChartModal from "./ApparelSizeChartModal";
+import AdminGarmentCalibration from "./AdminGarmentCalibration";
+import { computeLayout, resolveScale, placementFromCenter, clampCenter, canvasAspect } from "@/lib/mockup-geometry";
 
 const DEFAULT_SIZES = [
   { name: "S", priceUpcharge: 0 },
@@ -124,56 +131,71 @@ export default function ApparelVisualCustomizer({
     return ["front"];
   }, [selectedPrintLocation, selectedPrintLocationId]);
 
-  const [currentEditingSide, setCurrentEditingSide] = useState("front");
+  const [selectedSide, setSelectedSide] = useState("front");
+  const currentEditingSide = activeSides.includes(selectedSide) ? selectedSide : (activeSides[0] || "front");
+  const setCurrentEditingSide = setSelectedSide;
 
-  // Keep current editing side within active sides
-  useEffect(() => {
-    if (!activeSides.includes(currentEditingSide)) {
-      setCurrentEditingSide(activeSides[0] || "front");
-    }
-  }, [activeSides, currentEditingSide]);
+  // Print method and internal production notes
+  const [printMethod, setPrintMethod] = useState("screenprint"); // screenprint, embroidery, dtg, vinyl
+  const [internalNotes, setInternalNotes] = useState("");
 
-  // Logo placements state per side: { front: { logoUrl, logoName, posX, posY, scale, rotation, widthIn, heightIn }, back: ... }
-  const [placements, setPlacements] = useState({
-    front: {
-      logoUrl: "",
-      logoName: "",
-      positionX: 50, // % from left (0 - 100)
-      positionY: 35, // % from top (0 - 100)
-      scale: 1, // 0.3 - 2.5
-      rotation: 0, // degrees
-      sizeIn: 8, // physical width in inches
-    },
-    back: {
-      logoUrl: "",
-      logoName: "",
-      positionX: 50,
-      positionY: 35,
-      scale: 1,
-      rotation: 0,
-      sizeIn: 10,
-    },
-    left: {
-      logoUrl: "",
-      logoName: "",
-      positionX: 50,
-      positionY: 35,
-      scale: 1,
-      rotation: 0,
-      sizeIn: 4,
-    },
-    right: {
-      logoUrl: "",
-      logoName: "",
-      positionX: 50,
-      positionY: 35,
-      scale: 1,
-      rotation: 0,
-      sizeIn: 4,
+  // Live calibrations per side (override product.views[side].calibration if calibrated in-studio)
+  const [liveCalibrations, setLiveCalibrations] = useState(() => {
+    const initial = {};
+    if (views) {
+      Object.keys(views).forEach(side => {
+        if (views[side]?.calibration) initial[side] = views[side].calibration;
+      });
     }
+    return initial;
   });
 
+  const [recalibrateOpen, setRecalibrateOpen] = useState(false);
+  const [showGrid, setShowGrid] = useState(false);
+  const [exportingMockup, setExportingMockup] = useState(false);
+
+  // Multi-logo state per side: { front: [ { id, label, imageUrl, fileName, widthIn, heightIn, rotationDeg, offsetXIn, offsetYIn, positionX, positionY } ], back: ... }
+  const [logosBySide, setLogosBySide] = useState({
+    front: [],
+    back: [],
+    left: [],
+    right: []
+  });
+
+  const [selectedLogoId, setSelectedLogoId] = useState(null);
   const [uploadingLogoSide, setUploadingLogoSide] = useState(null);
+  const fileInputRef = useRef(null);
+
+  // Viewport container width & image aspect ratio
+  const containerRef = useRef(null);
+  const [containerW, setContainerW] = useState(0);
+  const [imgAspectBySide, setImgAspectBySide] = useState({});
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(entries => {
+      if (entries[0]) {
+        setContainerW(entries[0].contentRect.width);
+      }
+    });
+    ro.observe(el);
+    setContainerW(el.clientWidth);
+    return () => ro.disconnect();
+  }, [step, currentEditingSide]);
+
+  // Active garment view data
+  const currentViewData = views[currentEditingSide] || views.front || Object.values(views)[0] || {};
+  const currentGarmentImg = currentViewData.image || product.images?.[0] || "https://images.unsplash.com/photo-1521572267360-ee0c2909d518?q=80&w=800";
+  const currentCalibration = liveCalibrations[currentEditingSide] || currentViewData.calibration || null;
+  const currentAspect = imgAspectBySide[currentEditingSide] || 1.1;
+
+  const currentLogos = useMemo(() => logosBySide[currentEditingSide] || [], [logosBySide, currentEditingSide]);
+  const selectedLogo = currentLogos.find(l => l.id === selectedLogoId) || currentLogos[0] || null;
+
+  // Sizing fallback measurements
+  const fallbackApparelWidthIn = 22; // Medium chest
+  const fallbackApparelHeightIn = 28.5; // Medium body length
 
   // Calculations
   const totalQuantity = useMemo(() => {
@@ -218,10 +240,170 @@ export default function ApparelVisualCustomizer({
     }));
   };
 
-  // Logo upload handler for specific side
-  const handleLogoUpload = async (side, file) => {
+  // True scale layouts for current side
+  const layouts = useMemo(() => {
+    const out = {};
+    for (const logo of currentLogos) {
+      out[logo.id] = computeLayout({
+        canvasW: containerW,
+        image: currentCalibration,
+        fallbackApparelWidthIn,
+        fallbackApparelHeightIn,
+        logoWidthIn: logo.widthIn || 6,
+        logoHeightIn: logo.heightIn || 5,
+        placement: {
+          positionX: logo.positionX !== undefined ? logo.positionX : 0.5,
+          positionY: logo.positionY !== undefined ? logo.positionY : 0.35,
+          offsetXIn: logo.offsetXIn !== undefined ? logo.offsetXIn : 0,
+          offsetYIn: logo.offsetYIn !== undefined ? logo.offsetYIn : 8,
+        }
+      });
+    }
+    return out;
+  }, [currentLogos, containerW, currentCalibration]);
+
+  // Base canvas layout for scale indicators and ruler
+  const canvasMeta = useMemo(() => {
+    return computeLayout({
+      canvasW: containerW,
+      image: currentCalibration,
+      fallbackApparelWidthIn,
+      fallbackApparelHeightIn,
+      logoWidthIn: 0,
+      logoHeightIn: 0,
+      placement: { positionX: 0.5, positionY: 0.25 }
+    });
+  }, [containerW, currentCalibration]);
+
+  const canvasH = containerW > 0 ? containerW * currentAspect : 500;
+  const unitsPerInch = canvasMeta.unitsPerInch || (containerW > 0 ? containerW / 22 : 0);
+  const isTrueToScale = canvasMeta.isTrueToScale;
+
+  // Garment measured dimensions
+  const garmentMeasuredW = currentCalibration?.garmentWidthIn || fallbackApparelWidthIn;
+  const garmentMeasuredH = currentCalibration?.garmentHeightIn || fallbackApparelHeightIn;
+  const garmentCalSize = currentCalibration?.calSize || "M";
+
+  // Dragging logic on canvas
+  const [draggingLogoId, setDraggingLogoId] = useState(null);
+  const dragRef = useRef({ id: "", mouseX: 0, mouseY: 0, startCX: 0, startCY: 0 });
+
+  const handleLogoPointerDown = (e, logo) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setSelectedLogoId(logo.id);
+    const l = layouts[logo.id];
+    if (!l) return;
+    setDraggingLogoId(logo.id);
+    dragRef.current = {
+      id: logo.id,
+      mouseX: e.clientX,
+      mouseY: e.clientY,
+      startCX: l.logoLeft + l.logoW / 2,
+      startCY: l.logoTop + l.logoH / 2,
+    };
+  };
+
+  useEffect(() => {
+    if (!draggingLogoId || containerW === 0) return;
+
+    const onMove = (e) => {
+      e.preventDefault();
+      const { id, mouseX, mouseY, startCX, startCY } = dragRef.current;
+      const l = layouts[id];
+      if (!l) return;
+
+      const newCX = startCX + (e.clientX - mouseX);
+      const newCY = startCY + (e.clientY - mouseY);
+      const clamped = clampCenter(newCX, newCY, l);
+      const nextPlacement = placementFromCenter(clamped.x, clamped.y, l);
+
+      setLogosBySide(prev => {
+        const sideList = prev[currentEditingSide] || [];
+        return {
+          ...prev,
+          [currentEditingSide]: sideList.map(item => {
+            if (item.id === id) {
+              return {
+                ...item,
+                positionX: nextPlacement.positionX,
+                positionY: nextPlacement.positionY,
+                offsetXIn: nextPlacement.offsetXIn != null ? Math.round(nextPlacement.offsetXIn * 100) / 100 : item.offsetXIn,
+                offsetYIn: nextPlacement.offsetYIn != null ? Math.round(nextPlacement.offsetYIn * 100) / 100 : item.offsetYIn,
+              };
+            }
+            return item;
+          })
+        };
+      });
+    };
+
+    const onUp = () => {
+      setDraggingLogoId(null);
+    };
+
+    window.addEventListener("pointermove", onMove, { passive: false });
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+    };
+  }, [draggingLogoId, containerW, layouts, currentEditingSide]);
+
+  // Apply placement preset (Left Chest, Centre Chest, etc.)
+  const applyPresetOffsets = (offsetXIn, offsetYIn, suggestedWidthIn) => {
+    if (!selectedLogo) return;
+    setLogosBySide(prev => {
+      const sideList = prev[currentEditingSide] || [];
+      return {
+        ...prev,
+        [currentEditingSide]: sideList.map(item => {
+          if (item.id === selectedLogo.id) {
+            const patch = {
+              ...item,
+              offsetXIn: Math.round(offsetXIn * 100) / 100,
+              offsetYIn: Math.round(offsetYIn * 100) / 100,
+            };
+            if (suggestedWidthIn && item.widthIn && item.heightIn) {
+              const ratio = item.heightIn / item.widthIn;
+              patch.widthIn = suggestedWidthIn;
+              patch.heightIn = Math.round(suggestedWidthIn * ratio * 100) / 100;
+            }
+            return patch;
+          }
+          return item;
+        })
+      };
+    });
+  };
+
+  // Update offset in inches directly
+  const handleOffsetChange = (field, val) => {
+    if (!selectedLogo) return;
+    const num = parseFloat(val) || 0;
+    setLogosBySide(prev => {
+      const sideList = prev[currentEditingSide] || [];
+      return {
+        ...prev,
+        [currentEditingSide]: sideList.map(item => {
+          if (item.id === selectedLogo.id) {
+            return {
+              ...item,
+              [field]: num
+            };
+          }
+          return item;
+        })
+      };
+    });
+  };
+
+  // Add a new logo to the current side
+  const handleAddLogoFile = async (file) => {
     if (!file) return;
-    setUploadingLogoSide(side);
+    setUploadingLogoSide(currentEditingSide);
 
     try {
       const formData = new FormData();
@@ -235,129 +417,204 @@ export default function ApparelVisualCustomizer({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to upload logo.");
 
-      setPlacements(prev => ({
+      // Calculate initial dimensions based on image aspect ratio
+      const img = new Image();
+      img.src = data.url;
+      await new Promise(r => { img.onload = r; img.onerror = r; });
+      const aspect = (img.naturalHeight && img.naturalWidth) ? (img.naturalHeight / img.naturalWidth) : 0.833;
+
+      const baseWidthIn = 6;
+      const baseHeightIn = Math.round(baseWidthIn * aspect * 10) / 10 || 5;
+
+      const currentList = logosBySide[currentEditingSide] || [];
+      const newLogo = {
+        id: `logo-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+        label: `Logo ${currentList.length + 1}`,
+        imageUrl: data.url,
+        fileName: file.name,
+        widthIn: baseWidthIn,
+        heightIn: baseHeightIn,
+        rotationDeg: 0,
+        positionX: 0.5,
+        positionY: 0.35,
+        offsetXIn: 0,
+        offsetYIn: 7.99
+      };
+
+      setLogosBySide(prev => ({
         ...prev,
-        [side]: {
-          ...prev[side],
-          logoUrl: data.url,
-          logoName: file.name
-        }
+        [currentEditingSide]: [...(prev[currentEditingSide] || []), newLogo]
       }));
+      setSelectedLogoId(newLogo.id);
     } catch (err) {
-      alert("Logo upload error: " + err.message);
+      alert("Error adding logo: " + err.message);
     } finally {
       setUploadingLogoSide(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
 
-  const handleRemoveLogo = (side) => {
-    setPlacements(prev => ({
-      ...prev,
-      [side]: {
-        ...prev[side],
-        logoUrl: "",
-        logoName: ""
-      }
-    }));
+  // Update logo properties
+  const handleUpdateLogo = (logoId, patch) => {
+    setLogosBySide(prev => {
+      const sideList = prev[currentEditingSide] || [];
+      return {
+        ...prev,
+        [currentEditingSide]: sideList.map(item => {
+          if (item.id === logoId) {
+            return { ...item, ...patch };
+          }
+          return item;
+        })
+      };
+    });
   };
 
-  const updatePlacement = (side, field, val) => {
-    setPlacements(prev => ({
-      ...prev,
-      [side]: {
-        ...prev[side],
-        [field]: val
-      }
-    }));
+  // Remove a logo
+  const handleRemoveLogo = (logoId) => {
+    setLogosBySide(prev => {
+      const sideList = prev[currentEditingSide] || [];
+      const nextList = sideList.filter(item => item.id !== logoId);
+      return {
+        ...prev,
+        [currentEditingSide]: nextList
+      };
+    });
+    if (selectedLogoId === logoId) {
+      const remaining = (logosBySide[currentEditingSide] || []).filter(l => l.id !== logoId);
+      setSelectedLogoId(remaining[0]?.id || null);
+    }
   };
 
-  // Dragging logic on canvas
-  const canvasRef = useRef(null);
-  const [isDragging, setIsDragging] = useState(false);
-  const dragStartRef = useRef({ x: 0, y: 0, initialPosX: 50, initialPosY: 35 });
+  // Export full-res composite mockup PNG
+  const handleExportMockup = async () => {
+    if (!currentGarmentImg || currentLogos.length === 0) return;
+    setExportingMockup(true);
 
-  const handlePointerDown = (e) => {
-    const currentPlacement = placements[currentEditingSide];
-    if (!currentPlacement?.logoUrl) return;
+    try {
+      const load = (src) => new Promise((res, rej) => {
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        img.onload = () => res(img);
+        img.onerror = rej;
+        img.src = src;
+      });
 
-    e.preventDefault();
-    setIsDragging(true);
-    dragStartRef.current = {
-      x: e.clientX,
-      y: e.clientY,
-      initialPosX: currentPlacement.positionX,
-      initialPosY: currentPlacement.positionY
-    };
+      const garmentImg = await load(currentGarmentImg);
+      const logoImgs = await Promise.all(currentLogos.map(l => load(l.imageUrl)));
+
+      const exportW = garmentImg.naturalWidth || 1600;
+      const exportH = exportW * (garmentImg.naturalHeight / garmentImg.naturalWidth || currentAspect);
+
+      const canvasEl = document.createElement("canvas");
+      canvasEl.width = Math.round(exportW);
+      canvasEl.height = Math.round(exportH);
+      const ctx = canvasEl.getContext("2d");
+
+      // Draw garment
+      ctx.drawImage(garmentImg, 0, 0, canvasEl.width, canvasEl.height);
+
+      // Draw logos at true scale
+      currentLogos.forEach((logo, i) => {
+        const ex = computeLayout({
+          canvasW: exportW,
+          image: currentCalibration,
+          fallbackApparelWidthIn,
+          fallbackApparelHeightIn,
+          logoWidthIn: logo.widthIn,
+          logoHeightIn: logo.heightIn,
+          placement: {
+            positionX: logo.positionX,
+            positionY: logo.positionY,
+            offsetXIn: logo.offsetXIn,
+            offsetYIn: logo.offsetYIn
+          }
+        });
+
+        const angle = ((logo.rotationDeg || 0) * Math.PI) / 180;
+        ctx.save();
+        if (angle) {
+          ctx.translate(ex.logoLeft + ex.logoW / 2, ex.logoTop + ex.logoH / 2);
+          ctx.rotate(angle);
+          ctx.translate(-(ex.logoLeft + ex.logoW / 2), -(ex.logoTop + ex.logoH / 2));
+        }
+        ctx.drawImage(logoImgs[i], ex.logoLeft, ex.logoTop, ex.logoW, ex.logoH);
+        ctx.restore();
+      });
+
+      const a = document.createElement("a");
+      a.download = `${product.name.replace(/\s+/g, "_")}_${currentEditingSide}_mockup.png`;
+      a.href = canvasEl.toDataURL("image/png");
+      a.click();
+    } catch (err) {
+      alert("Error exporting mockup: " + err.message);
+    } finally {
+      setExportingMockup(false);
+    }
   };
 
-  const handlePointerMove = (e) => {
-    if (!isDragging || !canvasRef.current) return;
-    const rect = canvasRef.current.getBoundingClientRect();
-    const deltaXPct = ((e.clientX - dragStartRef.current.x) / rect.width) * 100;
-    const deltaYPct = ((e.clientY - dragStartRef.current.y) / rect.height) * 100;
-
-    const newX = Math.max(15, Math.min(85, dragStartRef.current.initialPosX + deltaXPct));
-    const newY = Math.max(15, Math.min(85, dragStartRef.current.initialPosY + deltaYPct));
-
-    updatePlacement(currentEditingSide, "positionX", newX);
-    updatePlacement(currentEditingSide, "positionY", newY);
-  };
-
-  const handlePointerUp = () => {
-    setIsDragging(false);
-  };
-
-  // High-accuracy canvas composite snapshot generator
+  // High-accuracy canvas composite snapshot generator for cart submission
   const generateSideMockupSnapshot = async (sideKey) => {
     const viewData = views[sideKey] || Object.values(views)[0];
     const garmentImgSrc = viewData?.image || product.images?.[0] || "";
-    const placement = placements[sideKey];
+    const sideLogos = logosBySide[sideKey] || [];
+    const sideCalib = liveCalibrations[sideKey] || viewData?.calibration || null;
 
     if (!garmentImgSrc) return "";
 
     return new Promise((resolve) => {
-      const canvas = document.createElement("canvas");
-      const ctx = canvas.getContext("2d");
       const garmentImg = new Image();
       garmentImg.crossOrigin = "anonymous";
+      garmentImg.onload = async () => {
+        const canvas = document.createElement("canvas");
+        const exportW = garmentImg.naturalWidth || 1400;
+        const exportH = garmentImg.naturalHeight || 1400;
+        canvas.width = exportW;
+        canvas.height = exportH;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(garmentImg, 0, 0, exportW, exportH);
 
-      garmentImg.onload = () => {
-        canvas.width = garmentImg.naturalWidth || 1000;
-        canvas.height = garmentImg.naturalHeight || 1000;
+        for (const logo of sideLogos) {
+          try {
+            const logoImg = new Image();
+            logoImg.crossOrigin = "anonymous";
+            await new Promise((res, rej) => {
+              logoImg.onload = res;
+              logoImg.onerror = rej;
+              logoImg.src = logo.imageUrl;
+            });
 
-        // Draw garment base
-        ctx.drawImage(garmentImg, 0, 0, canvas.width, canvas.height);
+            const ex = computeLayout({
+              canvasW: exportW,
+              image: sideCalib,
+              fallbackApparelWidthIn,
+              fallbackApparelHeightIn,
+              logoWidthIn: logo.widthIn,
+              logoHeightIn: logo.heightIn,
+              placement: {
+                positionX: logo.positionX,
+                positionY: logo.positionY,
+                offsetXIn: logo.offsetXIn,
+                offsetYIn: logo.offsetYIn
+              }
+            });
 
-        // If a logo is placed on this side, composite it
-        if (placement?.logoUrl) {
-          const logoImg = new Image();
-          logoImg.crossOrigin = "anonymous";
-          logoImg.onload = () => {
-            const centerX = (placement.positionX / 100) * canvas.width;
-            const centerY = (placement.positionY / 100) * canvas.height;
-            
-            const baseLogoW = canvas.width * 0.28;
-            const logoW = baseLogoW * (placement.scale || 1);
-            const aspect = logoImg.naturalHeight / (logoImg.naturalWidth || 1);
-            const logoH = logoW * aspect;
-
+            const angle = ((logo.rotationDeg || 0) * Math.PI) / 180;
             ctx.save();
-            ctx.translate(centerX, centerY);
-            if (placement.rotation) {
-              ctx.rotate((placement.rotation * Math.PI) / 180);
+            if (angle) {
+              ctx.translate(ex.logoLeft + ex.logoW / 2, ex.logoTop + ex.logoH / 2);
+              ctx.rotate(angle);
+              ctx.translate(-(ex.logoLeft + ex.logoW / 2), -(ex.logoTop + ex.logoH / 2));
             }
-            ctx.drawImage(logoImg, -logoW / 2, -logoH / 2, logoW, logoH);
+            ctx.drawImage(logoImg, ex.logoLeft, ex.logoTop, ex.logoW, ex.logoH);
             ctx.restore();
-
-            resolve(canvas.toDataURL("image/png", 0.9));
-          };
-          logoImg.onerror = () => resolve(canvas.toDataURL("image/png", 0.9));
-          logoImg.src = placement.logoUrl;
-        } else {
-          resolve(canvas.toDataURL("image/png", 0.9));
+          } catch (e) {
+            console.error("Failed to draw logo on snapshot:", e);
+          }
         }
-      };
 
+        resolve(canvas.toDataURL("image/png", 0.9));
+      };
       garmentImg.onerror = () => resolve("");
       garmentImg.src = garmentImgSrc;
     });
@@ -377,21 +634,23 @@ export default function ApparelVisualCustomizer({
       // 2. Gather raw artwork files
       const artworkFiles = [];
       activeSides.forEach(side => {
-        const p = placements[side];
-        if (p?.logoUrl) {
+        const sideLogos = logosBySide[side] || [];
+        sideLogos.forEach(logo => {
           artworkFiles.push({
-            name: p.logoName || `${side.toUpperCase()} Logo`,
-            url: p.logoUrl,
+            name: logo.label || `${side.toUpperCase()} Logo`,
+            url: logo.imageUrl,
             side: side,
-            sizeIn: p.sizeIn || 8,
+            widthIn: logo.widthIn || 6,
+            heightIn: logo.heightIn || 5,
+            rotationDeg: logo.rotationDeg || 0,
             placement: {
-              positionX: p.positionX / 100,
-              positionY: p.positionY / 100,
-              rotation: p.rotation,
-              scale: p.scale
+              offsetXIn: logo.offsetXIn,
+              offsetYIn: logo.offsetYIn,
+              positionX: logo.positionX,
+              positionY: logo.positionY
             }
           });
-        }
+        });
       });
 
       // 3. Construct clean size breakdown string: e.g. "S: 5, M: 10, L: 10"
@@ -421,12 +680,14 @@ export default function ApparelVisualCustomizer({
         color: selectedColor,
         sizeBreakdown: sizeQuantities,
         printLocation: selectedPrintLocation,
+        printMethod: printMethod,
+        internalNotes: internalNotes,
         optionSummary: optionSummaryText,
         
         // Visual placements & raw artwork for manufacturing
         artworkFiles,
         mockupSnapshots,
-        placementMetadata: placements
+        placementMetadata: logosBySide
       };
 
       onAddToCart(cartPayload);
@@ -437,12 +698,6 @@ export default function ApparelVisualCustomizer({
       setSubmittingToCart(false);
     }
   };
-
-  // Active garment view data
-  const currentViewData = views[currentEditingSide] || views.front || Object.values(views)[0] || {};
-  const currentGarmentImg = currentViewData.image || product.images?.[0] || "";
-  const currentCalibration = currentViewData.calibration || {};
-  const currentPlacement = placements[currentEditingSide] || {};
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "2rem" }}>
@@ -876,7 +1131,7 @@ export default function ApparelVisualCustomizer({
         </motion.div>
       )}
 
-      {/* STEP 2: Interactive High-Accuracy Logo Placement & Live Proof */}
+      {/* STEP 2: Interactive True-Scale Logo Placement & Live Proof */}
       {step === 2 && (
         <motion.div
           initial={{ opacity: 0, x: 10 }}
@@ -885,14 +1140,14 @@ export default function ApparelVisualCustomizer({
           style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: "2.5rem" }}
           className="apparel-step-grid"
         >
-          {/* Left Column: Interactive Garment Canvas */}
+          {/* Left Column: Interactive True-Scale Garment Viewport & Placement Controls */}
           <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
             
-            {/* Side Tabs for selected print locations */}
+            {/* Side Tabs for active print locations */}
             <div style={{ display: "flex", gap: "0.5rem", borderBottom: "2px solid #E2E8F0", paddingBottom: "0.5rem" }}>
               {activeSides.map((sideKey) => {
                 const isCurrent = currentEditingSide === sideKey;
-                const hasLogo = !!placements[sideKey]?.logoUrl;
+                const sideLogosCount = (logosBySide[sideKey] || []).length;
                 const sideLabel = sideKey.charAt(0).toUpperCase() + sideKey.slice(1) + " View";
 
                 return (
@@ -916,7 +1171,7 @@ export default function ApparelVisualCustomizer({
                     }}
                   >
                     <span>{sideLabel}</span>
-                    {hasLogo && (
+                    {sideLogosCount > 0 && (
                       <span style={{ width: "8px", height: "8px", borderRadius: "50%", backgroundColor: isCurrent ? "#FFFFFF" : "#10B981" }} />
                     )}
                   </button>
@@ -924,319 +1179,707 @@ export default function ApparelVisualCustomizer({
               })}
             </div>
 
-            {/* Interactive Canvas Viewport */}
+            {/* Interactive True-Scale Viewport Container */}
             <div
-              ref={canvasRef}
-              onPointerMove={handlePointerMove}
-              onPointerUp={handlePointerUp}
+              ref={containerRef}
               style={{
                 position: "relative",
                 width: "100%",
-                paddingTop: "100%",
+                height: canvasH > 0 ? `${canvasH}px` : "500px",
                 backgroundColor: "#FFFFFF",
                 borderRadius: "16px",
                 border: "2px solid #E2E8F0",
                 overflow: "hidden",
                 boxShadow: "0 10px 25px -5px rgba(0,0,0,0.06)",
-                cursor: isDragging ? "grabbing" : "default",
                 userSelect: "none",
                 touchAction: "none"
               }}
             >
-              {/* Garment Base Image */}
+              {/* Garment Base Image at Natural Aspect Ratio */}
               <img
-                src={currentGarmentImg || "https://images.unsplash.com/photo-1521572267360-ee0c2909d518?q=80&w=800"}
+                src={currentGarmentImg}
                 alt="Garment Preview"
+                onLoad={(e) => {
+                  if (e.target.naturalWidth && e.target.naturalHeight) {
+                    const aspect = e.target.naturalHeight / e.target.naturalWidth;
+                    setImgAspectBySide(prev => ({ ...prev, [currentEditingSide]: aspect }));
+                  }
+                }}
                 style={{
                   position: "absolute",
                   inset: 0,
                   width: "100%",
                   height: "100%",
                   objectFit: "contain",
-                  padding: "2rem",
+                  padding: "1.5rem",
                   pointerEvents: "none"
                 }}
               />
 
-              {/* Calibrated Printable Zone Guideline (Subtle dashed border) */}
-              <div style={{
-                position: "absolute",
-                left: "22%",
-                top: "20%",
-                width: "56%",
-                height: "60%",
-                border: "1.5px dashed rgba(37, 99, 235, 0.4)",
-                borderRadius: "8px",
-                pointerEvents: "none",
+              {/* 1" Grid Overlay */}
+              {showGrid && unitsPerInch > 4 && (
+                <div
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    pointerEvents: "none",
+                    backgroundImage:
+                      `repeating-linear-gradient(0deg, rgba(37,99,235,0.22) 0 1px, transparent 1px ${unitsPerInch}px),` +
+                      `repeating-linear-gradient(90deg, rgba(37,99,235,0.22) 0 1px, transparent 1px ${unitsPerInch}px)`
+                  }}
+                />
+              )}
+
+              {/* Positioned Logos Layer */}
+              {containerW > 0 && currentLogos.map((logo, idx) => {
+                const l = layouts[logo.id];
+                if (!l || l.logoW <= 0) return null;
+                const isSelected = selectedLogo?.id === logo.id;
+                const isDragging = draggingLogoId === logo.id;
+
+                return (
+                  <div
+                    key={logo.id}
+                    onPointerDown={(e) => handleLogoPointerDown(e, logo)}
+                    style={{
+                      position: "absolute",
+                      left: `${l.logoLeft}px`,
+                      top: `${l.logoTop}px`,
+                      width: `${l.logoW}px`,
+                      height: `${l.logoH}px`,
+                      transform: logo.rotationDeg ? `rotate(${logo.rotationDeg}deg)` : undefined,
+                      cursor: isDragging ? "grabbing" : "grab",
+                      zIndex: isSelected ? 20 : 10,
+                      touchAction: "none"
+                    }}
+                  >
+                    <img
+                      src={logo.imageUrl}
+                      alt={logo.label || `Logo ${idx + 1}`}
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        objectFit: "contain",
+                        pointerEvents: "none",
+                        userSelect: "none"
+                      }}
+                    />
+
+                    {/* Active/Inactive selection boundary */}
+                    <div
+                      style={{
+                        position: "absolute",
+                        inset: "-3px",
+                        borderRadius: "4px",
+                        border: isSelected ? "2px dashed #2563EB" : "1.5px dashed rgba(148,163,184,0.6)",
+                        pointerEvents: "none",
+                        opacity: isDragging ? 0.3 : 1,
+                        transition: "opacity 0.15s ease"
+                      }}
+                    />
+
+                    {/* Numbered Badge */}
+                    <span
+                      style={{
+                        position: "absolute",
+                        top: "-8px",
+                        left: "-8px",
+                        width: "18px",
+                        height: "18px",
+                        borderRadius: "50%",
+                        backgroundColor: isSelected ? "#2563EB" : "#475569",
+                        color: "#FFFFFF",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: "10px",
+                        fontWeight: 800,
+                        pointerEvents: "none",
+                        boxShadow: "0 2px 4px rgba(0,0,0,0.2)"
+                      }}
+                    >
+                      {idx + 1}
+                    </span>
+                  </div>
+                );
+              })}
+
+              {/* Floating Top-Left "Drag logo to place" Badge */}
+              {containerW > 0 && currentLogos.length > 0 && (
+                <div
+                  style={{
+                    position: "absolute",
+                    top: "12px",
+                    left: "12px",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    backgroundColor: "rgba(15,23,42,0.68)",
+                    color: "#FFFFFF",
+                    fontSize: "11px",
+                    fontWeight: 600,
+                    padding: "5px 12px",
+                    borderRadius: "999px",
+                    backdropFilter: "blur(4px)",
+                    pointerEvents: "none"
+                  }}
+                >
+                  <Move size={12} />
+                  <span>{currentLogos.length > 1 ? "Drag any logo to place" : "Drag logo to place"}</span>
+                </div>
+              )}
+
+              {/* Empty state pill */}
+              {containerW > 0 && currentLogos.length === 0 && (
+                <div
+                  style={{
+                    position: "absolute",
+                    bottom: "20px",
+                    left: "50%",
+                    transform: "translateX(-50%)",
+                    backgroundColor: "rgba(15,23,42,0.7)",
+                    color: "#FFFFFF",
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    padding: "6px 14px",
+                    borderRadius: "999px",
+                    backdropFilter: "blur(4px)",
+                    pointerEvents: "none"
+                  }}
+                >
+                  No artwork on this side yet — click &ldquo;+ Add another logo&rdquo;
+                </div>
+              )}
+
+              {/* Bottom-Left 6-Inch Ruler */}
+              {unitsPerInch > 6 && (
+                <div
+                  style={{
+                    position: "absolute",
+                    bottom: "12px",
+                    left: "12px",
+                    pointerEvents: "none"
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "flex-end",
+                      height: "22px",
+                      width: `${unitsPerInch * 6}px`,
+                      backgroundColor: "rgba(255,255,255,0.9)",
+                      borderRadius: "4px",
+                      padding: "0 2px",
+                      boxShadow: "0 2px 6px rgba(0,0,0,0.12)",
+                      border: "1px solid #CBD5E1"
+                    }}
+                  >
+                    {[0, 1, 2, 3, 4, 5].map((i) => (
+                      <div
+                        key={i}
+                        style={{
+                          flex: 1,
+                          borderLeft: "1px solid #1E293B",
+                          height: "100%",
+                          position: "relative"
+                        }}
+                      >
+                        <span style={{ position: "absolute", top: "-1px", left: "2px", fontSize: "9px", fontWeight: 700, color: "#1E293B" }}>
+                          {i}&quot;
+                        </span>
+                      </div>
+                    ))}
+                    <div style={{ borderLeft: "1px solid #1E293B", height: "100%" }} />
+                  </div>
+                </div>
+              )}
+
+              {/* Bottom-Right Scale Indicator Badge */}
+              {unitsPerInch > 0 && (
+                <div
+                  style={{
+                    position: "absolute",
+                    bottom: "12px",
+                    right: "12px",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    backgroundColor: isTrueToScale ? "#10B981" : "#F59E0B",
+                    color: "#FFFFFF",
+                    fontSize: "11px",
+                    fontWeight: 700,
+                    padding: "5px 12px",
+                    borderRadius: "999px",
+                    boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
+                    pointerEvents: "none"
+                  }}
+                >
+                  <Ruler size={13} />
+                  <span>{isTrueToScale ? "True to scale" : "Estimated scale"}</span>
+                  <span style={{ opacity: 0.6 }}>·</span>
+                  <span>{printMethod === "screenprint" ? "Screen Print" : printMethod === "embroidery" ? "Embroidery" : printMethod === "dtg" ? "DTG" : "Vinyl"}</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Right Column: Artwork Card & Placement Card */}
+          <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+            
+            {/* 1. Artwork Card - Exact Replica of Screenshot 3 */}
+            <div
+              style={{
+                backgroundColor: "#FFFFFF",
+                borderRadius: "14px",
+                border: "1px solid #E2E8F0",
+                padding: "1.25rem",
                 display: "flex",
-                justifyContent: "center",
-                alignItems: "flex-start",
-                padding: "0.35rem"
-              }}>
-                <span style={{ fontSize: "0.65rem", color: "#2563EB", fontWeight: 700, backgroundColor: "rgba(255,255,255,0.85)", padding: "0.1rem 0.4rem", borderRadius: "4px" }}>
-                  Max Printable Area
+                flexDirection: "column",
+                gap: "1rem",
+                boxShadow: "0 1px 3px rgba(0,0,0,0.04)"
+              }}
+            >
+              {/* Header */}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <h3 style={{ fontSize: "1rem", fontWeight: 800, margin: 0, color: "#0F172A" }}>
+                  {currentEditingSide.charAt(0).toUpperCase() + currentEditingSide.slice(1)} Artwork
+                </h3>
+                <span style={{ fontSize: "0.8rem", color: "#64748B", fontWeight: 500 }}>
+                  {currentLogos.length} logo{currentLogos.length === 1 ? "" : "s"}
                 </span>
               </div>
 
-              {/* Positioned Logo Layer */}
-              {currentPlacement?.logoUrl && (
-                <div
-                  onPointerDown={handlePointerDown}
-                  style={{
-                    position: "absolute",
-                    left: `${currentPlacement.positionX}%`,
-                    top: `${currentPlacement.positionY}%`,
-                    transform: `translate(-50%, -50%) rotate(${currentPlacement.rotation || 0}deg)`,
-                    width: `${160 * (currentPlacement.scale || 1)}px`,
-                    cursor: "grab",
-                    zIndex: 10,
-                    filter: "drop-shadow(0 2px 8px rgba(0,0,0,0.15))"
-                  }}
-                >
-                  <img
-                    src={currentPlacement.logoUrl}
-                    alt="Logo"
-                    style={{
-                      width: "100%",
-                      height: "auto",
-                      display: "block",
-                      pointerEvents: "none"
-                    }}
-                  />
-                  {/* Active selection boundary */}
-                  <div style={{
-                    position: "absolute",
-                    inset: "-4px",
-                    border: "1.5px solid #2563EB",
-                    borderRadius: "4px",
-                    pointerEvents: "none"
-                  }}>
-                    <span style={{ position: "absolute", top: "-10px", right: "-10px", width: "18px", height: "18px", borderRadius: "50%", backgroundColor: "#2563EB", color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "9px" }}>
-                      ✥
-                    </span>
-                  </div>
-                </div>
-              )}
+              {/* Logos List */}
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+                {currentLogos.map((logo, idx) => {
+                  const isSelected = selectedLogo?.id === logo.id;
+
+                  return (
+                    <div
+                      key={logo.id}
+                      onClick={() => setSelectedLogoId(logo.id)}
+                      style={{
+                        borderRadius: "12px",
+                        border: isSelected ? "2px solid #3B82F6" : "1px solid #E2E8F0",
+                        backgroundColor: isSelected ? "#EFF6FF" : "#FFFFFF",
+                        padding: "0.85rem",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: "0.6rem",
+                        cursor: "pointer",
+                        transition: "all 0.15s ease"
+                      }}
+                    >
+                      {/* Top Row: Badge, Name, Trash */}
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flex: 1 }}>
+                          <span
+                            style={{
+                              width: "20px",
+                              height: "20px",
+                              borderRadius: "50%",
+                              backgroundColor: "#2563EB",
+                              color: "#FFFFFF",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              fontSize: "11px",
+                              fontWeight: 800,
+                              flexShrink: 0
+                            }}
+                          >
+                            {idx + 1}
+                          </span>
+                          <input
+                            type="text"
+                            value={logo.label || `Logo ${idx + 1}`}
+                            onChange={(e) => handleUpdateLogo(logo.id, { label: e.target.value })}
+                            onClick={(e) => e.stopPropagation()}
+                            style={{
+                              border: "none",
+                              backgroundColor: "transparent",
+                              fontWeight: 700,
+                              fontSize: "0.9rem",
+                              color: "#0F172A",
+                              outline: "none",
+                              width: "100%"
+                            }}
+                          />
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRemoveLogo(logo.id);
+                          }}
+                          style={{
+                            background: "none",
+                            border: "none",
+                            color: "#94A3B8",
+                            cursor: "pointer",
+                            padding: "0.2rem",
+                            display: "flex",
+                            alignItems: "center"
+                          }}
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+
+                      {/* Bottom Row: Thumbnail + 3 Pill Number Fields */}
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }} onClick={(e) => e.stopPropagation()}>
+                        {/* Square Thumbnail */}
+                        <div
+                          style={{
+                            width: "50px",
+                            height: "50px",
+                            borderRadius: "8px",
+                            border: "1px solid #CBD5E1",
+                            backgroundColor: "#FFFFFF",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            overflow: "hidden",
+                            flexShrink: 0
+                          }}
+                        >
+                          <img
+                            src={logo.imageUrl}
+                            alt="thumb"
+                            style={{ width: "100%", height: "100%", objectFit: "contain", padding: "2px" }}
+                          />
+                        </div>
+
+                        {/* 3 Number Fields: W", H", ROTATE */}
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "0.4rem", flex: 1 }}>
+                          {/* Width */}
+                          <label style={{ display: "flex", flexDirection: "column", gap: "0.15rem", textAlign: "center" }}>
+                            <span style={{ fontSize: "0.65rem", fontWeight: 700, color: "#64748B" }}>W&quot;</span>
+                            <input
+                              type="number"
+                              step="0.25"
+                              value={logo.widthIn}
+                              onChange={(e) => handleUpdateLogo(logo.id, { widthIn: parseFloat(e.target.value) || 0 })}
+                              style={{
+                                height: "30px",
+                                width: "100%",
+                                borderRadius: "6px",
+                                border: "1px solid #CBD5E1",
+                                backgroundColor: "#FFFFFF",
+                                textAlign: "center",
+                                fontWeight: 700,
+                                fontSize: "0.85rem",
+                                color: "#0F172A"
+                              }}
+                            />
+                          </label>
+
+                          {/* Height */}
+                          <label style={{ display: "flex", flexDirection: "column", gap: "0.15rem", textAlign: "center" }}>
+                            <span style={{ fontSize: "0.65rem", fontWeight: 700, color: "#64748B" }}>H&quot;</span>
+                            <input
+                              type="number"
+                              step="0.25"
+                              value={logo.heightIn}
+                              onChange={(e) => handleUpdateLogo(logo.id, { heightIn: parseFloat(e.target.value) || 0 })}
+                              style={{
+                                height: "30px",
+                                width: "100%",
+                                borderRadius: "6px",
+                                border: "1px solid #CBD5E1",
+                                backgroundColor: "#FFFFFF",
+                                textAlign: "center",
+                                fontWeight: 700,
+                                fontSize: "0.85rem",
+                                color: "#0F172A"
+                              }}
+                            />
+                          </label>
+
+                          {/* Rotate */}
+                          <label style={{ display: "flex", flexDirection: "column", gap: "0.15rem", textAlign: "center" }}>
+                            <span style={{ fontSize: "0.65rem", fontWeight: 700, color: "#64748B", display: "flex", alignItems: "center", justifyContent: "center", gap: "2px" }}>
+                              ROTATE ↻
+                            </span>
+                            <input
+                              type="number"
+                              step="1"
+                              value={logo.rotationDeg || 0}
+                              onChange={(e) => handleUpdateLogo(logo.id, { rotationDeg: parseInt(e.target.value) || 0 })}
+                              style={{
+                                height: "30px",
+                                width: "100%",
+                                borderRadius: "6px",
+                                border: "1px solid #CBD5E1",
+                                backgroundColor: "#FFFFFF",
+                                textAlign: "center",
+                                fontWeight: 700,
+                                fontSize: "0.85rem",
+                                color: "#0F172A"
+                              }}
+                            />
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Add Another Logo Button */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/svg+xml,application/pdf"
+                style={{ display: "none" }}
+                onChange={(e) => handleAddLogoFile(e.target.files[0])}
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={!!uploadingLogoSide}
+                style={{
+                  width: "100%",
+                  padding: "0.65rem",
+                  borderRadius: "999px",
+                  border: "1px solid #CBD5E1",
+                  backgroundColor: "#FFFFFF",
+                  color: "#0F172A",
+                  fontWeight: 700,
+                  fontSize: "0.85rem",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "0.4rem",
+                  boxShadow: "0 1px 2px rgba(0,0,0,0.05)"
+                }}
+              >
+                {uploadingLogoSide ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" style={{ color: "#2563EB" }} />
+                    <span>Uploading artwork...</span>
+                  </>
+                ) : (
+                  <>
+                    <Plus size={16} />
+                    <span>Add {currentLogos.length > 0 ? "another " : ""}logo</span>
+                  </>
+                )}
+              </button>
             </div>
 
-            {/* Live Placement Controls Bar */}
-            {currentPlacement?.logoUrl && (
-              <div style={{
-                backgroundColor: "#F8FAFC",
-                borderRadius: "12px",
+            {/* 2. Placement (from collar) Card - Positioned Directly Below Artwork */}
+            <div
+              style={{
+                backgroundColor: "#FFFFFF",
+                borderRadius: "14px",
                 border: "1px solid #E2E8F0",
-                padding: "1rem",
+                padding: "1rem 1.25rem",
                 display: "flex",
                 flexDirection: "column",
-                gap: "0.75rem"
-              }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span style={{ fontSize: "0.8rem", fontWeight: 700, color: "#0F172A", display: "flex", alignItems: "center", gap: "0.35rem" }}>
-                    <Move size={14} /> Adjust {currentEditingSide.toUpperCase()} Placement
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => handleRemoveLogo(currentEditingSide)}
-                    style={{ background: "none", border: "none", color: "#DC2626", fontSize: "0.75rem", fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: "0.25rem" }}
-                  >
-                    <Trash2 size={13} /> Remove Logo
-                  </button>
-                </div>
-
-                {/* Scale & Rotate Sliders */}
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem", fontSize: "0.8rem" }}>
-                  <div>
-                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.25rem" }}>
-                      <label style={{ fontWeight: 600, color: "#475569" }}>Size / Scale</label>
-                      <span style={{ fontWeight: 700 }}>{(currentPlacement.scale * 100).toFixed(0)}%</span>
-                    </div>
-                    <input
-                      type="range"
-                      min="0.4"
-                      max="2.0"
-                      step="0.05"
-                      value={currentPlacement.scale || 1}
-                      onChange={(e) => updatePlacement(currentEditingSide, "scale", parseFloat(e.target.value))}
-                      style={{ width: "100%", accentColor: "#2563EB" }}
-                    />
-                  </div>
-
-                  <div>
-                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.25rem" }}>
-                      <label style={{ fontWeight: 600, color: "#475569" }}>Rotation</label>
-                      <span style={{ fontWeight: 700 }}>{currentPlacement.rotation || 0}°</span>
-                    </div>
-                    <input
-                      type="range"
-                      min="-180"
-                      max="180"
-                      step="5"
-                      value={currentPlacement.rotation || 0}
-                      onChange={(e) => updatePlacement(currentEditingSide, "rotation", parseInt(e.target.value))}
-                      style={{ width: "100%", accentColor: "#2563EB" }}
-                    />
-                  </div>
-                </div>
-
-                {/* Quick alignment presets */}
-                <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", paddingTop: "0.25rem" }}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      updatePlacement(currentEditingSide, "positionX", 50);
-                      updatePlacement(currentEditingSide, "positionY", 35);
-                      updatePlacement(currentEditingSide, "rotation", 0);
-                    }}
-                    className="btn btn-outline"
-                    style={{ padding: "0.3rem 0.6rem", fontSize: "0.75rem" }}
-                  >
-                    Center Chest
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      updatePlacement(currentEditingSide, "positionX", 35);
-                      updatePlacement(currentEditingSide, "positionY", 30);
-                      updatePlacement(currentEditingSide, "scale", 0.65);
-                    }}
-                    className="btn btn-outline"
-                    style={{ padding: "0.3rem 0.6rem", fontSize: "0.75rem" }}
-                  >
-                    Left Chest
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      updatePlacement(currentEditingSide, "positionX", 50);
-                      updatePlacement(currentEditingSide, "positionY", 45);
-                      updatePlacement(currentEditingSide, "scale", 1.3);
-                    }}
-                    className="btn btn-outline"
-                    style={{ padding: "0.3rem 0.6rem", fontSize: "0.75rem" }}
-                  >
-                    Full Width
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Right Column: Logo Upload & Order Review */}
-          <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
-            
-            {/* Logo Upload Card for current side */}
-            <div style={{
-              backgroundColor: "#FFFFFF",
-              borderRadius: "14px",
-              border: "1px solid #E2E8F0",
-              padding: "1.5rem",
-              display: "flex",
-              flexDirection: "column",
-              gap: "1rem"
-            }}>
-              <div>
-                <h3 style={{ fontSize: "1.1rem", fontWeight: 800, margin: 0, color: "#0F172A" }}>
-                  Upload Artwork for {currentEditingSide.toUpperCase()} Side
-                </h3>
-                <p style={{ fontSize: "0.8rem", color: "#64748B", margin: "0.2rem 0 0" }}>
-                  PNG, SVG, PDF, or high-res JPG. Transparent background recommended.
-                </p>
-              </div>
-
-              {/* Upload Drop Area */}
-              <div style={{
-                position: "relative",
-                border: "2px dashed #CBD5E1",
-                borderRadius: "10px",
-                padding: "1.75rem 1rem",
-                textAlign: "center",
-                backgroundColor: "#F8FAFC",
-                cursor: uploadingLogoSide ? "not-allowed" : "pointer"
-              }}>
-                <input
-                  type="file"
-                  accept="image/png,image/jpeg,image/svg+xml,application/pdf"
-                  disabled={!!uploadingLogoSide}
-                  onChange={(e) => handleLogoUpload(currentEditingSide, e.target.files[0])}
-                  style={{ position: "absolute", inset: 0, opacity: 0, cursor: "pointer" }}
-                />
-                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "0.4rem" }}>
-                  {uploadingLogoSide ? (
-                    <>
-                      <Loader2 className="animate-spin" size={24} style={{ color: "#2563EB" }} />
-                      <span style={{ fontSize: "0.85rem", fontWeight: 700 }}>Uploading high-res artwork...</span>
-                    </>
-                  ) : (
-                    <>
-                      <div style={{ width: "40px", height: "40px", borderRadius: "50%", backgroundColor: "rgba(37,99,235,0.1)", display: "flex", alignItems: "center", justifyContent: "center", color: "#2563EB" }}>
-                        <Upload size={20} />
-                      </div>
-                      <span style={{ fontSize: "0.9rem", fontWeight: 700, color: "#0F172A" }}>
-                        {currentPlacement?.logoUrl ? "Click to Replace Logo" : "Choose Logo File to Place"}
-                      </span>
-                      <span style={{ fontSize: "0.75rem", color: "#64748B" }}>Drag & drop or browse files</span>
-                    </>
+                gap: "0.85rem",
+                boxShadow: "0 1px 3px rgba(0,0,0,0.04)"
+              }}
+            >
+              {/* Card Title & 1" Grid Toggle */}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontSize: "0.85rem", fontWeight: 700, color: "#0F172A" }}>
+                  Placement (from collar)
+                  {selectedLogo && currentLogos.length > 1 && (
+                    <span style={{ color: "#64748B", fontWeight: 500, marginLeft: "0.4rem" }}>
+                      — {selectedLogo.label || "Selected Logo"}
+                    </span>
                   )}
-                </div>
+                </span>
+
+                <button
+                  type="button"
+                  onClick={() => setShowGrid(prev => !prev)}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.35rem",
+                    fontSize: "0.75rem",
+                    fontWeight: 600,
+                    padding: "0.3rem 0.65rem",
+                    borderRadius: "999px",
+                    border: showGrid ? "1px solid #2563EB" : "1px solid #CBD5E1",
+                    backgroundColor: showGrid ? "#EFF6FF" : "#FFFFFF",
+                    color: showGrid ? "#2563EB" : "#64748B",
+                    cursor: "pointer",
+                    transition: "all 0.15s ease"
+                  }}
+                >
+                  <Grid3x3 size={13} />
+                  <span>1&quot; grid</span>
+                </button>
               </div>
 
-              {currentPlacement?.logoUrl && (
-                <div style={{ padding: "0.6rem 0.85rem", backgroundColor: "rgba(16,185,129,0.08)", borderRadius: "8px", border: "1px solid rgba(16,185,129,0.2)", display: "flex", alignItems: "center", gap: "0.5rem", color: "#065F46", fontSize: "0.8rem", fontWeight: 600 }}>
-                  <CheckCircle2 size={16} /> Attached: {currentPlacement.logoName || "Logo ready"}
+              {/* Placement Presets (Left Chest, Right Chest, Centre Chest, Full Front, Jumbo Front) */}
+              <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap" }}>
+                {currentEditingSide === "front" ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => applyPresetOffsets(-3.5, 8, 4)}
+                      style={{ padding: "0.35rem 0.75rem", fontSize: "0.75rem", fontWeight: 600, borderRadius: "6px", border: "1px solid #CBD5E1", backgroundColor: "#FFFFFF", color: "#334155", cursor: "pointer" }}
+                    >
+                      Left Chest
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => applyPresetOffsets(3.5, 8, 4)}
+                      style={{ padding: "0.35rem 0.75rem", fontSize: "0.75rem", fontWeight: 600, borderRadius: "6px", border: "1px solid #CBD5E1", backgroundColor: "#FFFFFF", color: "#334155", cursor: "pointer" }}
+                    >
+                      Right Chest
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => applyPresetOffsets(0, 8, 10)}
+                      style={{ padding: "0.35rem 0.75rem", fontSize: "0.75rem", fontWeight: 600, borderRadius: "6px", border: "1px solid #CBD5E1", backgroundColor: "#FFFFFF", color: "#334155", cursor: "pointer" }}
+                    >
+                      Centre Chest
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => applyPresetOffsets(0, 10, 11)}
+                      style={{ padding: "0.35rem 0.75rem", fontSize: "0.75rem", fontWeight: 600, borderRadius: "6px", border: "1px solid #CBD5E1", backgroundColor: "#FFFFFF", color: "#334155", cursor: "pointer" }}
+                    >
+                      Full Front
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => applyPresetOffsets(0, 12, 14)}
+                      style={{ padding: "0.35rem 0.75rem", fontSize: "0.75rem", fontWeight: 600, borderRadius: "6px", border: "1px solid #CBD5E1", backgroundColor: "#FFFFFF", color: "#334155", cursor: "pointer" }}
+                    >
+                      Jumbo Front
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => applyPresetOffsets(0, 3, 11)}
+                      style={{ padding: "0.35rem 0.75rem", fontSize: "0.75rem", fontWeight: 600, borderRadius: "6px", border: "1px solid #CBD5E1", backgroundColor: "#FFFFFF", color: "#334155", cursor: "pointer" }}
+                    >
+                      Back Yoke
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => applyPresetOffsets(0, 10, 12)}
+                      style={{ padding: "0.35rem 0.75rem", fontSize: "0.75rem", fontWeight: 600, borderRadius: "6px", border: "1px solid #CBD5E1", backgroundColor: "#FFFFFF", color: "#334155", cursor: "pointer" }}
+                    >
+                      Full Back
+                    </button>
+                  </>
+                )}
+              </div>
+
+              {/* Exact Inch Coordinates Inputs */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
+                <label style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.75rem", color: "#64748B", fontWeight: 600 }}>
+                  <span style={{ whiteSpace: "nowrap" }}>From centre</span>
+                  <input
+                    type="number"
+                    step="0.25"
+                    value={selectedLogo?.offsetXIn !== undefined ? selectedLogo.offsetXIn : 0}
+                    onChange={(e) => handleOffsetChange("offsetXIn", e.target.value)}
+                    style={{
+                      width: "100%",
+                      height: "32px",
+                      borderRadius: "6px",
+                      border: "1px solid #CBD5E1",
+                      padding: "0 0.5rem",
+                      fontSize: "0.85rem",
+                      fontWeight: 700,
+                      color: "#0F172A",
+                      textAlign: "center"
+                    }}
+                  />
+                  <span>&quot;</span>
+                </label>
+
+                <label style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.75rem", color: "#64748B", fontWeight: 600 }}>
+                  <span style={{ whiteSpace: "nowrap" }}>Below collar</span>
+                  <input
+                    type="number"
+                    step="0.25"
+                    value={selectedLogo?.offsetYIn !== undefined ? selectedLogo.offsetYIn : 8}
+                    onChange={(e) => handleOffsetChange("offsetYIn", e.target.value)}
+                    style={{
+                      width: "100%",
+                      height: "32px",
+                      borderRadius: "6px",
+                      border: "1px solid #CBD5E1",
+                      padding: "0 0.5rem",
+                      fontSize: "0.85rem",
+                      fontWeight: 700,
+                      color: "#0F172A",
+                      textAlign: "center"
+                    }}
+                  />
+                  <span>&quot;</span>
+                </label>
+              </div>
+
+              {/* Measurement Info & Actions Bar */}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "0.75rem", borderTop: "1px solid #F1F5F9", paddingTop: "0.75rem" }}>
+                <div style={{ fontSize: "0.78rem", color: "#475569" }}>
+                  <span style={{ fontWeight: 700, color: "#0F172A" }}>
+                    Logo at print size:
+                  </span>{" "}
+                  {selectedLogo ? `${selectedLogo.widthIn || 6}" × ${selectedLogo.heightIn || 5}"` : "—"}{" "}
+                  ·{" "}
+                  <span style={{ fontWeight: 700, color: "#0F172A" }}>
+                    Garment measured:
+                  </span>{" "}
+                  {garmentMeasuredW.toFixed ? garmentMeasuredW.toFixed(1) : garmentMeasuredW}&quot; × {garmentMeasuredH.toFixed ? garmentMeasuredH.toFixed(1) : garmentMeasuredH}&quot; (size {garmentCalSize})
                 </div>
-              )}
-            </div>
 
-            {/* Order Specification Summary Card */}
-            <div style={{
-              backgroundColor: "#F8FAFC",
-              borderRadius: "14px",
-              border: "1px solid #E2E8F0",
-              padding: "1.5rem",
-              display: "flex",
-              flexDirection: "column",
-              gap: "0.75rem"
-            }}>
-              <h4 style={{ fontSize: "0.9rem", fontWeight: 800, textTransform: "uppercase", color: "#475569", margin: 0, letterSpacing: "0.04em" }}>
-                Order Configuration Summary
-              </h4>
+                <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+                  <button
+                    type="button"
+                    onClick={() => setRecalibrateOpen(true)}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.35rem",
+                      background: "none",
+                      border: "none",
+                      color: "#64748B",
+                      fontSize: "0.75rem",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      padding: "0.35rem 0.6rem"
+                    }}
+                  >
+                    <Ruler size={13} />
+                    <span>Recalibrate</span>
+                  </button>
 
-              <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem", fontSize: "0.85rem" }}>
-                <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span style={{ color: "#64748B" }}>Garment Style:</span>
-                  <span style={{ fontWeight: 700 }}>{product.name}</span>
-                </div>
-
-                <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span style={{ color: "#64748B" }}>Color Selected:</span>
-                  <div style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
-                    <span style={{ width: "12px", height: "12px", borderRadius: "50%", backgroundColor: selectedColor.hex, border: "1px solid rgba(0,0,0,0.2)" }} />
-                    <span style={{ fontWeight: 700 }}>{selectedColor.name}</span>
-                  </div>
-                </div>
-
-                <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span style={{ color: "#64748B" }}>Print Location:</span>
-                  <span style={{ fontWeight: 700 }}>{selectedPrintLocation.label}</span>
-                </div>
-
-                <div style={{ display: "flex", justifyContent: "space-between", borderTop: "1px dashed #CBD5E1", paddingTop: "0.4rem" }}>
-                  <span style={{ color: "#64748B" }}>Size Breakdown:</span>
-                  <span style={{ fontWeight: 700 }}>
-                    {Object.entries(sizeQuantities).filter(([_, q]) => q > 0).map(([s, q]) => `${s}: ${q}`).join(", ")}
-                  </span>
-                </div>
-
-                <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span style={{ color: "#64748B" }}>Total Garments:</span>
-                  <span style={{ fontWeight: 800, color: "#2563EB" }}>{totalQuantity} Units</span>
-                </div>
-
-                <div style={{ display: "flex", justifyContent: "space-between", borderTop: "1px solid #CBD5E1", paddingTop: "0.5rem", fontSize: "1.1rem", fontWeight: 900 }}>
-                  <span>Total Amount:</span>
-                  <span style={{ color: "#2563EB" }}>${pricingSummary.grandTotal.toFixed(2)} CAD</span>
+                  <button
+                    type="button"
+                    onClick={handleExportMockup}
+                    disabled={exportingMockup || currentLogos.length === 0}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.35rem",
+                      backgroundColor: "#FFFFFF",
+                      border: "1px solid #CBD5E1",
+                      borderRadius: "6px",
+                      color: "#0F172A",
+                      fontSize: "0.75rem",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      padding: "0.35rem 0.75rem"
+                    }}
+                  >
+                    <Download size={13} />
+                    <span>{exportingMockup ? "Exporting..." : "Export PNG"}</span>
+                  </button>
                 </div>
               </div>
             </div>
@@ -1277,13 +1920,31 @@ export default function ApparelVisualCustomizer({
                 ) : (
                   <>
                     <ShoppingBag size={18} />
-                    <span>Add {totalQuantity} Garments to Cart</span>
+                    <span>Add {totalQuantity} Garments to Cart (${pricingSummary.grandTotal.toFixed(2)})</span>
                   </>
                 )}
               </button>
             </div>
           </div>
         </motion.div>
+      )}
+
+      {/* Interactive Garment Calibration Modal */}
+      {recalibrateOpen && (
+        <AdminGarmentCalibration
+          isOpen={recalibrateOpen}
+          onClose={() => setRecalibrateOpen(false)}
+          imageUrl={currentGarmentImg}
+          sideName={`${currentEditingSide.toUpperCase()} View`}
+          initialCalibration={currentCalibration}
+          onSaveCalibration={(newCalib) => {
+            setLiveCalibrations(prev => ({
+              ...prev,
+              [currentEditingSide]: newCalib
+            }));
+            setRecalibrateOpen(false);
+          }}
+        />
       )}
 
       {/* Size Chart Modal */}
