@@ -8,10 +8,35 @@ import { doc, getDoc } from "firebase/firestore";
 import { useCart } from "@/lib/cart-context";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, ShoppingBag, Loader2, Sparkles, FileCheck, Eye } from "lucide-react";
+import { ArrowLeft, ShoppingBag, Loader2, Sparkles, FileCheck, Eye, FileText, CheckCircle2, Layers, ShieldCheck } from "lucide-react";
 import { motion } from "framer-motion";
 import PrintProofModal from "@/components/PrintProofModal";
 import { calculateCustomPrintPrice } from "@/lib/custom-print-pricing";
+
+function FormattedDescription({ content, style }) {
+  if (!content) return null;
+  const str = typeof content === "string" ? content : String(content);
+  const hasHtml = /<\/?(?:p|br|div|ul|ol|li|strong|b|em|i|h[1-6]|span|a)[^>]*>/i.test(str);
+
+  if (hasHtml) {
+    return (
+      <div
+        dangerouslySetInnerHTML={{ __html: str }}
+        style={{
+          lineHeight: 1.75,
+          color: "inherit",
+          ...style
+        }}
+      />
+    );
+  }
+
+  return (
+    <div style={{ whiteSpace: "pre-line", lineHeight: 1.75, ...style }}>
+      {str}
+    </div>
+  );
+}
 
 export default function ProductDetailPage({ params: paramsPromise }) {
   const params = use(paramsPromise);
@@ -594,17 +619,52 @@ export default function ProductDetailPage({ params: paramsPromise }) {
               <p style={{ color: "hsl(var(--muted-hsl))", fontSize: "0.8rem", marginTop: "0.25rem" }}>SKU: {skuCode}</p>
             </div>
             
-            {(product.shortDescription || product.description) && (
+            {/* Product Summary / Short Description */}
+            {product.shortDescription && (
               <p style={{
-                fontSize: "0.9rem",
-                color: "hsl(var(--foreground-hsl) / 0.8)",
-                lineHeight: "1.5",
+                fontSize: "0.92rem",
+                color: "hsl(var(--foreground-hsl) / 0.85)",
+                lineHeight: "1.55",
                 marginTop: "0.75rem",
                 paddingTop: "0.75rem",
                 borderTop: "1px solid hsl(var(--border-hsl))"
               }}>
-                {product.shortDescription || product.description}
+                {product.shortDescription}
               </p>
+            )}
+
+            {/* If no shortDescription, render longDescription / description fallback */}
+            {!product.shortDescription && (product.longDescription || product.description) && (
+              <div style={{
+                fontSize: "0.92rem",
+                color: "hsl(var(--foreground-hsl) / 0.85)",
+                lineHeight: "1.55",
+                marginTop: "0.75rem",
+                paddingTop: "0.75rem",
+                borderTop: "1px solid hsl(var(--border-hsl))"
+              }}>
+                <FormattedDescription content={product.longDescription || product.description} />
+              </div>
+            )}
+
+            {/* If longDescription is available alongside shortDescription, link to specifications below */}
+            {product.longDescription && product.shortDescription && (
+              <a
+                href="#product-details"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "0.35rem",
+                  fontSize: "0.82rem",
+                  fontWeight: 600,
+                  color: "hsl(var(--accent-hsl))",
+                  marginTop: "-0.75rem",
+                  textDecoration: "underline",
+                  textUnderlineOffset: "3px"
+                }}
+              >
+                <FileText size={14} /> Full Description & Specifications ↓
+              </a>
             )}
 
             {/* Display starting price info */}
@@ -936,6 +996,154 @@ export default function ProductDetailPage({ params: paramsPromise }) {
             </button>
           </div>
         </div>
+
+        {/* Full Product Specifications & Long Description Section */}
+        {(product.longDescription || product.description || product.shortDescription) && (
+          <section
+            id="product-details"
+            style={{
+              marginTop: "4rem",
+              paddingTop: "2.5rem",
+              borderTop: "2px solid hsl(var(--border-hsl))"
+            }}
+          >
+            <div style={{ marginBottom: "2rem" }}>
+              <div style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "0.45rem",
+                padding: "0.3rem 0.8rem",
+                borderRadius: "9999px",
+                backgroundColor: "hsl(var(--accent-hsl) / 0.1)",
+                color: "hsl(var(--accent-hsl))",
+                fontSize: "0.78rem",
+                fontWeight: 800,
+                textTransform: "uppercase",
+                letterSpacing: "0.06em",
+                marginBottom: "0.6rem"
+              }}>
+                <FileText size={14} /> Product Overview
+              </div>
+              <h2 style={{ fontSize: "1.75rem", fontWeight: 900, letterSpacing: "-0.02em" }}>
+                Product Details & Specifications
+              </h2>
+              <p style={{ color: "hsl(var(--muted-hsl))", fontSize: "0.92rem", marginTop: "0.25rem" }}>
+                Materials, print standards, and file preparation guidelines for {productName}.
+              </p>
+            </div>
+
+            <div style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 360px), 1fr))",
+              gap: "2rem",
+              alignItems: "start"
+            }}>
+              {/* Long Description Card */}
+              <div className="card" style={{
+                padding: "2rem",
+                display: "flex",
+                flexDirection: "column",
+                gap: "1.25rem",
+                backgroundColor: "hsl(var(--card-hsl))",
+                border: "1px solid hsl(var(--border-hsl))",
+                borderRadius: "var(--radius-lg)",
+                boxShadow: "var(--shadow-sm)"
+              }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", borderBottom: "1px solid hsl(var(--border-hsl))", paddingBottom: "1rem" }}>
+                  <Sparkles size={20} style={{ color: "hsl(var(--accent-hsl))" }} />
+                  <h3 style={{ fontSize: "1.15rem", fontWeight: 800, margin: 0 }}>
+                    Detailed Product Description
+                  </h3>
+                </div>
+
+                <div style={{
+                  fontSize: "0.95rem",
+                  lineHeight: 1.75,
+                  color: "hsl(var(--foreground-hsl) / 0.9)"
+                }}>
+                  <FormattedDescription
+                    content={
+                      product.longDescription ||
+                      product.description ||
+                      product.shortDescription ||
+                      "Manufactured with premium grade commercial stocks and precision-calibrated color profiling to ensure sharp detail, durability, and vibrant results."
+                    }
+                  />
+                </div>
+              </div>
+
+              {/* Technical Specifications & Commercial Quality */}
+              <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+                <div className="card" style={{
+                  padding: "1.75rem",
+                  backgroundColor: "hsl(var(--card-hsl))",
+                  border: "1px solid hsl(var(--border-hsl))",
+                  borderRadius: "var(--radius-lg)",
+                  boxShadow: "var(--shadow-sm)"
+                }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", marginBottom: "1.25rem" }}>
+                    <Layers size={18} style={{ color: "hsl(var(--accent-hsl))" }} />
+                    <h4 style={{ fontSize: "1rem", fontWeight: 800, margin: 0 }}>
+                      Artwork & File Setup Guidelines
+                    </h4>
+                  </div>
+
+                  <ul style={{
+                    listStyle: "none",
+                    padding: 0,
+                    margin: 0,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "0.85rem",
+                    fontSize: "0.88rem",
+                    color: "hsl(var(--foreground-hsl) / 0.85)"
+                  }}>
+                    <li style={{ display: "flex", alignItems: "flex-start", gap: "0.6rem" }}>
+                      <CheckCircle2 size={16} style={{ color: "hsl(var(--success-hsl))", flexShrink: 0, marginTop: "3px" }} />
+                      <span><strong>Resolution:</strong> 300 DPI minimum at 100% finished size.</span>
+                    </li>
+                    <li style={{ display: "flex", alignItems: "flex-start", gap: "0.6rem" }}>
+                      <CheckCircle2 size={16} style={{ color: "hsl(var(--success-hsl))", flexShrink: 0, marginTop: "3px" }} />
+                      <span><strong>Bleed Margin:</strong> 0.125&quot; (1/8&quot;) on all trimmed edges to avoid unprinted borders.</span>
+                    </li>
+                    <li style={{ display: "flex", alignItems: "flex-start", gap: "0.6rem" }}>
+                      <CheckCircle2 size={16} style={{ color: "hsl(var(--success-hsl))", flexShrink: 0, marginTop: "3px" }} />
+                      <span><strong>Color Mode:</strong> CMYK color space. RGB files will automatically convert to print CMYK.</span>
+                    </li>
+                    <li style={{ display: "flex", alignItems: "flex-start", gap: "0.6rem" }}>
+                      <CheckCircle2 size={16} style={{ color: "hsl(var(--success-hsl))", flexShrink: 0, marginTop: "3px" }} />
+                      <span><strong>Accepted Formats:</strong> Print-ready PDF (recommended), AI, EPS, PSD, or uncompressed TIFF.</span>
+                    </li>
+                    <li style={{ display: "flex", alignItems: "flex-start", gap: "0.6rem" }}>
+                      <CheckCircle2 size={16} style={{ color: "hsl(var(--success-hsl))", flexShrink: 0, marginTop: "3px" }} />
+                      <span><strong>Safety Zone:</strong> Keep critical text and logos at least 0.125&quot; away from the trim line.</span>
+                    </li>
+                  </ul>
+                </div>
+
+                <div className="card" style={{
+                  padding: "1.5rem",
+                  backgroundColor: "hsl(var(--secondary-hsl) / 0.3)",
+                  border: "1px solid hsl(var(--border-hsl))",
+                  borderRadius: "var(--radius-lg)",
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: "1rem"
+                }}>
+                  <ShieldCheck size={26} style={{ color: "hsl(var(--accent-hsl))", flexShrink: 0, marginTop: "2px" }} />
+                  <div>
+                    <h5 style={{ fontSize: "0.95rem", fontWeight: 800, margin: "0 0 0.25rem" }}>
+                      Commercial Quality & Preflight Guarantee
+                    </h5>
+                    <p style={{ fontSize: "0.82rem", color: "hsl(var(--muted-hsl))", margin: 0, lineHeight: 1.55 }}>
+                      All submitted print files are preflight-checked for dimensions, resolution, and color profiles prior to production.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
       </main>
 
       {/* Proof Inspection Modal */}

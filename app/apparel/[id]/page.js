@@ -198,6 +198,11 @@ export default function ApparelDetailPage({ params: paramsPromise }) {
                   Item SKU: {product.sku}
                 </span>
               )}
+              {product.shortDescription && (
+                <p style={{ fontSize: "0.88rem", color: "#64748B", margin: "0.4rem 0 0", maxWidth: "700px", lineHeight: 1.5 }}>
+                  {product.shortDescription}
+                </p>
+              )}
             </div>
 
             {/* Price & MOQ Summary */}
@@ -296,7 +301,7 @@ export default function ApparelDetailPage({ params: paramsPromise }) {
           </h3>
 
           <div style={{ whiteSpace: "pre-line", fontSize: "0.95rem", lineHeight: 1.7, color: "#334155", maxWidth: "900px" }}>
-            {product.description || product.longDescription || "Crafted from premium heavy-duty combed cotton and polyester blends for unmatched comfort, vibrant print reproduction, and all-day workplace resilience."}
+            {product.longDescription || product.description || "Crafted from premium heavy-duty combed cotton and polyester blends for unmatched comfort, vibrant print reproduction, and all-day workplace resilience."}
           </div>
 
           {/* Sizing & Material details if option groups exist */}
