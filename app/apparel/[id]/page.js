@@ -24,12 +24,23 @@ import {
 } from "lucide-react";
 import { motion } from "framer-motion";
 import ApparelVisualCustomizer from "@/components/ApparelVisualCustomizer";
+import { useAuth } from "@/lib/auth-context";
 
 export default function ApparelDetailPage({ params: paramsPromise }) {
   const params = use(paramsPromise);
   const productId = params.id;
   const router = useRouter();
   const { addToCart } = useCart();
+  const { user, userData } = useAuth();
+
+  const isAdmin = Boolean(
+    user && (
+      userData?.role === "admin" ||
+      user.email === "admin@apexworkwear.ca" ||
+      user.email === "apexworkwearportal@gmail.com" ||
+      user.email?.endsWith("@apexworkwear.ca")
+    )
+  );
 
   const [product, setProduct] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -241,6 +252,7 @@ export default function ApparelDetailPage({ params: paramsPromise }) {
           <ApparelVisualCustomizer
             product={product}
             onAddToCart={handleApparelAddToCart}
+            isAdmin={isAdmin}
           />
         </div>
 

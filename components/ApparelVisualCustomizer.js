@@ -33,6 +33,9 @@ import { motion, AnimatePresence } from "framer-motion";
 import ApparelSizeChartModal from "./ApparelSizeChartModal";
 import AdminGarmentCalibration from "./AdminGarmentCalibration";
 import { computeLayout, resolveScale, placementFromCenter, clampCenter, canvasAspect } from "@/lib/mockup-geometry";
+import { useAuth } from "@/lib/auth-context";
+import { db } from "@/lib/firebase";
+import { doc, updateDoc } from "firebase/firestore";
 
 const DEFAULT_SIZES = [
   { name: "S", priceUpcharge: 0 },
@@ -64,8 +67,19 @@ const DEFAULT_PRINT_LOCATIONS = [
 export default function ApparelVisualCustomizer({
   product,
   onAddToCart,
-  initialQuantities = null
+  initialQuantities = null,
+  isAdmin: propIsAdmin = undefined
 }) {
+  const { user, userData } = useAuth();
+  const isAdmin = propIsAdmin !== undefined ? Boolean(propIsAdmin) : Boolean(
+    user && (
+      userData?.role === "admin" ||
+      user.email === "admin@apexworkwear.ca" ||
+      user.email === "apexworkwearportal@gmail.com" ||
+      user.email?.endsWith("@apexworkwear.ca")
+    )
+  );
+
   const [step, setStep] = useState(1); // 1 = Sizing & Color, 2 = Logo Placement & Review
   const [sizeChartOpen, setSizeChartOpen] = useState(false);
   const [submittingToCart, setSubmittingToCart] = useState(false);
@@ -1830,34 +1844,42 @@ export default function ApparelVisualCustomizer({
                   <span style={{ fontWeight: 700, color: "#0F172A" }}>
                     Logo at print size:
                   </span>{" "}
-                  {selectedLogo ? `${selectedLogo.widthIn || 6}" × ${selectedLogo.heightIn || 5}"` : "—"}{" "}
-                  ·{" "}
-                  <span style={{ fontWeight: 700, color: "#0F172A" }}>
-                    Garment measured:
-                  </span>{" "}
-                  {garmentMeasuredW.toFixed ? garmentMeasuredW.toFixed(1) : garmentMeasuredW}&quot; × {garmentMeasuredH.toFixed ? garmentMeasuredH.toFixed(1) : garmentMeasuredH}&quot; (size {garmentCalSize})
+                  {selectedLogo ? `${selectedLogo.widthIn || 6}" × ${selectedLogo.heightIn || 5}"` : "—"}
+                  {isAdmin && (
+                    <>
+                      {" "}·{" "}
+                      <span style={{ fontWeight: 700, color: "#0F172A" }}>
+                        Garment measured:
+                      </span>{" "}
+                      {garmentMeasuredW.toFixed ? garmentMeasuredW.toFixed(1) : garmentMeasuredW}&quot; × {garmentMeasuredH.toFixed ? garmentMeasuredH.toFixed(1) : garmentMeasuredH}&quot; (size {garmentCalSize})
+                    </>
+                  )}
                 </div>
 
                 <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
-                  <button
-                    type="button"
-                    onClick={() => setRecalibrateOpen(true)}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "0.35rem",
-                      background: "none",
-                      border: "none",
-                      color: "#64748B",
-                      fontSize: "0.75rem",
-                      fontWeight: 700,
-                      cursor: "pointer",
-                      padding: "0.35rem 0.6rem"
-                    }}
-                  >
-                    <Ruler size={13} />
-                    <span>Recalibrate</span>
-                  </button>
+                  {isAdmin && (
+                    <button
+                      type="button"
+                      onClick={() => setRecalibrateOpen(true)}
+                      title="Admin only: Recalibrate garment photo scale"
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "0.35rem",
+                        backgroundColor: "#FEF3C7",
+                        border: "1px solid #FCD34D",
+                        borderRadius: "6px",
+                        color: "#92400E",
+                        fontSize: "0.75rem",
+                        fontWeight: 700,
+                        cursor: "pointer",
+                        padding: "0.35rem 0.6rem"
+                      }}
+                    >
+                      <Ruler size={13} />
+                      <span>Recalibrate (Admin)</span>
+                    </button>
+                  )}
 
                   <button
                     type="button"
@@ -1929,20 +1951,34 @@ export default function ApparelVisualCustomizer({
         </motion.div>
       )}
 
-      {/* Interactive Garment Calibration Modal */}
-      {recalibrateOpen && (
+      {/* Interactive Garment Calibration Modal - Admin Only */}
+      {isAdmin && recalibrateOpen && (
         <AdminGarmentCalibration
           isOpen={recalibrateOpen}
           onClose={() => setRecalibrateOpen(false)}
           imageUrl={currentGarmentImg}
           sideName={`${currentEditingSide.toUpperCase()} View`}
           initialCalibration={currentCalibration}
-          onSaveCalibration={(newCalib) => {
+          onSaveCalibration={async (newCalib) => {
             setLiveCalibrations(prev => ({
               ...prev,
               [currentEditingSide]: newCalib
             }));
             setRecalibrateOpen(false);
+
+            if (product?.id) {
+              try {
+                const targetCol = product.isApparel === false ? "products" : "apparel_products";
+                const docRef = doc(db, targetCol, product.id);
+                await updateDoc(docRef, {
+                  [`garmentViews.${currentEditingSide}.calibration`]: newCalib,
+                  [`apparelViews.${currentEditingSide}.calibration`]: newCalib,
+                  updatedAt: new Date()
+                });
+              } catch (err) {
+                console.error("Failed to persist calibration to Firestore:", err);
+              }
+            }
           }}
         />
       )}
