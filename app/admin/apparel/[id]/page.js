@@ -1041,16 +1041,56 @@ export default function AdminApparelProductEditPage({ params: paramsPromise }) {
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                       <span style={{ fontWeight: 700, fontSize: "0.9rem" }}>{sideLabel}</span>
                       {hasImg && (
-                        <span style={{
-                          fontSize: "0.7rem",
-                          fontWeight: 700,
-                          padding: "0.2rem 0.5rem",
-                          borderRadius: "4px",
-                          backgroundColor: isCalibrated ? "hsl(var(--success-hsl) / 0.15)" : "hsl(var(--destructive-hsl) / 0.1)",
-                          color: isCalibrated ? "hsl(var(--success-hsl))" : "hsl(var(--destructive-hsl))"
-                        }}>
-                          {isCalibrated ? "✓ Calibrated" : "⚠ Uncalibrated"}
-                        </span>
+                        <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap", alignItems: "center" }}>
+                          <span style={{
+                            fontSize: "0.7rem",
+                            fontWeight: 700,
+                            padding: "0.2rem 0.5rem",
+                            borderRadius: "4px",
+                            backgroundColor: isCalibrated ? "hsl(var(--success-hsl) / 0.15)" : "hsl(var(--destructive-hsl) / 0.1)",
+                            color: isCalibrated ? "hsl(var(--success-hsl))" : "hsl(var(--destructive-hsl))"
+                          }}>
+                            {isCalibrated ? "✓ Calibrated" : "⚠ Uncalibrated"}
+                          </span>
+                          {isCalibrated && view.calibration?.hasPrintArea && view.calibration?.printArea && (
+                            <span style={{
+                              fontSize: "0.7rem",
+                              fontWeight: 700,
+                              padding: "0.2rem 0.5rem",
+                              borderRadius: "4px",
+                              backgroundColor: "#EFF6FF",
+                              color: "#2563EB",
+                              border: "1px solid #BFDBFE"
+                            }}>
+                              📦 Box: {view.calibration.printArea.widthIn}&quot; × {view.calibration.printArea.heightIn}&quot;
+                            </span>
+                          )}
+                          {isCalibrated && !view.calibration?.hasPrintArea && (
+                            <span style={{
+                              fontSize: "0.7rem",
+                              fontWeight: 600,
+                              padding: "0.2rem 0.5rem",
+                              borderRadius: "4px",
+                              backgroundColor: "#F1F5F9",
+                              color: "#475569"
+                            }}>
+                              Print Anywhere
+                            </span>
+                          )}
+                          {isCalibrated && view.calibration?.hasMaxLogoSize && view.calibration?.maxLogoSizeIn && (
+                            <span style={{
+                              fontSize: "0.7rem",
+                              fontWeight: 700,
+                              padding: "0.2rem 0.5rem",
+                              borderRadius: "4px",
+                              backgroundColor: "#FEF3C7",
+                              color: "#92400E",
+                              border: "1px solid #FDE68A"
+                            }}>
+                              ⚡ Max: {view.calibration.maxLogoSizeIn}&quot;
+                            </span>
+                          )}
+                        </div>
                       )}
                     </div>
 

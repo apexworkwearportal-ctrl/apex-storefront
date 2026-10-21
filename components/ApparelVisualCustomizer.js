@@ -31,8 +31,7 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import ApparelSizeChartModal from "./ApparelSizeChartModal";
-import AdminGarmentCalibration from "./AdminGarmentCalibration";
-import { computeLayout, resolveScale, placementFromCenter, clampCenter, canvasAspect } from "@/lib/mockup-geometry";
+import { computeLayout, resolveScale, placementFromCenter, clampCenter, canvasAspect, resolvePrintAreaBounds } from "@/lib/mockup-geometry";
 import { useAuth } from "@/lib/auth-context";
 import { db } from "@/lib/firebase";
 import { doc, updateDoc } from "firebase/firestore";
@@ -164,7 +163,6 @@ export default function ApparelVisualCustomizer({
     return initial;
   });
 
-  const [recalibrateOpen, setRecalibrateOpen] = useState(false);
   const [showGrid, setShowGrid] = useState(false);
   const [exportingMockup, setExportingMockup] = useState(false);
 
@@ -293,6 +291,22 @@ export default function ApparelVisualCustomizer({
   const unitsPerInch = canvasMeta.unitsPerInch || (containerW > 0 ? containerW / 22 : 0);
   const isTrueToScale = canvasMeta.isTrueToScale;
 
+  // Printable area bounds on active canvas (if calibrated view has restricted box)
+  const printAreaBounds = useMemo(() => {
+    if (!currentCalibration?.hasPrintArea || !currentCalibration?.printArea || containerW <= 0) return null;
+    return resolvePrintAreaBounds(currentCalibration.printArea, containerW, canvasH);
+  }, [currentCalibration, containerW, canvasH]);
+
+  // Max artwork size limit (if configured on this garment side)
+  const maxAllowedLogoSizeIn = useMemo(() => {
+    if (currentCalibration?.hasMaxLogoSize && currentCalibration?.maxLogoSizeIn > 0) {
+      return parseFloat(currentCalibration.maxLogoSizeIn);
+    }
+    return null;
+  }, [currentCalibration]);
+
+  const [sizeWarning, setSizeWarning] = useState("");
+
   // Garment measured dimensions
   const garmentMeasuredW = currentCalibration?.garmentWidthIn || fallbackApparelWidthIn;
   const garmentMeasuredH = currentCalibration?.garmentHeightIn || fallbackApparelHeightIn;
@@ -329,7 +343,7 @@ export default function ApparelVisualCustomizer({
 
       const newCX = startCX + (e.clientX - mouseX);
       const newCY = startCY + (e.clientY - mouseY);
-      const clamped = clampCenter(newCX, newCY, l);
+      const clamped = clampCenter(newCX, newCY, l, printAreaBounds);
       const nextPlacement = placementFromCenter(clamped.x, clamped.y, l);
 
       setLogosBySide(prev => {
@@ -364,7 +378,7 @@ export default function ApparelVisualCustomizer({
       window.removeEventListener("pointerup", onUp);
       window.removeEventListener("pointercancel", onUp);
     };
-  }, [draggingLogoId, containerW, layouts, currentEditingSide]);
+  }, [draggingLogoId, containerW, layouts, currentEditingSide, printAreaBounds]);
 
   // Apply placement preset (Left Chest, Centre Chest, etc.)
   const applyPresetOffsets = (offsetXIn, offsetYIn, suggestedWidthIn) => {
@@ -381,9 +395,10 @@ export default function ApparelVisualCustomizer({
               offsetYIn: Math.round(offsetYIn * 100) / 100,
             };
             if (suggestedWidthIn && item.widthIn && item.heightIn) {
+              const effectiveW = maxAllowedLogoSizeIn ? Math.min(suggestedWidthIn, maxAllowedLogoSizeIn) : suggestedWidthIn;
               const ratio = item.heightIn / item.widthIn;
-              patch.widthIn = suggestedWidthIn;
-              patch.heightIn = Math.round(suggestedWidthIn * ratio * 100) / 100;
+              patch.widthIn = effectiveW;
+              patch.heightIn = Math.round(effectiveW * ratio * 100) / 100;
             }
             return patch;
           }
@@ -437,8 +452,12 @@ export default function ApparelVisualCustomizer({
       await new Promise(r => { img.onload = r; img.onerror = r; });
       const aspect = (img.naturalHeight && img.naturalWidth) ? (img.naturalHeight / img.naturalWidth) : 0.833;
 
-      const baseWidthIn = 6;
-      const baseHeightIn = Math.round(baseWidthIn * aspect * 10) / 10 || 5;
+      const initialBaseW = maxAllowedLogoSizeIn ? Math.min(6, maxAllowedLogoSizeIn) : 6;
+      const baseWidthIn = initialBaseW;
+      let baseHeightIn = Math.round(baseWidthIn * aspect * 10) / 10 || 5;
+      if (maxAllowedLogoSizeIn && baseHeightIn > maxAllowedLogoSizeIn) {
+        baseHeightIn = maxAllowedLogoSizeIn;
+      }
 
       const currentList = logosBySide[currentEditingSide] || [];
       const newLogo = {
@@ -468,8 +487,20 @@ export default function ApparelVisualCustomizer({
     }
   };
 
-  // Update logo properties
+  // Update logo properties with maximum allowed size validation
   const handleUpdateLogo = (logoId, patch) => {
+    if (maxAllowedLogoSizeIn) {
+      if (patch.widthIn !== undefined && patch.widthIn > maxAllowedLogoSizeIn) {
+        patch.widthIn = maxAllowedLogoSizeIn;
+        setSizeWarning(`Maximum logo size limit is ${maxAllowedLogoSizeIn}" for this garment view. Artwork constrained to ${maxAllowedLogoSizeIn}".`);
+      } else if (patch.heightIn !== undefined && patch.heightIn > maxAllowedLogoSizeIn) {
+        patch.heightIn = maxAllowedLogoSizeIn;
+        setSizeWarning(`Maximum logo size limit is ${maxAllowedLogoSizeIn}" for this garment view. Artwork constrained to ${maxAllowedLogoSizeIn}".`);
+      } else {
+        setSizeWarning("");
+      }
+    }
+
     setLogosBySide(prev => {
       const sideList = prev[currentEditingSide] || [];
       return {
@@ -1244,6 +1275,42 @@ export default function ApparelVisualCustomizer({
                 />
               )}
 
+              {/* Restricted Printable Area Box Overlay */}
+              {printAreaBounds && (
+                <div
+                  style={{
+                    position: "absolute",
+                    left: `${printAreaBounds.left}px`,
+                    top: `${printAreaBounds.top}px`,
+                    width: `${printAreaBounds.width}px`,
+                    height: `${printAreaBounds.height}px`,
+                    border: "2px dashed #2563EB",
+                    backgroundColor: "rgba(37, 99, 235, 0.04)",
+                    borderRadius: "6px",
+                    pointerEvents: "none",
+                    zIndex: 4
+                  }}
+                >
+                  <span
+                    style={{
+                      position: "absolute",
+                      top: "6px",
+                      left: "8px",
+                      backgroundColor: "rgba(37, 99, 235, 0.88)",
+                      color: "#FFFFFF",
+                      fontSize: "10px",
+                      fontWeight: 800,
+                      padding: "2px 7px",
+                      borderRadius: "4px",
+                      letterSpacing: "0.02em",
+                      boxShadow: "0 1px 3px rgba(0,0,0,0.15)"
+                    }}
+                  >
+                    Printable Area{currentCalibration?.printArea?.widthIn ? ` (${currentCalibration.printArea.widthIn}" × ${currentCalibration.printArea.heightIn}")` : ""}
+                  </span>
+                </div>
+              )}
+
               {/* Positioned Logos Layer */}
               {containerW > 0 && currentLogos.map((logo, idx) => {
                 const l = layouts[logo.id];
@@ -1454,14 +1521,40 @@ export default function ApparelVisualCustomizer({
               }}
             >
               {/* Header */}
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "0.5rem" }}>
                 <h3 style={{ fontSize: "1rem", fontWeight: 800, margin: 0, color: "#0F172A" }}>
                   {currentEditingSide.charAt(0).toUpperCase() + currentEditingSide.slice(1)} Artwork
                 </h3>
-                <span style={{ fontSize: "0.8rem", color: "#64748B", fontWeight: 500 }}>
-                  {currentLogos.length} logo{currentLogos.length === 1 ? "" : "s"}
-                </span>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                  {maxAllowedLogoSizeIn && (
+                    <span style={{ fontSize: "0.72rem", backgroundColor: "#FEF3C7", color: "#92400E", border: "1px solid #FCD34D", padding: "2px 8px", borderRadius: "100px", fontWeight: 700 }}>
+                      Max Size: {maxAllowedLogoSizeIn}&quot;
+                    </span>
+                  )}
+                  <span style={{ fontSize: "0.8rem", color: "#64748B", fontWeight: 500 }}>
+                    {currentLogos.length} logo{currentLogos.length === 1 ? "" : "s"}
+                  </span>
+                </div>
               </div>
+
+              {/* Maximum Size Limit Alert */}
+              {sizeWarning && (
+                <div style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.5rem",
+                  padding: "0.6rem 0.85rem",
+                  backgroundColor: "#FEF2F2",
+                  border: "1px solid #FCA5A5",
+                  borderRadius: "8px",
+                  color: "#B91C1C",
+                  fontSize: "0.8rem",
+                  fontWeight: 600
+                }}>
+                  <AlertTriangle size={16} style={{ flexShrink: 0 }} />
+                  <span>{sizeWarning}</span>
+                </div>
+              )}
 
               {/* Logos List */}
               <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
@@ -1569,10 +1662,14 @@ export default function ApparelVisualCustomizer({
                         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "0.4rem", flex: 1 }}>
                           {/* Width */}
                           <label style={{ display: "flex", flexDirection: "column", gap: "0.15rem", textAlign: "center" }}>
-                            <span style={{ fontSize: "0.65rem", fontWeight: 700, color: "#64748B" }}>W&quot;</span>
+                            <span style={{ fontSize: "0.65rem", fontWeight: 700, color: "#64748B" }}>
+                              W&quot;{maxAllowedLogoSizeIn ? ` (≤${maxAllowedLogoSizeIn}&quot;)` : ""}
+                            </span>
                             <input
                               type="number"
                               step="0.25"
+                              min="0.5"
+                              max={maxAllowedLogoSizeIn || undefined}
                               value={logo.widthIn}
                               onChange={(e) => handleUpdateLogo(logo.id, { widthIn: parseFloat(e.target.value) || 0 })}
                               style={{
@@ -1591,10 +1688,14 @@ export default function ApparelVisualCustomizer({
 
                           {/* Height */}
                           <label style={{ display: "flex", flexDirection: "column", gap: "0.15rem", textAlign: "center" }}>
-                            <span style={{ fontSize: "0.65rem", fontWeight: 700, color: "#64748B" }}>H&quot;</span>
+                            <span style={{ fontSize: "0.65rem", fontWeight: 700, color: "#64748B" }}>
+                              H&quot;{maxAllowedLogoSizeIn ? ` (≤${maxAllowedLogoSizeIn}&quot;)` : ""}
+                            </span>
                             <input
                               type="number"
                               step="0.25"
+                              min="0.5"
+                              max={maxAllowedLogoSizeIn || undefined}
                               value={logo.heightIn}
                               onChange={(e) => handleUpdateLogo(logo.id, { heightIn: parseFloat(e.target.value) || 0 })}
                               style={{
@@ -1845,42 +1946,19 @@ export default function ApparelVisualCustomizer({
                     Logo at print size:
                   </span>{" "}
                   {selectedLogo ? `${selectedLogo.widthIn || 6}" × ${selectedLogo.heightIn || 5}"` : "—"}
-                  {isAdmin && (
-                    <>
-                      {" "}·{" "}
-                      <span style={{ fontWeight: 700, color: "#0F172A" }}>
-                        Garment measured:
-                      </span>{" "}
-                      {garmentMeasuredW.toFixed ? garmentMeasuredW.toFixed(1) : garmentMeasuredW}&quot; × {garmentMeasuredH.toFixed ? garmentMeasuredH.toFixed(1) : garmentMeasuredH}&quot; (size {garmentCalSize})
-                    </>
+                  {maxAllowedLogoSizeIn && (
+                    <span style={{ color: "#2563EB", fontWeight: 700, marginLeft: "0.5rem" }}>
+                      (Max allowed: {maxAllowedLogoSizeIn}&quot;)
+                    </span>
+                  )}
+                  {printAreaBounds && currentCalibration?.printArea && (
+                    <span style={{ color: "#64748B", fontWeight: 600, marginLeft: "0.5rem" }}>
+                      · Restricted to {currentCalibration.printArea.widthIn}&quot; × {currentCalibration.printArea.heightIn}&quot; box
+                    </span>
                   )}
                 </div>
 
                 <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
-                  {isAdmin && (
-                    <button
-                      type="button"
-                      onClick={() => setRecalibrateOpen(true)}
-                      title="Admin only: Recalibrate garment photo scale"
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "0.35rem",
-                        backgroundColor: "#FEF3C7",
-                        border: "1px solid #FCD34D",
-                        borderRadius: "6px",
-                        color: "#92400E",
-                        fontSize: "0.75rem",
-                        fontWeight: 700,
-                        cursor: "pointer",
-                        padding: "0.35rem 0.6rem"
-                      }}
-                    >
-                      <Ruler size={13} />
-                      <span>Recalibrate (Admin)</span>
-                    </button>
-                  )}
-
                   <button
                     type="button"
                     onClick={handleExportMockup}
@@ -1949,38 +2027,6 @@ export default function ApparelVisualCustomizer({
             </div>
           </div>
         </motion.div>
-      )}
-
-      {/* Interactive Garment Calibration Modal - Admin Only */}
-      {isAdmin && recalibrateOpen && (
-        <AdminGarmentCalibration
-          isOpen={recalibrateOpen}
-          onClose={() => setRecalibrateOpen(false)}
-          imageUrl={currentGarmentImg}
-          sideName={`${currentEditingSide.toUpperCase()} View`}
-          initialCalibration={currentCalibration}
-          onSaveCalibration={async (newCalib) => {
-            setLiveCalibrations(prev => ({
-              ...prev,
-              [currentEditingSide]: newCalib
-            }));
-            setRecalibrateOpen(false);
-
-            if (product?.id) {
-              try {
-                const targetCol = product.isApparel === false ? "products" : "apparel_products";
-                const docRef = doc(db, targetCol, product.id);
-                await updateDoc(docRef, {
-                  [`garmentViews.${currentEditingSide}.calibration`]: newCalib,
-                  [`apparelViews.${currentEditingSide}.calibration`]: newCalib,
-                  updatedAt: new Date()
-                });
-              } catch (err) {
-                console.error("Failed to persist calibration to Firestore:", err);
-              }
-            }
-          }}
-        />
       )}
 
       {/* Size Chart Modal */}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Ruler, Check, AlertCircle, Crosshair, Wand2, X, Info, RotateCcw, CheckCircle2 } from "lucide-react";
+import { Ruler, Check, AlertCircle, Crosshair, Wand2, X, Info, RotateCcw, CheckCircle2, Square, Maximize2, ShieldAlert } from "lucide-react";
 
 const REFERENCE_KINDS = [
   { id: "chest", label: "Chest width (laid flat, pit to pit)", help: "The size-chart chest width. Measure straight across, 1\" below the armholes.", axis: "horizontal" },
@@ -26,7 +26,7 @@ const CHECKER =
   "linear-gradient(-45deg,transparent 75%,#e2e8f0 75%)";
 
 /**
- * 2-Step Interactive Admin Garment Photo Scale & Collar Calibration Dialog (Pure JS/JSX)
+ * 3-Step Interactive Admin Garment Photo Scale, Collar & Optional Printable Area Calibration Dialog (Pure JS/JSX)
  */
 export default function AdminGarmentCalibration({
   isOpen = true,
@@ -38,9 +38,9 @@ export default function AdminGarmentCalibration({
   onSave
 }) {
   const frameRef = useRef(null);
-  const dragStartRef = useRef({ x: 0, y: 0, a: { x: 0, y: 0 }, b: { x: 0, y: 0 } });
+  const dragStartRef = useRef({ x: 0, y: 0, a: { x: 0, y: 0 }, b: { x: 0, y: 0 }, printArea: { x: 0, y: 0, width: 0, height: 0 } });
   const [frameW, setFrameW] = useState(0);
-  const [step, setStep] = useState("scale"); // 'scale' or 'collar'
+  const [step, setStep] = useState("scale"); // 'scale', 'collar', or 'printArea'
   const [refKind, setRefKind] = useState(initialCalibration?.refKind || "chest");
   const [trueLengthIn, setTrueLengthIn] = useState(initialCalibration?.referenceInches || 22);
   const [sizeLabel, setSizeLabel] = useState(initialCalibration?.calSize || "M");
@@ -60,7 +60,20 @@ export default function AdminGarmentCalibration({
   const [lineB, setLineB] = useState(() => initialCalibration?.lineEnd || KIND_DEFAULTS.chest.b);
   const [anchor, setAnchor] = useState(() => initialCalibration?.anchor || { x: 50, y: 15 });
 
-  const [dragging, setDragging] = useState(null); // 'a' or 'b' or 'anchor'
+  // Optional Restricted Printable Area Box state
+  const [hasPrintArea, setHasPrintArea] = useState(() => Boolean(initialCalibration?.hasPrintArea));
+  const [printArea, setPrintArea] = useState(() => initialCalibration?.printArea || {
+    x: 28,
+    y: 22,
+    width: 44,
+    height: 48
+  });
+
+  // Optional Maximum Artwork / Logo Size Limit state
+  const [hasMaxLogoSize, setHasMaxLogoSize] = useState(() => Boolean(initialCalibration?.hasMaxLogoSize || initialCalibration?.maxLogoSizeIn));
+  const [maxLogoSizeIn, setMaxLogoSizeIn] = useState(() => initialCalibration?.maxLogoSizeIn || 5);
+
+  const [dragging, setDragging] = useState(null); // 'a' or 'b' or 'anchor' or 'printArea' or 'printAreaResize'
   const [imgAspect, setImgAspect] = useState(1);
 
   useEffect(() => {
@@ -98,6 +111,46 @@ export default function AdminGarmentCalibration({
   const totalImageHeightIn = scalePxPerInch > 0 ? (frameH / scalePxPerInch) : (22 * (imgAspect || 1));
   const framePpi = scalePxPerInch;
 
+  // Printable area box dimensions in real-world inches
+  const printAreaWidthIn = scalePxPerInch > 0 ? (((printArea.width / 100) * frameW) / scalePxPerInch) : 12;
+  const printAreaHeightIn = scalePxPerInch > 0 ? (((printArea.height / 100) * frameH) / scalePxPerInch) : 14;
+
+  const handlePrintAreaWidthInChange = (newInches) => {
+    const val = parseFloat(newInches);
+    if (!val || val <= 0 || scalePxPerInch <= 0 || frameW <= 0) return;
+    const px = val * scalePxPerInch;
+    const pct = Math.min(100 - printArea.x, Math.max(5, (px / frameW) * 100));
+    setPrintArea(prev => ({ ...prev, width: pct }));
+  };
+
+  const handlePrintAreaHeightInChange = (newInches) => {
+    const val = parseFloat(newInches);
+    if (!val || val <= 0 || scalePxPerInch <= 0 || frameH <= 0) return;
+    const px = val * scalePxPerInch;
+    const pct = Math.min(100 - printArea.y, Math.max(5, (px / frameH) * 100));
+    setPrintArea(prev => ({ ...prev, height: pct }));
+  };
+
+  const handleCenterPrintArea = () => {
+    setPrintArea(prev => ({ ...prev, x: Math.max(0, 50 - prev.width / 2) }));
+  };
+
+  const applyPrintAreaPreset = (wIn, hIn, yPct = 22) => {
+    if (scalePxPerInch <= 0 || frameW <= 0 || frameH <= 0) return;
+    const wPx = wIn * scalePxPerInch;
+    const hPx = hIn * scalePxPerInch;
+    const wPct = Math.min(95, Math.max(5, (wPx / frameW) * 100));
+    const hPct = Math.min(95, Math.max(5, (hPx / frameH) * 100));
+    const xPct = Math.max(0, 50 - wPct / 2);
+    setPrintArea({
+      x: xPct,
+      y: Math.min(100 - hPct, yPct),
+      width: wPct,
+      height: hPct
+    });
+    setHasPrintArea(true);
+  };
+
   // Handle kind selection
   const handleSelectKind = (nextKindId) => {
     // Save current kind measurement
@@ -122,7 +175,8 @@ export default function AdminGarmentCalibration({
       x: e.clientX,
       y: e.clientY,
       a: { ...lineA },
-      b: { ...lineB }
+      b: { ...lineB },
+      printArea: { ...printArea }
     };
   };
 
@@ -167,6 +221,20 @@ export default function AdminGarmentCalibration({
       }
     } else if (dragging === "anchor") {
       setAnchor({ x, y });
+    } else if (dragging === "printArea") {
+      const dxPct = ((e.clientX - dragStartRef.current.x) / rect.width) * 100;
+      const dyPct = ((e.clientY - dragStartRef.current.y) / rect.height) * 100;
+      const orig = dragStartRef.current.printArea;
+      const newX = Math.max(0, Math.min(100 - orig.width, orig.x + dxPct));
+      const newY = Math.max(0, Math.min(100 - orig.height, orig.y + dyPct));
+      setPrintArea(prev => ({ ...prev, x: newX, y: newY }));
+    } else if (dragging === "printAreaResize") {
+      const dxPct = ((e.clientX - dragStartRef.current.x) / rect.width) * 100;
+      const dyPct = ((e.clientY - dragStartRef.current.y) / rect.height) * 100;
+      const orig = dragStartRef.current.printArea;
+      const newW = Math.max(5, Math.min(100 - orig.x, orig.width + dxPct));
+      const newH = Math.max(5, Math.min(100 - orig.y, orig.height + dyPct));
+      setPrintArea(prev => ({ ...prev, width: newW, height: newH }));
     }
   };
 
@@ -201,6 +269,9 @@ export default function AdminGarmentCalibration({
   };
 
   const handleSave = () => {
+    const boxWIn = scalePxPerInch > 0 ? ((((printArea.width / 100) * frameW) / scalePxPerInch)) : 12;
+    const boxHIn = scalePxPerInch > 0 ? ((((printArea.height / 100) * frameH) / scalePxPerInch)) : 14;
+
     const calibrationPayload = {
       isCalibrated: true,
       scaleUnitsPerInch: scalePxPerInch,
@@ -215,6 +286,21 @@ export default function AdminGarmentCalibration({
       anchor,
       anchorX: anchor ? anchor.x / 100 : 0.5,
       anchorY: anchor ? anchor.y / 100 : 0.2,
+      // Optional Restricted Printable Area
+      hasPrintArea: Boolean(hasPrintArea),
+      printArea: hasPrintArea ? {
+        x: Math.round(printArea.x * 10) / 10,
+        y: Math.round(printArea.y * 10) / 10,
+        width: Math.round(printArea.width * 10) / 10,
+        height: Math.round(printArea.height * 10) / 10,
+        widthIn: Math.round(boxWIn * 10) / 10,
+        heightIn: Math.round(boxHIn * 10) / 10,
+      } : null,
+      // Optional Artwork Size Limitation
+      hasMaxLogoSize: Boolean(hasMaxLogoSize),
+      maxLogoSizeIn: hasMaxLogoSize ? (parseFloat(maxLogoSizeIn) || 5) : null,
+      maxLogoWidthIn: hasMaxLogoSize ? (parseFloat(maxLogoSizeIn) || 5) : null,
+      maxLogoHeightIn: hasMaxLogoSize ? (parseFloat(maxLogoSizeIn) || 5) : null,
       calibratedAt: new Date().toISOString()
     };
 
@@ -327,10 +413,34 @@ export default function AdminGarmentCalibration({
             Mark the collar
             {anchor && <Check size={14} style={{ color: "rgb(22, 163, 74)" }} />}
           </button>
+
+          <button
+            type="button"
+            onClick={() => setStep("printArea")}
+            style={{
+              flex: 1,
+              padding: "0.75rem",
+              fontSize: "0.85rem",
+              fontWeight: 700,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "0.5rem",
+              border: "none",
+              borderBottom: step === "printArea" ? "3px solid hsl(var(--primary-hsl))" : "none",
+              backgroundColor: step === "printArea" ? "white" : "transparent",
+              color: step === "printArea" ? "hsl(var(--primary-hsl))" : "hsl(var(--muted-hsl))",
+              cursor: "pointer"
+            }}
+          >
+            <span style={{ width: "20px", height: "20px", borderRadius: "50%", backgroundColor: step === "printArea" ? "hsl(var(--primary-hsl))" : "#cbd5e1", color: "white", fontSize: "11px", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800 }}>3</span>
+            Printable area & limits
+            {(hasPrintArea || hasMaxLogoSize) && <Check size={14} style={{ color: "rgb(22, 163, 74)" }} />}
+          </button>
         </div>
 
         {/* Body Workspace Grid */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 320px", gap: "1.5rem", padding: "1.5rem" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 340px", gap: "1.5rem", padding: "1.5rem" }}>
           
           {/* Left Column: Photo Canvas Viewport */}
           <div>
@@ -439,22 +549,92 @@ export default function AdminGarmentCalibration({
                 </>
               )}
 
-              {/* Collar Anchor Target */}
-              {anchor && frameH > 0 && (
+              {/* Step 2: Collar Anchor Target */}
+              {step === "collar" && anchor && frameH > 0 && (
                 <div
-                  onPointerDown={(e) => step === "collar" && handlePointerDown("anchor", e)}
+                  onPointerDown={(e) => handlePointerDown("anchor", e)}
                   style={{
                     position: "absolute",
                     left: `${anchor.x}%`,
                     top: `${anchor.y}%`,
                     transform: "translate(-50%, -50%)",
-                    color: step === "collar" ? "#ef4444" : "rgba(239, 68, 68, 0.7)",
-                    pointerEvents: step === "collar" ? "auto" : "none",
-                    cursor: step === "collar" ? "grab" : "default"
+                    color: "#ef4444",
+                    pointerEvents: "auto",
+                    cursor: "grab"
                   }}
                 >
                   <Crosshair size={28} style={{ strokeWidth: 2.5 }} />
                 </div>
+              )}
+
+              {/* Step 3: Interactive Printable Area Box */}
+              {step === "printArea" && frameH > 0 && (
+                <>
+                  {hasPrintArea ? (
+                    <div
+                      onPointerDown={(e) => handlePointerDown("printArea", e)}
+                      style={{
+                        position: "absolute",
+                        left: `${printArea.x}%`,
+                        top: `${printArea.y}%`,
+                        width: `${printArea.width}%`,
+                        height: `${printArea.height}%`,
+                        border: "2px dashed #2563EB",
+                        backgroundColor: "rgba(37, 99, 235, 0.14)",
+                        borderRadius: "4px",
+                        cursor: "move",
+                        boxShadow: "0 0 0 1px rgba(255,255,255,0.7)",
+                        userSelect: "none",
+                        touchAction: "none"
+                      }}
+                    >
+                      <div style={{ padding: "4px 8px", pointerEvents: "none" }}>
+                        <span style={{ backgroundColor: "#2563EB", color: "white", fontSize: "10px", fontWeight: 800, padding: "2px 6px", borderRadius: "3px", display: "inline-block" }}>
+                          Print Area: {printAreaWidthIn.toFixed(1)}&quot; × {printAreaHeightIn.toFixed(1)}&quot;
+                        </span>
+                      </div>
+
+                      {/* Corner Resize Handle */}
+                      <div
+                        onPointerDown={(e) => handlePointerDown("printAreaResize", e)}
+                        style={{
+                          position: "absolute",
+                          right: "-8px",
+                          bottom: "-8px",
+                          width: "18px",
+                          height: "18px",
+                          backgroundColor: "#2563EB",
+                          border: "2px solid white",
+                          borderRadius: "4px",
+                          cursor: "nwse-resize",
+                          boxShadow: "0 2px 6px rgba(0,0,0,0.3)",
+                          touchAction: "none"
+                        }}
+                        title="Drag to resize box"
+                      />
+                    </div>
+                  ) : (
+                    <div style={{
+                      position: "absolute",
+                      inset: 0,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor: "rgba(255,255,255,0.45)",
+                      backdropFilter: "blur(2px)",
+                      pointerEvents: "none"
+                    }}>
+                      <div style={{ backgroundColor: "white", padding: "0.75rem 1.25rem", borderRadius: "8px", boxShadow: "0 4px 12px rgba(0,0,0,0.1)", border: "1px solid hsl(var(--border-hsl))", textAlign: "center" }}>
+                        <p style={{ margin: 0, fontWeight: 700, fontSize: "0.85rem", color: "#1E293B" }}>
+                          Print Anywhere (Full Garment Allowed)
+                        </p>
+                        <p style={{ margin: "0.2rem 0 0", fontSize: "0.75rem", color: "#64748B" }}>
+                          Select &quot;Restricted Printable Area Box&quot; on the right to limit client logo placement.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
 
               {/* 6-Inch Verification Ruler Bar Overlay */}
@@ -488,14 +668,16 @@ export default function AdminGarmentCalibration({
               <Info size={14} />
               {step === "scale"
                 ? "Drag the two blue handles onto the measurement line you know (e.g. chest width)."
-                : "Click or drag the red crosshair target onto the high point of the shoulder at collar center."
+                : step === "collar"
+                ? "Click or drag the red crosshair target onto the high point of the shoulder at collar center."
+                : "Drag or resize the blue box to define where customers can position artwork on this garment view."
               }
             </p>
           </div>
 
           {/* Right Column: Controls & Configuration */}
           <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
-            {step === "scale" ? (
+            {step === "scale" && (
               <>
                 <div>
                   <label className="label">What are you measuring?</label>
@@ -564,7 +746,9 @@ export default function AdminGarmentCalibration({
                   Next: mark the collar →
                 </button>
               </>
-            ) : (
+            )}
+
+            {step === "collar" && (
               <>
                 <div style={{ padding: "0.85rem", backgroundColor: "hsl(var(--secondary-hsl) / 0.3)", borderRadius: "var(--radius-md)", fontSize: "0.8rem", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
                   <p style={{ fontWeight: 800 }}>Collar Positioning Anchor</p>
@@ -577,8 +761,147 @@ export default function AdminGarmentCalibration({
                   {anchor ? "Collar Marked ✓" : "Click on garment photo to place marker"}
                 </div>
 
-                <button type="button" onClick={() => setStep("scale")} className="btn btn-outline" style={{ width: "100%", padding: "0.6rem" }}>
+                <button
+                  type="button"
+                  onClick={() => setStep("printArea")}
+                  className="btn btn-primary"
+                  style={{ width: "100%", padding: "0.75rem" }}
+                >
+                  Next: printable area & limits (optional) →
+                </button>
+
+                <button type="button" onClick={() => setStep("scale")} className="btn btn-outline" style={{ width: "100%", padding: "0.5rem", fontSize: "0.8rem" }}>
                   ← Back to scale measurement
+                </button>
+              </>
+            )}
+
+            {step === "printArea" && (
+              <>
+                {/* 1. Printable Area Option Selector */}
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
+                  <label className="label" style={{ fontWeight: 800, fontSize: "0.85rem", color: "hsl(var(--primary-hsl))" }}>
+                    Artwork Placement Area (Optional)
+                  </label>
+                  
+                  <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                    <label style={{ display: "flex", alignItems: "flex-start", gap: "0.5rem", padding: "0.6rem", borderRadius: "6px", border: !hasPrintArea ? "2px solid #2563EB" : "1px solid hsl(var(--border-hsl))", backgroundColor: !hasPrintArea ? "#EFF6FF" : "transparent", cursor: "pointer" }}>
+                      <input
+                        type="radio"
+                        name="printAreaChoice"
+                        checked={!hasPrintArea}
+                        onChange={() => setHasPrintArea(false)}
+                        style={{ marginTop: "2px" }}
+                      />
+                      <div>
+                        <span style={{ fontSize: "0.82rem", fontWeight: 700, display: "block" }}>Print Anywhere</span>
+                        <span style={{ fontSize: "0.75rem", color: "hsl(var(--muted-hsl))" }}>Customer can place logo freely across the garment image.</span>
+                      </div>
+                    </label>
+
+                    <label style={{ display: "flex", alignItems: "flex-start", gap: "0.5rem", padding: "0.6rem", borderRadius: "6px", border: hasPrintArea ? "2px solid #2563EB" : "1px solid hsl(var(--border-hsl))", backgroundColor: hasPrintArea ? "#EFF6FF" : "transparent", cursor: "pointer" }}>
+                      <input
+                        type="radio"
+                        name="printAreaChoice"
+                        checked={hasPrintArea}
+                        onChange={() => setHasPrintArea(true)}
+                        style={{ marginTop: "2px" }}
+                      />
+                      <div>
+                        <span style={{ fontSize: "0.82rem", fontWeight: 700, display: "block" }}>Restricted Printable Area Box</span>
+                        <span style={{ fontSize: "0.75rem", color: "hsl(var(--muted-hsl))" }}>Customer can only move their logo inside this designated box.</span>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Printable Box Dimensions & Presets if Active */}
+                {hasPrintArea && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", padding: "0.75rem", backgroundColor: "hsl(var(--secondary-hsl) / 0.25)", borderRadius: "var(--radius-md)", border: "1px solid hsl(var(--border-hsl))" }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem" }}>
+                      <div>
+                        <label style={{ fontSize: "0.75rem", fontWeight: 700, display: "block", marginBottom: "0.2rem" }}>Box Width (in)</label>
+                        <input
+                          type="number"
+                          step="0.5"
+                          min="1"
+                          className="input"
+                          value={Math.round(printAreaWidthIn * 10) / 10}
+                          onChange={(e) => handlePrintAreaWidthInChange(e.target.value)}
+                          style={{ fontSize: "0.85rem", padding: "0.35rem 0.5rem" }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: "0.75rem", fontWeight: 700, display: "block", marginBottom: "0.2rem" }}>Box Height (in)</label>
+                        <input
+                          type="number"
+                          step="0.5"
+                          min="1"
+                          className="input"
+                          value={Math.round(printAreaHeightIn * 10) / 10}
+                          onChange={(e) => handlePrintAreaHeightInChange(e.target.value)}
+                          style={{ fontSize: "0.85rem", padding: "0.35rem 0.5rem" }}
+                        />
+                      </div>
+                    </div>
+
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "0.35rem" }}>
+                      <button type="button" onClick={() => applyPrintAreaPreset(12, 14, 22)} className="btn btn-outline" style={{ fontSize: "0.7rem", padding: "0.25rem 0.5rem" }}>
+                        Chest (12&quot;×14&quot;)
+                      </button>
+                      <button type="button" onClick={() => applyPrintAreaPreset(4.5, 4.5, 20)} className="btn btn-outline" style={{ fontSize: "0.7rem", padding: "0.25rem 0.5rem" }}>
+                        Pocket (4.5&quot;×4.5&quot;)
+                      </button>
+                      <button type="button" onClick={() => applyPrintAreaPreset(14, 18, 18)} className="btn btn-outline" style={{ fontSize: "0.7rem", padding: "0.25rem 0.5rem" }}>
+                        Full Front (14&quot;×18&quot;)
+                      </button>
+                      <button type="button" onClick={handleCenterPrintArea} className="btn btn-outline" style={{ fontSize: "0.7rem", padding: "0.25rem 0.5rem" }}>
+                        Center Horizontally
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* 2. Separate Artwork Size Limitation */}
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem", borderTop: "1px solid hsl(var(--border-hsl))", paddingTop: "0.75rem" }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.82rem", fontWeight: 700, cursor: "pointer" }}>
+                    <input
+                      type="checkbox"
+                      checked={hasMaxLogoSize}
+                      onChange={(e) => setHasMaxLogoSize(e.target.checked)}
+                    />
+                    <span>Limit Maximum Logo / Artwork Size</span>
+                  </label>
+
+                  {hasMaxLogoSize ? (
+                    <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem", padding: "0.6rem", backgroundColor: "#FEF3C7", borderRadius: "6px", border: "1px solid #FCD34D" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                        <span style={{ fontSize: "0.8rem", fontWeight: 700, color: "#92400E" }}>Max size limit:</span>
+                        <input
+                          type="number"
+                          step="0.5"
+                          min="0.5"
+                          max="30"
+                          className="input"
+                          value={maxLogoSizeIn}
+                          onChange={(e) => setMaxLogoSizeIn(e.target.value)}
+                          style={{ width: "70px", padding: "0.25rem", textAlign: "center", fontWeight: 800, fontSize: "0.9rem" }}
+                        />
+                        <span style={{ fontSize: "0.8rem", fontWeight: 700, color: "#92400E" }}>inches</span>
+                      </div>
+                      <p style={{ margin: 0, fontSize: "0.72rem", color: "#B45309", lineHeight: 1.3 }}>
+                        If customer tries to set logo size larger than {maxLogoSizeIn}&quot; (e.g. 6&quot;), frontend will show an error and constrain it to {maxLogoSizeIn}&quot;.
+                      </p>
+                    </div>
+                  ) : (
+                    <p style={{ margin: 0, fontSize: "0.75rem", color: "hsl(var(--muted-hsl))" }}>
+                      No size limit active. Customers can scale logo to any desired dimensions.
+                    </p>
+                  )}
+                </div>
+
+                <button type="button" onClick={() => setStep("collar")} className="btn btn-outline" style={{ width: "100%", padding: "0.5rem", fontSize: "0.8rem" }}>
+                  ← Back to collar anchor
                 </button>
               </>
             )}
