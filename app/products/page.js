@@ -74,6 +74,22 @@ function CatalogContent() {
     return () => window.removeEventListener("popstate", handlePopState);
   }, [products]);
 
+  // Sync selectedCategory when searchParams change (e.g. header navigation via router.push)
+  useEffect(() => {
+    const catParam = searchParams.get("category") || "all";
+    const prodParam = searchParams.get("product") || null;
+
+    setSelectedCategory(catParam);
+    setCurrentPage(1);
+
+    if (prodParam && products.length > 0) {
+      const matched = products.find(p => p.id === prodParam);
+      setSelectedProduct(matched || null);
+    } else if (!prodParam) {
+      setSelectedProduct(null);
+    }
+  }, [searchParams, products]);
+
   useEffect(() => {
     const fetchCatalog = async () => {
       setLoading(true);
