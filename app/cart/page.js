@@ -338,16 +338,42 @@ export default function CartPage() {
                       </div>
 
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "0.5rem", flexWrap: "wrap", gap: "0.5rem" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
                           <span style={{ fontSize: "0.85rem", fontWeight: 600 }}>Qty:</span>
-                          <input
-                            type="number"
-                            className="input"
-                            min="1"
-                            value={item.quantity}
-                            onChange={(e) => updateQuantity(item.id, parseInt(e.target.value) || 1)}
-                            style={{ width: "70px", padding: "0.3rem 0.5rem", fontSize: "0.85rem" }}
-                          />
+                          {item.isApparel ? (
+                            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                              <div style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "0.35rem",
+                                padding: "0.3rem 0.65rem",
+                                borderRadius: "var(--radius-sm)",
+                                backgroundColor: "hsl(var(--secondary-hsl) / 0.4)",
+                                border: "1px solid hsl(var(--border-hsl))",
+                                fontSize: "0.85rem",
+                                fontWeight: 700,
+                                color: "hsl(var(--foreground-hsl))",
+                              }}>
+                                <svg width="11" height="13" viewBox="0 0 11 13" fill="none" style={{ flexShrink: 0, opacity: 0.6 }} aria-hidden="true">
+                                  <rect x="1" y="5" width="9" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.5"/>
+                                  <path d="M3.5 5V3.5a2 2 0 1 1 4 0V5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                                </svg>
+                                {item.quantity}
+                              </div>
+                              <span style={{ fontSize: "0.72rem", color: "hsl(var(--muted-hsl))", lineHeight: 1.3 }}>
+                                Fixed MOQ
+                              </span>
+                            </div>
+                          ) : (
+                            <input
+                              type="number"
+                              className="input"
+                              min="1"
+                              value={item.quantity}
+                              onChange={(e) => updateQuantity(item.id, parseInt(e.target.value) || 1)}
+                              style={{ width: "70px", padding: "0.3rem 0.5rem", fontSize: "0.85rem" }}
+                            />
+                          )}
                         </div>
                         <span style={{ fontWeight: 800, color: "hsl(var(--accent-hsl))", fontSize: "1rem" }}>
                           ${(parseFloat(item.price) * item.quantity).toFixed(2)} CAD
