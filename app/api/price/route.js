@@ -87,7 +87,10 @@ export async function POST(req) {
       rawBaseCost: baseCost,
       price: calculated.finalPrice,
       markupPercent: calculated.markupPercent,
-      markupAmount: calculated.markupAmount
+      markupAmount: calculated.markupAmount,
+      // Sale price fields — null when no sale is active
+      salePrice: calculated.salePrice,
+      saleDiscountPercent: calculated.saleDiscountPercent,
     });
   } catch (error) {
     console.error("Live price query failed:", error.message);

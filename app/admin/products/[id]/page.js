@@ -85,6 +85,8 @@ export default function AdminProductEditPage({ params: paramsPromise }) {
   // Product Markup Overrides
   const [useCustomMarkup, setUseCustomMarkup] = useState(false);
   const [markupPercent, setMarkupPercent] = useState(35);
+  // Sale Discount (% off the final selling price; empty string = no sale)
+  const [saleDiscountPercent, setSaleDiscountPercent] = useState("");
 
   useEffect(() => {
     const fetchProductAndCategories = async () => {
@@ -124,6 +126,7 @@ export default function AdminProductEditPage({ params: paramsPromise }) {
 
           setUseCustomMarkup(data.useCustomMarkup || false);
           setMarkupPercent(data.markupPercent !== undefined ? data.markupPercent : 35);
+          setSaleDiscountPercent(data.saleDiscountPercent !== undefined && data.saleDiscountPercent !== null ? String(data.saleDiscountPercent) : "");
           
           if (data.isCustom) {
             setName(data.name || "");
@@ -421,6 +424,7 @@ export default function AdminProductEditPage({ params: paramsPromise }) {
           options: optionGroups,
           useCustomMarkup,
           markupPercent: parseFloat(markupPercent) || 0,
+          saleDiscountPercent: saleDiscountPercent !== "" ? (parseFloat(saleDiscountPercent) || null) : null,
           needsAttention,
         };
 
@@ -439,6 +443,7 @@ export default function AdminProductEditPage({ params: paramsPromise }) {
           images,
           useCustomMarkup,
           markupPercent: parseFloat(markupPercent) || 0,
+          saleDiscountPercent: saleDiscountPercent !== "" ? (parseFloat(saleDiscountPercent) || null) : null,
           needsAttention,
           "pricing.startingPriceOverride": priceVal,
         };
@@ -1256,6 +1261,72 @@ export default function AdminProductEditPage({ params: paramsPromise }) {
                 <p style={{ fontSize: "0.8rem", color: "hsl(var(--muted-hsl))" }}>
                   Currently following standard Category or Sitewise markup hierarchy.
                 </p>
+              )}
+            </div>
+          </div>
+
+          {/* Sale Discount Card */}
+          <div className="card" style={{ border: "1px solid hsl(var(--accent-hsl) / 0.35)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", marginBottom: "1rem" }}>
+              <span style={{ fontSize: "1.1rem" }}>🏷️</span>
+              <h2 style={{ fontSize: "1.2rem", fontWeight: 800, margin: 0 }}>Sale Price</h2>
+              {saleDiscountPercent !== "" && parseFloat(saleDiscountPercent) > 0 && (
+                <span style={{ marginLeft: "auto", fontSize: "0.72rem", fontWeight: 800, padding: "0.15rem 0.55rem", borderRadius: "99px", backgroundColor: "hsl(var(--accent-hsl))", color: "white" }}>
+                  SALE ACTIVE
+                </span>
+              )}
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+              <div>
+                <label className="label" htmlFor="sale-discount">
+                  Discount Percentage (% off selling price)
+                </label>
+                <input
+                  id="sale-discount"
+                  type="number"
+                  min="0"
+                  max="99"
+                  step="0.5"
+                  className="input"
+                  placeholder="e.g. 15 for 15% off — leave empty for no sale"
+                  value={saleDiscountPercent}
+                  onChange={(e) => setSaleDiscountPercent(e.target.value)}
+                />
+                <span style={{ fontSize: "0.75rem", color: "hsl(var(--muted-hsl))", display: "block", marginTop: "0.25rem" }}>
+                  Applied to the final selling price (after markup). Leave blank or 0 to disable. Hierarchy: product → category → sitewise global.
+                </span>
+              </div>
+
+              {/* Live sale price preview */}
+              {saleDiscountPercent !== "" && parseFloat(saleDiscountPercent) > 0 && (() => {
+                const baseRef = parseFloat(product?.basePrice || product?.pricing?.startingPriceOverride || product?.pricing?.startingPrice || 0);
+                if (baseRef <= 0) return null;
+                const disc = parseFloat(saleDiscountPercent);
+                if (isNaN(disc) || disc <= 0 || disc >= 100) return null;
+                const salePreview = (baseRef * (1 - disc / 100)).toFixed(2);
+                return (
+                  <div style={{ display: "flex", alignItems: "center", gap: "1rem", padding: "0.75rem 1rem", borderRadius: "var(--radius-sm)", backgroundColor: "hsl(var(--accent-hsl) / 0.08)", border: "1px solid hsl(var(--accent-hsl) / 0.2)" }}>
+                    <div>
+                      <p style={{ fontSize: "0.7rem", color: "hsl(var(--muted-hsl))", fontWeight: 600, textTransform: "uppercase" }}>Regular Price</p>
+                      <p style={{ fontSize: "1rem", fontWeight: 700, textDecoration: "line-through", color: "hsl(var(--muted-hsl))" }}>${baseRef.toFixed(2)} CAD</p>
+                    </div>
+                    <span style={{ fontSize: "1.4rem", color: "hsl(var(--muted-hsl))" }}>→</span>
+                    <div>
+                      <p style={{ fontSize: "0.7rem", color: "hsl(var(--accent-hsl))", fontWeight: 800, textTransform: "uppercase" }}>Sale Price ({disc}% off)</p>
+                      <p style={{ fontSize: "1.2rem", fontWeight: 900, color: "hsl(var(--accent-hsl))" }}>${salePreview} CAD</p>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {saleDiscountPercent !== "" && parseFloat(saleDiscountPercent) > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setSaleDiscountPercent("")}
+                  style={{ alignSelf: "flex-start", fontSize: "0.78rem", padding: "0.3rem 0.75rem", borderRadius: "var(--radius-sm)", border: "1px solid hsl(var(--destructive-hsl) / 0.4)", background: "none", color: "hsl(var(--destructive-hsl))", cursor: "pointer", fontWeight: 700 }}
+                >
+                  Remove Sale
+                </button>
               )}
             </div>
           </div>

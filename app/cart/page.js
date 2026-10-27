@@ -375,9 +375,23 @@ export default function CartPage() {
                             />
                           )}
                         </div>
-                        <span style={{ fontWeight: 800, color: "hsl(var(--accent-hsl))", fontSize: "1rem" }}>
-                          ${(parseFloat(item.price) * item.quantity).toFixed(2)} CAD
-                        </span>
+                        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
+                          {item.originalPrice && item.originalPrice > item.price && (
+                            <div style={{ display: "flex", alignItems: "center", gap: "0.35rem", marginBottom: "0.15rem" }}>
+                              <span style={{ fontSize: "0.75rem", textDecoration: "line-through", color: "hsl(var(--muted-hsl))" }}>
+                                ${(parseFloat(item.originalPrice) * item.quantity).toFixed(2)}
+                              </span>
+                              {item.saleDiscountPercent && (
+                                <span style={{ fontSize: "0.65rem", fontWeight: 800, color: "#DC2626", backgroundColor: "#FEE2E2", padding: "0.1rem 0.35rem", borderRadius: "3px" }}>
+                                  -{item.saleDiscountPercent}%
+                                </span>
+                              )}
+                            </div>
+                          )}
+                          <span style={{ fontWeight: 800, color: item.originalPrice && item.originalPrice > item.price ? "#DC2626" : "hsl(var(--accent-hsl))", fontSize: "1rem" }}>
+                            ${(parseFloat(item.price) * item.quantity).toFixed(2)} CAD
+                          </span>
+                        </div>
                       </div>
 
                       {/* Artwork Upload Form Subcard */}

@@ -1193,8 +1193,15 @@ function CatalogContent() {
                     >
                       {paginatedProducts.map((product, idx) => {
                         const image = product.images?.[0] || "https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?q=80&w=600&auto=format&fit=crop";
-                        const startingPrice = parseFloat(product.pricing?.startingPriceOverride || product.pricing?.startingPrice || 0);
+                        const startingPrice = parseFloat(product.pricing?.startingPriceOverride || product.pricing?.startingPrice || product.basePrice || 0);
                         const displayPrice = startingPrice > 0 ? startingPrice : 19.99;
+                        // Sale price: stored saleDiscountPercent or cached pricing.salePrice
+                        const cardSaleDiscount = parseFloat(product.saleDiscountPercent ?? product.pricing?.saleDiscountPercent);
+                        const cardSalePrice = (product.pricing?.salePrice !== undefined && product.pricing?.salePrice !== null && parseFloat(product.pricing.salePrice) < displayPrice)
+                          ? parseFloat(product.pricing.salePrice)
+                          : (!isNaN(cardSaleDiscount) && cardSaleDiscount > 0 && cardSaleDiscount < 100)
+                            ? Math.round(displayPrice * (1 - cardSaleDiscount / 100) * 100) / 100
+                            : null;
 
                         return (
                           <motion.div
@@ -1255,6 +1262,25 @@ function CatalogContent() {
                                   Instant Pricing
                                 </span>
                               )}
+                              {/* SALE badge */}
+                              {cardSalePrice !== null && (
+                                <span style={{
+                                  position: "absolute",
+                                  top: "0.75rem",
+                                  right: "0.75rem",
+                                  backgroundColor: "#DC2626",
+                                  color: "white",
+                                  fontSize: "0.6rem",
+                                  fontWeight: 900,
+                                  textTransform: "uppercase",
+                                  padding: "0.2rem 0.5rem",
+                                  borderRadius: "4px",
+                                  zIndex: 2,
+                                  letterSpacing: "0.05em"
+                                }}>
+                                  SALE
+                                </span>
+                              )}
                               <Link 
                                 href={product.isApparel ? `/apparel/${product.id}` : `/products/${product.id}`}
                                 style={{ width: "100%", height: "180px", overflow: "hidden", borderBottom: "1px solid hsl(var(--border-hsl))", display: "block" }}
@@ -1287,9 +1313,20 @@ function CatalogContent() {
                                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "auto", paddingTop: "0.5rem" }}>
                                   <div>
                                     <p style={{ fontSize: "0.6rem", textTransform: "uppercase", fontWeight: 700, color: "hsl(var(--muted-hsl))" }}>Starting at</p>
-                                    <p style={{ fontWeight: 850, fontSize: "1.05rem", color: "hsl(var(--accent-hsl))" }}>
-                                      ${displayPrice.toFixed(2)} CAD
-                                    </p>
+                                    {cardSalePrice !== null ? (
+                                      <div style={{ display: "flex", flexDirection: "column", gap: "0" }}>
+                                        <span style={{ fontWeight: 700, fontSize: "0.82rem", color: "hsl(var(--muted-hsl))", textDecoration: "line-through" }}>
+                                          ${displayPrice.toFixed(2)} CAD
+                                        </span>
+                                        <span style={{ fontWeight: 900, fontSize: "1.05rem", color: "#DC2626" }}>
+                                          ${cardSalePrice.toFixed(2)} CAD
+                                        </span>
+                                      </div>
+                                    ) : (
+                                      <p style={{ fontWeight: 850, fontSize: "1.05rem", color: "hsl(var(--accent-hsl))" }}>
+                                        ${displayPrice.toFixed(2)} CAD
+                                      </p>
+                                    )}
                                   </div>
                                   <Link 
                                     href={product.isApparel ? `/apparel/${product.id}` : `/products/${product.id}`} 

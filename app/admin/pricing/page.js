@@ -259,6 +259,7 @@ function MarkupsTab() {
   const [globalMarkupType, setGlobalMarkupType] = useState("percentage");
   const [defaultMarkupPercent, setDefaultMarkupPercent] = useState(30);
   const [defaultSetupCharge, setDefaultSetupCharge] = useState(0);
+  const [saleDiscountPercent, setSaleDiscountPercent] = useState("");
   const [quantityTiers, setQuantityTiers] = useState([
     { minQty: 1, maxQty: 25, markupPercent: 45 },
     { minQty: 26, maxQty: 100, markupPercent: 35 },
@@ -281,6 +282,7 @@ function MarkupsTab() {
           if (d.globalMarkupType) setGlobalMarkupType(d.globalMarkupType);
           if (d.defaultMarkupPercent !== undefined) setDefaultMarkupPercent(d.defaultMarkupPercent);
           if (d.defaultSetupCharge !== undefined) setDefaultSetupCharge(d.defaultSetupCharge);
+          if (d.saleDiscountPercent !== undefined && d.saleDiscountPercent !== null) setSaleDiscountPercent(d.saleDiscountPercent);
           if (d.quantityTiers?.length) setQuantityTiers(d.quantityTiers);
         }
         const catList = [];
@@ -313,10 +315,12 @@ function MarkupsTab() {
     setSuccess(false);
     setError("");
     try {
+      const parsedSale = parseFloat(saleDiscountPercent);
       await setDoc(doc(db, "settings", "pricing"), {
         globalMarkupType,
         defaultMarkupPercent: parseFloat(defaultMarkupPercent) || 0,
         defaultSetupCharge: parseFloat(defaultSetupCharge) || 0,
+        saleDiscountPercent: (!isNaN(parsedSale) && parsedSale > 0 && parsedSale < 100) ? parsedSale : null,
         quantityTiers,
         updatedAt: new Date()
       }, { merge: true });
@@ -411,6 +415,67 @@ function MarkupsTab() {
             </div>
           </div>
 
+          {/* Sitewide Promotional Sale Card */}
+          <div className="card" style={{
+            border: saleDiscountPercent ? "1px solid #DC2626" : "1px solid hsl(var(--border-hsl))",
+            backgroundColor: saleDiscountPercent ? "rgba(220, 38, 38, 0.02)" : "transparent"
+          }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.5rem" }}>
+              <h2 style={{ fontSize: "1.2rem", fontWeight: 800, display: "flex", alignItems: "center", gap: "0.5rem", color: saleDiscountPercent ? "#DC2626" : "inherit" }}>
+                <Tag size={18} /> Sitewide Promotional Sale
+              </h2>
+              {parseFloat(saleDiscountPercent) > 0 && (
+                <span style={{
+                  fontSize: "0.75rem",
+                  fontWeight: 800,
+                  backgroundColor: "#DC2626",
+                  color: "white",
+                  padding: "0.2rem 0.5rem",
+                  borderRadius: "4px",
+                  letterSpacing: "0.05em"
+                }}>
+                  SALE ACTIVE: -{parseFloat(saleDiscountPercent)}%
+                </span>
+              )}
+            </div>
+            <p style={{ fontSize: "0.85rem", color: "hsl(var(--muted-hsl))", marginBottom: "1rem" }}>
+              Apply a global promotional discount across the entire catalog (e.g. 15% off for Black Friday or seasonal sales). Individual product sale discounts will override this. Leave blank to disable.
+            </p>
+            <div>
+              <label className="label">Sitewide Sale Discount (%)</label>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <input
+                  type="number"
+                  step="0.5"
+                  min="0"
+                  max="99"
+                  className="input"
+                  placeholder="e.g. 15 (leave blank for no sale)"
+                  value={saleDiscountPercent}
+                  onChange={e => setSaleDiscountPercent(e.target.value)}
+                  style={{
+                    borderColor: saleDiscountPercent ? "#DC2626" : undefined,
+                    maxWidth: "240px"
+                  }}
+                />
+                <Percent size={18} style={{ color: saleDiscountPercent ? "#DC2626" : "hsl(var(--muted-hsl))" }} />
+                {saleDiscountPercent && (
+                  <button
+                    type="button"
+                    onClick={() => setSaleDiscountPercent("")}
+                    className="btn btn-outline"
+                    style={{ padding: "0.4rem 0.75rem", fontSize: "0.8rem", color: "hsl(var(--muted-hsl))" }}
+                  >
+                    Clear Sale
+                  </button>
+                )}
+              </div>
+              <span style={{ fontSize: "0.75rem", color: "hsl(var(--muted-hsl))", marginTop: "0.35rem", display: "block" }}>
+                When active, storefront cards, product pages, and checkout automatically display original strikethrough prices and red sale badges.
+              </span>
+            </div>
+          </div>
+
           {globalMarkupType === "tiers" && (
             <div className="card">
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
@@ -483,6 +548,15 @@ function MarkupsTab() {
                   <p style={{ color: "hsl(var(--muted-hsl))", fontSize: "0.8rem", marginTop: "0.2rem" }}>{r.desc}</p>
                 </div>
               ))}
+            </div>
+
+            <div style={{ marginTop: "1.25rem", paddingTop: "1rem", borderTop: "1px dashed hsl(var(--border-hsl))" }}>
+              <p style={{ fontSize: "0.8rem", fontWeight: 800, color: "#DC2626", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.35rem" }}>
+                Sale Discount Resolution
+              </p>
+              <p style={{ fontSize: "0.78rem", color: "hsl(var(--muted-hsl))", lineHeight: 1.4 }}>
+                Product Sale Discount % ➔ Category Sale % ➔ Sitewide Sale %. First active discount wins and computes strikethrough pricing across the storefront.
+              </p>
             </div>
           </div>
         </div>

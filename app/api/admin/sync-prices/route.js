@@ -253,6 +253,8 @@ export async function POST(req) {
                     startingPrice: calculated.finalPrice,
                     rawBaseCost: baseCost,
                     markupPercent: calculated.markupPercent,
+                    salePrice: calculated.salePrice ?? null,
+                    saleDiscountPercent: calculated.saleDiscountPercent ?? null,
                     priceLastCalculatedAt: new Date(),
                     currency: "CAD"
                   }

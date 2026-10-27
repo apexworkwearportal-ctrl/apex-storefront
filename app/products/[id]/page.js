@@ -221,6 +221,11 @@ export default function ProductDetailPage({ params: paramsPromise }) {
       }
     });
 
+    const resolvedSaleDiscount = parseFloat(effectivePriceData?.saleDiscountPercent ?? product.saleDiscountPercent);
+    const hasSale = !isNaN(resolvedSaleDiscount) && resolvedSaleDiscount > 0 && resolvedSaleDiscount < 100;
+    const computedSalePrice = hasSale ? Math.round(resolvedPrice * (1 - resolvedSaleDiscount / 100) * 100) / 100 : null;
+    const finalCartPrice = computedSalePrice !== null ? computedSalePrice : resolvedPrice;
+
     const cartItem = {
       productId: product.isCustom ? productId : parseInt(productId),
       name: product.name || product.sinalite?.name,
@@ -229,7 +234,9 @@ export default function ProductDetailPage({ params: paramsPromise }) {
       selectedOptionMap: selectedOptions,
       selectedOptionIds: product.isCustom ? Object.values(selectedOptions) : Object.values(selectedOptions).map(id => parseInt(id)),
       optionSummary: optionSummaries.join(" | "),
-      price: parseFloat(effectivePriceData.price || effectivePriceData.price?.price || product.pricing?.startingPrice || 0),
+      price: finalCartPrice,
+      originalPrice: hasSale ? resolvedPrice : null,
+      saleDiscountPercent: hasSale ? resolvedSaleDiscount : null,
       unitPrice: effectivePriceData.unitPrice || null,
       quantity: 1, // 1 ordered job bundle
       artworkFiles: artworkFiles,
@@ -549,6 +556,14 @@ export default function ProductDetailPage({ params: paramsPromise }) {
 
   const displayStartingPrice = parseFloat(product.basePrice !== undefined ? product.basePrice : (product.pricing?.startingPrice || 0));
 
+  // Sale discount: resolved from product-level field (backend-computed for SinaLite;
+  // also stored directly for custom products after admin sets it)
+  const detailSaleDiscount = parseFloat(product.saleDiscountPercent);
+  const detailHasSale = !isNaN(detailSaleDiscount) && detailSaleDiscount > 0 && detailSaleDiscount < 100;
+  const detailSaleStartingPrice = detailHasSale && displayStartingPrice > 0
+    ? Math.round(displayStartingPrice * (1 - detailSaleDiscount / 100) * 100) / 100
+    : null;
+
   return (
     <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
       <Header />
@@ -669,9 +684,23 @@ export default function ProductDetailPage({ params: paramsPromise }) {
 
             {/* Display starting price info */}
             {!allSelected && displayStartingPrice > 0 && (
-              <div style={{ padding: "0.85rem 1rem", backgroundColor: "hsl(var(--secondary-hsl) / 0.3)", borderRadius: "var(--radius-sm)" }}>
+              <div style={{ padding: "0.85rem 1rem", backgroundColor: detailHasSale ? "hsl(0 80% 60% / 0.06)" : "hsl(var(--secondary-hsl) / 0.3)", borderRadius: "var(--radius-sm)", border: detailHasSale ? "1px solid hsl(0 80% 60% / 0.25)" : "none" }}>
                 <p style={{ fontSize: "0.75rem", color: "hsl(var(--muted-hsl))", fontWeight: 600 }}>Starting Price</p>
-                <p style={{ fontSize: "1.25rem", fontWeight: 800, color: "hsl(var(--accent-hsl))" }}>${displayStartingPrice.toFixed(2)} CAD</p>
+                {detailSaleStartingPrice !== null ? (
+                  <div style={{ display: "flex", alignItems: "baseline", gap: "0.65rem", flexWrap: "wrap" }}>
+                    <span style={{ fontSize: "1rem", fontWeight: 700, textDecoration: "line-through", color: "hsl(var(--muted-hsl))" }}>
+                      ${displayStartingPrice.toFixed(2)} CAD
+                    </span>
+                    <span style={{ fontSize: "1.3rem", fontWeight: 900, color: "#DC2626" }}>
+                      ${detailSaleStartingPrice.toFixed(2)} CAD
+                    </span>
+                    <span style={{ fontSize: "0.65rem", fontWeight: 800, backgroundColor: "#DC2626", color: "white", padding: "0.1rem 0.4rem", borderRadius: "3px", letterSpacing: "0.05em" }}>
+                      {detailSaleDiscount}% OFF
+                    </span>
+                  </div>
+                ) : (
+                  <p style={{ fontSize: "1.25rem", fontWeight: 800, color: "hsl(var(--accent-hsl))" }}>${displayStartingPrice.toFixed(2)} CAD</p>
+                )}
               </div>
             )}
 
@@ -784,15 +813,36 @@ export default function ProductDetailPage({ params: paramsPromise }) {
                     </div>
                   ) : (
                     <div style={{ display: "flex", alignItems: "baseline", gap: "0.6rem", flexWrap: "wrap" }}>
-                      <span style={{ fontSize: "2rem", fontWeight: 900, color: "hsl(var(--accent-hsl))" }}>
-                        ${effectivePriceData ? parseFloat(effectivePriceData.price || effectivePriceData.price?.price || 0).toFixed(2) : "0.00"}
-                        <span style={{ fontSize: "0.9rem", color: "hsl(var(--muted-hsl))", fontWeight: 600 }}> CAD</span>
-                      </span>
-                      {effectivePriceData?.unitPrice > 0 && (
-                        <span style={{ fontSize: "0.85rem", color: "hsl(var(--muted-hsl))", fontWeight: 700 }}>
-                          (${effectivePriceData.unitPrice.toFixed(2)} / unit)
-                        </span>
-                      )}
+                      {(() => {
+                        const rawPrice = parseFloat(effectivePriceData?.price || effectivePriceData?.price?.price || 0);
+                        // Resolve sale discount: from API response (SinaLite) or from product field (custom)
+                        const resolvedSaleDiscount = parseFloat(effectivePriceData?.saleDiscountPercent ?? product.saleDiscountPercent);
+                        const hasSale = !isNaN(resolvedSaleDiscount) && resolvedSaleDiscount > 0 && resolvedSaleDiscount < 100;
+                        const salePrice = hasSale ? Math.round(rawPrice * (1 - resolvedSaleDiscount / 100) * 100) / 100 : null;
+                        return (
+                          <>
+                            {hasSale && (
+                              <span style={{ fontSize: "1.1rem", fontWeight: 700, textDecoration: "line-through", color: "hsl(var(--muted-hsl))" }}>
+                                ${rawPrice.toFixed(2)} CAD
+                              </span>
+                            )}
+                            <span style={{ fontSize: "2rem", fontWeight: 900, color: hasSale ? "#DC2626" : "hsl(var(--accent-hsl))" }}>
+                              ${(salePrice ?? rawPrice).toFixed(2)}
+                              <span style={{ fontSize: "0.9rem", color: "hsl(var(--muted-hsl))", fontWeight: 600 }}> CAD</span>
+                            </span>
+                            {hasSale && (
+                              <span style={{ fontSize: "0.65rem", fontWeight: 800, backgroundColor: "#DC2626", color: "white", padding: "0.15rem 0.45rem", borderRadius: "3px", letterSpacing: "0.05em", alignSelf: "center" }}>
+                                {resolvedSaleDiscount}% OFF
+                              </span>
+                            )}
+                            {effectivePriceData?.unitPrice > 0 && (
+                              <span style={{ fontSize: "0.85rem", color: "hsl(var(--muted-hsl))", fontWeight: 700 }}>
+                                (${effectivePriceData.unitPrice.toFixed(2)} / unit)
+                              </span>
+                            )}
+                          </>
+                        );
+                      })()}
                     </div>
                   )}
                 </div>
