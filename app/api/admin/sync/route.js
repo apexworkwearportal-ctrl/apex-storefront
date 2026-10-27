@@ -1,4 +1,4 @@
-import { adminAuth } from "@/lib/firebase-admin";
+import { adminAuth, adminDb } from "@/lib/firebase-admin";
 import { headers } from "next/headers";
 
 export async function POST(req) {
@@ -8,7 +8,7 @@ export async function POST(req) {
     return Response.json({ error: "Missing authorization header" }, { status: 401 });
   }
 
-  const idToken = authHeader.substring(7);
+  const idToken = authHeader.substring(7).trim();
 
   if (!adminAuth) {
     return Response.json({ error: "Firebase Admin is not configured" }, { status: 500 });
@@ -16,12 +16,29 @@ export async function POST(req) {
 
   try {
     const decodedToken = await adminAuth.verifyIdToken(idToken);
-    const userEmail = decodedToken.email;
-    const userRole = decodedToken.role;
+    const userEmail = (decodedToken.email || "").toLowerCase().trim();
+    const userRole = decodedToken.role || decodedToken.admin;
 
-    const isAdmin = userRole === "admin" || 
-                    userEmail === "admin@apexworkwear.ca" ||
-                    userEmail.endsWith("@apexworkwear.ca");
+    let isAdmin = userRole === "admin" || 
+                  userRole === "superadmin" ||
+                  userRole === true ||
+                  userEmail === "admin@apexworkwear.ca" ||
+                  userEmail === "apexworkwearportal@gmail.com" ||
+                  userEmail.endsWith("@apexworkwear.ca");
+
+    if (!isAdmin && adminDb && decodedToken.uid) {
+      try {
+        const userDoc = await adminDb.collection("users").doc(decodedToken.uid).get();
+        if (userDoc.exists) {
+          const role = userDoc.data()?.role;
+          if (role === "admin" || role === "superadmin") {
+            isAdmin = true;
+          }
+        }
+      } catch (dbErr) {
+        console.warn("Could not check Firestore user role:", dbErr);
+      }
+    }
 
     if (!isAdmin) {
       return Response.json({ error: "Unauthorized access: admin privileges required" }, { status: 403 });
