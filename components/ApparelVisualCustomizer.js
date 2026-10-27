@@ -198,9 +198,37 @@ export default function ApparelVisualCustomizer({
 
   // Active garment view data
   const currentViewData = views[currentEditingSide] || views.front || Object.values(views)[0] || {};
-  const currentGarmentImg = currentViewData.image || product.images?.[0] || "https://images.unsplash.com/photo-1521572267360-ee0c2909d518?q=80&w=800";
-  const currentCalibration = liveCalibrations[currentEditingSide] || currentViewData.calibration || null;
-  const currentAspect = imgAspectBySide[currentEditingSide] || 1.1;
+
+  // Color-specific picture resolution:
+  // If the customer selected a color and that color has a picture for this view (front, back, etc.), use it!
+  // Otherwise fall back to the main garment view image.
+  const selectedColorView = selectedColor?.views?.[currentEditingSide];
+  const colorSpecificImg = selectedColorView?.image;
+  const currentGarmentImg = colorSpecificImg || currentViewData.image || product.images?.[0] || "https://images.unsplash.com/photo-1521572267360-ee0c2909d518?q=80&w=800";
+
+  // Calibration resolution:
+  // 1. If this specific color picture has a custom override calibration, use it.
+  // 2. Otherwise, inherit the main garment calibration (liveCalibrations or currentViewData.calibration).
+  const isColorCalibrated = Boolean(selectedColorView?.calibration?.isCalibrated);
+  const mainCalibration = liveCalibrations[currentEditingSide] || currentViewData.calibration || null;
+  const currentCalibration = isColorCalibrated ? selectedColorView.calibration : mainCalibration;
+  const currentAspect = imgAspectBySide[`${selectedColor?.name || 'def'}-${currentEditingSide}`] || imgAspectBySide[currentEditingSide] || 1.1;
+
+  // Available view sides across product.garmentViews, selectedColor.views, and activeSides
+  const availableViewSides = useMemo(() => {
+    const set = new Set();
+    Object.keys(views).forEach(k => {
+      if (views[k]?.image) set.add(k);
+    });
+    if (selectedColor?.views) {
+      Object.keys(selectedColor.views).forEach(k => {
+        if (selectedColor.views[k]?.image) set.add(k);
+      });
+    }
+    activeSides.forEach(s => set.add(s));
+    if (set.size === 0) set.add("front");
+    return Array.from(set);
+  }, [views, selectedColor, activeSides]);
 
   const currentLogos = useMemo(() => logosBySide[currentEditingSide] || [], [logosBySide, currentEditingSide]);
   const selectedLogo = currentLogos.find(l => l.id === selectedLogoId) || currentLogos[0] || null;
@@ -601,9 +629,10 @@ export default function ApparelVisualCustomizer({
   // High-accuracy canvas composite snapshot generator for cart submission
   const generateSideMockupSnapshot = async (sideKey) => {
     const viewData = views[sideKey] || Object.values(views)[0];
-    const garmentImgSrc = viewData?.image || product.images?.[0] || "";
+    const colorView = selectedColor?.views?.[sideKey];
+    const garmentImgSrc = colorView?.image || viewData?.image || product.images?.[0] || "";
     const sideLogos = logosBySide[sideKey] || [];
-    const sideCalib = liveCalibrations[sideKey] || viewData?.calibration || null;
+    const sideCalib = (colorView?.calibration?.isCalibrated ? colorView.calibration : null) || liveCalibrations[sideKey] || viewData?.calibration || null;
 
     if (!garmentImgSrc) return "";
 
@@ -886,7 +915,7 @@ export default function ApparelVisualCustomizer({
                 boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
                 border: "1px solid rgba(226,232,240,0.8)"
               }}>
-                {Object.keys(views).filter(k => views[k]?.image).map((sideKey) => (
+                {availableViewSides.map((sideKey) => (
                   <button
                     key={sideKey}
                     type="button"
@@ -1188,40 +1217,68 @@ export default function ApparelVisualCustomizer({
           {/* Left Column: Interactive True-Scale Garment Viewport & Placement Controls */}
           <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
             
-            {/* Side Tabs for active print locations */}
-            <div style={{ display: "flex", gap: "0.5rem", borderBottom: "2px solid #E2E8F0", paddingBottom: "0.5rem" }}>
-              {activeSides.map((sideKey) => {
-                const isCurrent = currentEditingSide === sideKey;
-                const sideLogosCount = (logosBySide[sideKey] || []).length;
-                const sideLabel = sideKey.charAt(0).toUpperCase() + sideKey.slice(1) + " View";
+            {/* Side Tabs for active print locations & Live Garment Color Switcher */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "2px solid #E2E8F0", paddingBottom: "0.5rem", flexWrap: "wrap", gap: "0.5rem" }}>
+              <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                {activeSides.map((sideKey) => {
+                  const isCurrent = currentEditingSide === sideKey;
+                  const sideLogosCount = (logosBySide[sideKey] || []).length;
+                  const sideLabel = sideKey.charAt(0).toUpperCase() + sideKey.slice(1) + " View";
 
-                return (
-                  <button
-                    key={sideKey}
-                    type="button"
-                    onClick={() => setCurrentEditingSide(sideKey)}
-                    style={{
-                      padding: "0.5rem 1rem",
-                      borderRadius: "8px",
-                      border: "none",
-                      backgroundColor: isCurrent ? "#2563EB" : "#F1F5F9",
-                      color: isCurrent ? "#FFFFFF" : "#475569",
-                      fontWeight: 700,
-                      fontSize: "0.85rem",
-                      cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "0.4rem",
-                      transition: "all 0.15s ease"
-                    }}
-                  >
-                    <span>{sideLabel}</span>
-                    {sideLogosCount > 0 && (
-                      <span style={{ width: "8px", height: "8px", borderRadius: "50%", backgroundColor: isCurrent ? "#FFFFFF" : "#10B981" }} />
-                    )}
-                  </button>
-                );
-              })}
+                  return (
+                    <button
+                      key={sideKey}
+                      type="button"
+                      onClick={() => setCurrentEditingSide(sideKey)}
+                      style={{
+                        padding: "0.5rem 1rem",
+                        borderRadius: "8px",
+                        border: "none",
+                        backgroundColor: isCurrent ? "#2563EB" : "#F1F5F9",
+                        color: isCurrent ? "#FFFFFF" : "#475569",
+                        fontWeight: 700,
+                        fontSize: "0.85rem",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "0.4rem",
+                        transition: "all 0.15s ease"
+                      }}
+                    >
+                      <span>{sideLabel}</span>
+                      {sideLogosCount > 0 && (
+                        <span style={{ width: "8px", height: "8px", borderRadius: "50%", backgroundColor: isCurrent ? "#FFFFFF" : "#10B981" }} />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Quick Color Switcher in Step 2 */}
+              <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "#64748B" }}>Color:</span>
+                <span style={{ fontSize: "0.78rem", fontWeight: 800, color: "#0F172A", marginRight: "0.2rem" }}>{selectedColor.name}</span>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.3rem", flexWrap: "wrap" }}>
+                  {availableColors.map((col, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      title={col.name}
+                      onClick={() => setSelectedColor(col)}
+                      style={{
+                        width: "22px",
+                        height: "22px",
+                        borderRadius: "50%",
+                        backgroundColor: col.hex,
+                        border: selectedColor.name === col.name ? "2px solid #2563EB" : "1px solid rgba(0,0,0,0.2)",
+                        outline: selectedColor.name === col.name ? "2px solid #93C5FD" : "none",
+                        cursor: "pointer",
+                        padding: 0
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
             </div>
 
             {/* Interactive True-Scale Viewport Container */}

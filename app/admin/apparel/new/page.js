@@ -23,7 +23,11 @@ import {
   Layers,
   Check,
   Eye,
-  Table as TableIcon
+  Table as TableIcon,
+  ChevronDown,
+  ChevronUp,
+  RotateCcw,
+  Image as ImageIcon
 } from "lucide-react";
 import AdminGarmentCalibration from "@/components/AdminGarmentCalibration";
 
@@ -112,8 +116,11 @@ export default function AdminNewApparelProductPage() {
     right: { image: "", calibration: { isCalibrated: false } },
   });
 
-  // Modal for calibration
+  // Modal for calibration (main garment views or specific color photo)
   const [activeCalibrateSide, setActiveCalibrateSide] = useState(null);
+  const [activeCalibratingTarget, setActiveCalibratingTarget] = useState(null);
+  const [uploadingColorKey, setUploadingColorKey] = useState(null); // e.g. "0-front"
+  const [expandedColorIndices, setExpandedColorIndices] = useState([0]); // first color open by default
 
   useEffect(() => {
     const fetchCategories = async () => {
@@ -328,16 +335,128 @@ export default function AdminNewApparelProductPage() {
     }));
   };
 
-  const handleSaveGarmentCalibration = (calibrationPayload) => {
-    if (!activeCalibrateSide) return;
-    setGarmentViews(prev => ({
-      ...prev,
-      [activeCalibrateSide]: {
-        ...prev[activeCalibrateSide],
-        calibration: calibrationPayload
+  const toggleColorExpanded = (index) => {
+    setExpandedColorIndices(prev => 
+      prev.includes(index) ? prev.filter(i => i !== index) : [...prev, index]
+    );
+  };
+
+  const handleUploadColorImage = async (colorIndex, side, file) => {
+    if (!file) return;
+    const key = `${colorIndex}-${side}`;
+    setUploadingColorKey(key);
+    setError("");
+
+    try {
+      const idToken = await user.getIdToken();
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await fetch("/api/admin/upload", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${idToken}`,
+        },
+        body: formData,
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to upload image.");
       }
+
+      setColors(prev => prev.map((c, idx) => {
+        if (idx !== colorIndex) return c;
+        const existingViews = c.views || {};
+        return {
+          ...c,
+          views: {
+            ...existingViews,
+            [side]: {
+              ...(existingViews[side] || {}),
+              image: data.url
+            }
+          }
+        };
+      }));
+    } catch (err) {
+      console.error(err);
+      setError(err.message || "Color photo upload failed.");
+    } finally {
+      setUploadingColorKey(null);
+    }
+  };
+
+  const handleRemoveColorImage = (colorIndex, side) => {
+    setColors(prev => prev.map((c, idx) => {
+      if (idx !== colorIndex) return c;
+      const existingViews = { ...(c.views || {}) };
+      delete existingViews[side];
+      return {
+        ...c,
+        views: existingViews
+      };
     }));
   };
+
+  const handleResetColorCalibration = (colorIndex, side) => {
+    setColors(prev => prev.map((c, idx) => {
+      if (idx !== colorIndex) return c;
+      const existingViews = c.views || {};
+      const sideObj = { ...(existingViews[side] || {}) };
+      delete sideObj.calibration;
+      return {
+        ...c,
+        views: {
+          ...existingViews,
+          [side]: sideObj
+        }
+      };
+    }));
+  };
+
+  const handleSaveCalibration = (calibrationPayload) => {
+    if (activeCalibratingTarget) {
+      if (activeCalibratingTarget.type === "main") {
+        const side = activeCalibratingTarget.side;
+        setGarmentViews(prev => ({
+          ...prev,
+          [side]: {
+            ...prev[side],
+            calibration: calibrationPayload
+          }
+        }));
+      } else if (activeCalibratingTarget.type === "color") {
+        const { colorIndex, side } = activeCalibratingTarget;
+        setColors(prev => prev.map((c, idx) => {
+          if (idx !== colorIndex) return c;
+          const existingViews = c.views || {};
+          return {
+            ...c,
+            views: {
+              ...existingViews,
+              [side]: {
+                ...(existingViews[side] || {}),
+                calibration: calibrationPayload
+              }
+            }
+          };
+        }));
+      }
+      setActiveCalibratingTarget(null);
+    } else if (activeCalibrateSide) {
+      setGarmentViews(prev => ({
+        ...prev,
+        [activeCalibrateSide]: {
+          ...prev[activeCalibrateSide],
+          calibration: calibrationPayload
+        }
+      }));
+      setActiveCalibrateSide(null);
+    }
+  };
+
+  const handleSaveGarmentCalibration = handleSaveCalibration;
 
   const handleSave = async (e) => {
     e.preventDefault();
@@ -633,41 +752,253 @@ export default function AdminNewApparelProductPage() {
             </div>
 
             {/* Colors List Editor */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: "0.75rem" }}>
-              {colors.map((col, cIdx) => (
-                <div key={cIdx} style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.5rem 0.75rem", backgroundColor: "hsl(var(--secondary-hsl) / 0.3)", borderRadius: "var(--radius-sm)", border: "1px solid hsl(var(--border-hsl))" }}>
-                  <input
-                    type="color"
-                    value={col.hex.startsWith("#") ? col.hex : "#000000"}
-                    onChange={(e) => handleColorChange(cIdx, "hex", e.target.value)}
-                    style={{ width: "32px", height: "32px", border: "none", borderRadius: "50%", cursor: "pointer", padding: 0, backgroundColor: "transparent" }}
-                    title="Pick Color"
-                  />
-                  <div style={{ display: "flex", flexDirection: "column", flexGrow: 1, gap: "0.2rem" }}>
-                    <input
-                      className="input"
-                      value={col.name}
-                      onChange={(e) => handleColorChange(cIdx, "name", e.target.value)}
-                      placeholder="Color Name (e.g. White)"
-                      style={{ padding: "0.25rem 0.5rem", fontSize: "0.85rem", fontWeight: 600 }}
-                    />
-                    <input
-                      className="input"
-                      value={col.hex}
-                      onChange={(e) => handleColorChange(cIdx, "hex", e.target.value)}
-                      placeholder="#FFFFFF"
-                      style={{ padding: "0.15rem 0.5rem", fontSize: "0.75rem", fontFamily: "monospace" }}
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => handleRemoveColor(cIdx)}
-                    style={{ color: "hsl(var(--destructive-hsl))", background: "none", border: "none", cursor: "pointer" }}
+            <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+              {colors.map((col, cIdx) => {
+                const isExpanded = expandedColorIndices.includes(cIdx);
+                const photoCount = ["front", "back", "left", "right"].filter(s => col.views?.[s]?.image).length;
+
+                return (
+                  <div
+                    key={cIdx}
+                    style={{
+                      border: "1px solid hsl(var(--border-hsl))",
+                      borderRadius: "var(--radius-md)",
+                      backgroundColor: "hsl(var(--card-hsl))",
+                      overflow: "hidden",
+                      boxShadow: "0 1px 3px rgba(0,0,0,0.04)"
+                    }}
                   >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              ))}
+                    {/* Header Bar */}
+                    <div style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      padding: "0.75rem 1rem",
+                      backgroundColor: "hsl(var(--secondary-hsl) / 0.25)",
+                      gap: "0.75rem",
+                      flexWrap: "wrap"
+                    }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flex: 1, minWidth: "220px" }}>
+                        <input
+                          type="color"
+                          value={col.hex.startsWith("#") ? col.hex : "#000000"}
+                          onChange={(e) => handleColorChange(cIdx, "hex", e.target.value)}
+                          style={{ width: "36px", height: "36px", border: "none", borderRadius: "50%", cursor: "pointer", padding: 0, backgroundColor: "transparent", flexShrink: 0 }}
+                          title="Pick Color"
+                        />
+                        <div style={{ display: "flex", flexDirection: "column", gap: "0.2rem", flex: 1 }}>
+                          <input
+                            className="input"
+                            value={col.name}
+                            onChange={(e) => handleColorChange(cIdx, "name", e.target.value)}
+                            placeholder="Color Name (e.g. White)"
+                            style={{ padding: "0.3rem 0.5rem", fontSize: "0.9rem", fontWeight: 700 }}
+                          />
+                          <input
+                            className="input"
+                            value={col.hex}
+                            onChange={(e) => handleColorChange(cIdx, "hex", e.target.value)}
+                            placeholder="#FFFFFF"
+                            style={{ padding: "0.15rem 0.5rem", fontSize: "0.75rem", fontFamily: "monospace" }}
+                          />
+                        </div>
+                      </div>
+
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                        <span style={{
+                          fontSize: "0.75rem",
+                          fontWeight: 700,
+                          color: photoCount > 0 ? "hsl(var(--accent-hsl))" : "hsl(var(--muted-hsl))",
+                          backgroundColor: photoCount > 0 ? "hsl(var(--accent-hsl) / 0.1)" : "hsl(var(--secondary-hsl))",
+                          padding: "0.25rem 0.6rem",
+                          borderRadius: "4px"
+                        }}>
+                          📷 {photoCount} {photoCount === 1 ? "photo" : "photos"}
+                        </span>
+
+                        <button
+                          type="button"
+                          onClick={() => toggleColorExpanded(cIdx)}
+                          className="btn btn-outline"
+                          style={{ padding: "0.35rem 0.65rem", fontSize: "0.75rem", display: "flex", alignItems: "center", gap: "0.3rem" }}
+                        >
+                          <ImageIcon size={13} />
+                          {isExpanded ? "Hide Pictures" : "Color Pictures"}
+                          {isExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveColor(cIdx)}
+                          style={{ color: "hsl(var(--destructive-hsl))", background: "none", border: "none", cursor: "pointer", padding: "0.4rem" }}
+                          title="Delete Color"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Expanded: Photos & Calibration by View Angle */}
+                    {isExpanded && (
+                      <div style={{ padding: "1rem", borderTop: "1px solid hsl(var(--border-hsl))", display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+                        <div>
+                          <span style={{ fontSize: "0.85rem", fontWeight: 700, color: "hsl(var(--foreground-hsl))" }}>
+                            Pictures for &quot;{col.name}&quot;
+                          </span>
+                          <p style={{ fontSize: "0.75rem", color: "hsl(var(--muted-hsl))", margin: "0.15rem 0 0" }}>
+                            Upload front and back photos for this color. By default, all color photos automatically follow the main garment calibration. You can override calibration per picture if needed.
+                          </p>
+                        </div>
+
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "0.75rem" }}>
+                          {["front", "back", "left", "right"].map((sideKey) => {
+                            const sideView = col.views?.[sideKey];
+                            const hasImg = !!sideView?.image;
+                            const isOverridden = Boolean(sideView?.calibration?.isCalibrated);
+                            const mainViewCal = garmentViews[sideKey]?.calibration;
+                            const isMainCalibrated = Boolean(mainViewCal?.isCalibrated);
+                            const sideLabel = sideKey.charAt(0).toUpperCase() + sideKey.slice(1) + " View";
+                            const uploadKey = `${cIdx}-${sideKey}`;
+                            const isUploadingThis = uploadingColorKey === uploadKey;
+
+                            return (
+                              <div
+                                key={sideKey}
+                                style={{
+                                  border: "1px solid hsl(var(--border-hsl))",
+                                  borderRadius: "var(--radius-sm)",
+                                  padding: "0.75rem",
+                                  backgroundColor: hasImg ? "hsl(var(--secondary-hsl) / 0.15)" : "transparent",
+                                  display: "flex",
+                                  flexDirection: "column",
+                                  gap: "0.5rem"
+                                }}
+                              >
+                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                  <span style={{ fontSize: "0.82rem", fontWeight: 700 }}>{sideLabel}</span>
+                                  {hasImg && (
+                                    <span style={{
+                                      fontSize: "0.68rem",
+                                      fontWeight: 700,
+                                      padding: "0.15rem 0.45rem",
+                                      borderRadius: "4px",
+                                      backgroundColor: isOverridden ? "hsl(var(--success-hsl) / 0.15)" : "#EFF6FF",
+                                      color: isOverridden ? "hsl(var(--success-hsl))" : "#2563EB",
+                                      border: isOverridden ? "1px solid hsl(var(--success-hsl) / 0.3)" : "1px solid #BFDBFE"
+                                    }}>
+                                      {isOverridden ? "✓ Custom Calibrated" : `⚡ Follows Main (${isMainCalibrated ? "Calibrated" : "Uncalibrated"})`}
+                                    </span>
+                                  )}
+                                </div>
+
+                                {hasImg ? (
+                                  <div style={{ display: "flex", gap: "0.75rem", alignItems: "center" }}>
+                                    <img
+                                      src={sideView.image}
+                                      alt={`${col.name} ${sideLabel}`}
+                                      style={{ width: "60px", height: "60px", objectFit: "contain", backgroundColor: "white", borderRadius: "4px", border: "1px solid hsl(var(--border-hsl))", padding: "2px", flexShrink: 0 }}
+                                    />
+                                    <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem", flex: 1, minWidth: 0 }}>
+                                      <div style={{ display: "flex", gap: "0.35rem", flexWrap: "wrap", alignItems: "center" }}>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setActiveCalibratingTarget({
+                                              type: "color",
+                                              colorIndex: cIdx,
+                                              colorName: col.name,
+                                              side: sideKey,
+                                              title: `${col.name} — ${sideLabel}`,
+                                              image: sideView.image,
+                                              initialCalibration: sideView.calibration || garmentViews[sideKey]?.calibration
+                                            });
+                                          }}
+                                          className="btn btn-outline"
+                                          style={{ padding: "0.25rem 0.55rem", fontSize: "0.72rem", display: "flex", alignItems: "center", gap: "0.25rem", borderColor: isOverridden ? "hsl(var(--success-hsl))" : "hsl(var(--accent-hsl))" }}
+                                        >
+                                          <Ruler size={12} /> {isOverridden ? "Edit Override" : "Override Calibration"}
+                                        </button>
+
+                                        {isOverridden && (
+                                          <button
+                                            type="button"
+                                            onClick={() => handleResetColorCalibration(cIdx, sideKey)}
+                                            className="btn btn-outline"
+                                            title="Remove custom calibration and re-inherit the main garment calibration"
+                                            style={{ padding: "0.25rem 0.55rem", fontSize: "0.72rem", display: "flex", alignItems: "center", gap: "0.25rem", color: "hsl(var(--muted-hsl))" }}
+                                          >
+                                            <RotateCcw size={12} /> Reset to Main
+                                          </button>
+                                        )}
+                                      </div>
+
+                                      <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", marginTop: "0.15rem" }}>
+                                        <div style={{ position: "relative" }}>
+                                          <input
+                                            type="file"
+                                            accept="image/png,image/jpeg,image/webp"
+                                            disabled={isUploadingThis}
+                                            onChange={(e) => handleUploadColorImage(cIdx, sideKey, e.target.files[0])}
+                                            style={{ position: "absolute", inset: 0, opacity: 0, cursor: "pointer" }}
+                                          />
+                                          <span style={{ fontSize: "0.72rem", color: "hsl(var(--accent-hsl))", textDecoration: "underline", cursor: "pointer" }}>
+                                            {isUploadingThis ? "Uploading..." : "Replace"}
+                                          </span>
+                                        </div>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleRemoveColorImage(cIdx, sideKey)}
+                                          style={{ background: "none", border: "none", color: "hsl(var(--destructive-hsl))", cursor: "pointer", fontSize: "0.72rem" }}
+                                        >
+                                          Remove
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div style={{ position: "relative" }}>
+                                    <input
+                                      type="file"
+                                      accept="image/png,image/jpeg,image/webp"
+                                      disabled={isUploadingThis}
+                                      onChange={(e) => handleUploadColorImage(cIdx, sideKey, e.target.files[0])}
+                                      style={{ position: "absolute", inset: 0, opacity: 0, cursor: "pointer" }}
+                                    />
+                                    <button
+                                      type="button"
+                                      className="btn btn-outline"
+                                      disabled={isUploadingThis}
+                                      style={{
+                                        width: "100%",
+                                        fontSize: "0.75rem",
+                                        padding: "0.5rem",
+                                        borderStyle: "dashed",
+                                        display: "flex",
+                                        flexDirection: "column",
+                                        alignItems: "center",
+                                        gap: "0.2rem",
+                                        backgroundColor: "rgba(255,255,255,0.7)"
+                                      }}
+                                    >
+                                      <span style={{ display: "flex", alignItems: "center", gap: "0.3rem", fontWeight: 700 }}>
+                                        {isUploadingThis ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
+                                        {isUploadingThis ? "Uploading..." : `Upload ${sideLabel}`}
+                                      </span>
+                                      <span style={{ fontSize: "0.68rem", color: "hsl(var(--muted-hsl))" }}>
+                                        (Defaults to main {sideKey} photo)
+                                      </span>
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
 
@@ -1100,20 +1431,30 @@ export default function AdminNewApparelProductPage() {
       </form>
 
       {/* Garment Calibration Modal */}
-      {activeCalibrateSide && garmentViews[activeCalibrateSide]?.image && (
+      {(activeCalibratingTarget || (activeCalibrateSide && garmentViews[activeCalibrateSide]?.image)) && (
         <AdminGarmentCalibration
           isOpen={true}
-          onClose={() => setActiveCalibrateSide(null)}
-          imageUrl={garmentViews[activeCalibrateSide].image}
-          sideName={activeCalibrateSide.charAt(0).toUpperCase() + activeCalibrateSide.slice(1) + " View"}
-          initialCalibration={garmentViews[activeCalibrateSide].calibration}
-          onSave={(calPayload) => {
-            handleSaveGarmentCalibration(calPayload);
+          onClose={() => {
+            setActiveCalibratingTarget(null);
             setActiveCalibrateSide(null);
           }}
+          imageUrl={
+            activeCalibratingTarget?.image ||
+            garmentViews[activeCalibrateSide]?.image
+          }
+          sideName={
+            activeCalibratingTarget?.title ||
+            (activeCalibrateSide?.charAt(0).toUpperCase() + activeCalibrateSide?.slice(1) + " View (Main)")
+          }
+          initialCalibration={
+            activeCalibratingTarget?.initialCalibration ||
+            garmentViews[activeCalibrateSide]?.calibration
+          }
+          onSave={(calPayload) => {
+            handleSaveCalibration(calPayload);
+          }}
           onSaveCalibration={(calPayload) => {
-            handleSaveGarmentCalibration(calPayload);
-            setActiveCalibrateSide(null);
+            handleSaveCalibration(calPayload);
           }}
         />
       )}
