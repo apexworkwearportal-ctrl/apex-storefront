@@ -244,7 +244,11 @@ export default function ApparelVisualCustomizer({
 
   const meetsMoq = totalQuantity >= moq;
 
-  // Compute weighted price including size upcharges and location upcharges
+  // Sale discount resolution
+  const saleDiscountPercent = parseFloat(product.saleDiscountPercent);
+  const hasSale = !isNaN(saleDiscountPercent) && saleDiscountPercent > 0 && saleDiscountPercent < 100;
+
+  // Compute weighted price including size upcharges, location upcharges, and sale discount
   const pricingSummary = useMemo(() => {
     const locationUpcharge = parseFloat(selectedPrintLocation?.priceUpcharge || 0);
     
@@ -259,17 +263,28 @@ export default function ApparelVisualCustomizer({
     });
 
     const averageUnitSizeUpcharge = totalQuantity > 0 ? (totalSizeUpcharges / totalQuantity) : 0;
-    const effectiveUnitPrice = basePrice + locationUpcharge + averageUnitSizeUpcharge;
-    const grandTotal = effectiveUnitPrice * totalQuantity;
+    const regularUnitPrice = basePrice + locationUpcharge + averageUnitSizeUpcharge;
+    const regularGrandTotal = regularUnitPrice * totalQuantity;
+
+    const effectiveUnitPrice = hasSale
+      ? Math.round(regularUnitPrice * (1 - saleDiscountPercent / 100) * 100) / 100
+      : regularUnitPrice;
+    const grandTotal = hasSale
+      ? Math.round(regularGrandTotal * (1 - saleDiscountPercent / 100) * 100) / 100
+      : regularGrandTotal;
 
     return {
       basePrice,
+      hasSale,
+      saleDiscountPercent: hasSale ? saleDiscountPercent : null,
+      regularUnitPrice,
+      regularGrandTotal,
       locationUpcharge,
       totalSizeUpcharges,
       effectiveUnitPrice,
       grandTotal
     };
-  }, [basePrice, selectedPrintLocation, sizeQuantities, availableSizes, totalQuantity]);
+  }, [basePrice, selectedPrintLocation, sizeQuantities, availableSizes, totalQuantity, hasSale, saleDiscountPercent]);
 
   // Quantity input handler
   const handleQuantityChange = (sizeName, value) => {
@@ -745,6 +760,8 @@ export default function ApparelVisualCustomizer({
         quantity: totalQuantity,
         price: pricingSummary.effectiveUnitPrice,
         unitPrice: pricingSummary.effectiveUnitPrice,
+        originalPrice: pricingSummary.hasSale ? pricingSummary.regularUnitPrice : undefined,
+        saleDiscountPercent: pricingSummary.hasSale ? pricingSummary.saleDiscountPercent : undefined,
         totalPrice: pricingSummary.grandTotal,
         
         // Dedicated Apparel Breakdown
@@ -857,11 +874,26 @@ export default function ApparelVisualCustomizer({
 
         {/* Live Total Badge */}
         <div style={{ textAlign: "right" }}>
-          <span style={{ fontSize: "0.75rem", color: "#64748B", textTransform: "uppercase", fontWeight: 700 }}>
-            {totalQuantity} {totalQuantity === 1 ? "Unit" : "Units"} • Total
-          </span>
-          <div style={{ fontSize: "1.3rem", fontWeight: 900, color: "#2563EB" }}>
-            ${pricingSummary.grandTotal.toFixed(2)} <span style={{ fontSize: "0.75rem", color: "#64748B" }}>CAD</span>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "0.35rem" }}>
+            <span style={{ fontSize: "0.75rem", color: "#64748B", textTransform: "uppercase", fontWeight: 700 }}>
+              {totalQuantity} {totalQuantity === 1 ? "Unit" : "Units"} • Total
+            </span>
+            {pricingSummary.hasSale && (
+              <span style={{ fontSize: "0.68rem", fontWeight: 800, color: "#DC2626", backgroundColor: "#FEE2E2", padding: "0.1rem 0.35rem", borderRadius: "3px" }}>
+                -{pricingSummary.saleDiscountPercent}%
+              </span>
+            )}
+          </div>
+          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "flex-end", gap: "0.4rem" }}>
+            {pricingSummary.hasSale && (
+              <span style={{ fontSize: "0.95rem", textDecoration: "line-through", color: "#94A3B8", fontWeight: 700 }}>
+                ${pricingSummary.regularGrandTotal.toFixed(2)}
+              </span>
+            )}
+            <span style={{ fontSize: "1.3rem", fontWeight: 900, color: pricingSummary.hasSale ? "#DC2626" : "#2563EB" }}>
+              ${pricingSummary.grandTotal.toFixed(2)}
+            </span>
+            <span style={{ fontSize: "0.75rem", color: "#64748B" }}>CAD</span>
           </div>
         </div>
       </div>

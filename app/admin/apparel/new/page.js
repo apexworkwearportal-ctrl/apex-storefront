@@ -90,6 +90,7 @@ export default function AdminNewApparelProductPage() {
   const [longDescription, setLongDescription] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [basePrice, setBasePrice] = useState("28.00");
+  const [saleDiscountPercent, setSaleDiscountPercent] = useState("");
   const [images, setImages] = useState([]);
   const [minimumOrderQuantity, setMinimumOrderQuantity] = useState(12);
 
@@ -510,6 +511,7 @@ export default function AdminNewApparelProductPage() {
           basePrice: parseFloat(basePrice) || 0,
         },
         basePrice: parseFloat(basePrice) || 0,
+        saleDiscountPercent: saleDiscountPercent !== "" && !isNaN(parseFloat(saleDiscountPercent)) && parseFloat(saleDiscountPercent) > 0 && parseFloat(saleDiscountPercent) < 100 ? parseFloat(saleDiscountPercent) : null,
         displayOrder: 0,
         isVisible: finalIsVisible,
         images: images.length > 0 ? images : (garmentViews.front?.image ? [garmentViews.front.image] : []),
@@ -1242,6 +1244,77 @@ export default function AdminNewApparelProductPage() {
                 />
               </div>
             </div>
+          </div>
+
+          {/* Sale Discount Card */}
+          <div className="card" style={{ display: "flex", flexDirection: "column", gap: "1rem", border: saleDiscountPercent ? "1px solid #DC2626" : "1px solid hsl(var(--border-hsl))", backgroundColor: saleDiscountPercent ? "rgba(220, 38, 38, 0.02)" : "transparent" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <span style={{ fontSize: "1.1rem" }}>🏷️</span>
+                <h2 style={{ fontSize: "1.2rem", fontWeight: 700, margin: 0, color: saleDiscountPercent ? "#DC2626" : "inherit" }}>Sale Discount</h2>
+              </div>
+              {saleDiscountPercent !== "" && parseFloat(saleDiscountPercent) > 0 && (
+                <span style={{ fontSize: "0.72rem", fontWeight: 800, padding: "0.15rem 0.55rem", borderRadius: "99px", backgroundColor: "#DC2626", color: "white" }}>
+                  SALE ACTIVE (-{parseFloat(saleDiscountPercent)}%)
+                </span>
+              )}
+            </div>
+
+            <div>
+              <label className="label" htmlFor="apparel-new-sale-discount">
+                Discount Percentage (% off regular base price)
+              </label>
+              <input
+                id="apparel-new-sale-discount"
+                type="number"
+                min="0"
+                max="99"
+                step="0.5"
+                className="input"
+                placeholder="e.g. 15 for 15% off — leave empty for regular price"
+                value={saleDiscountPercent}
+                onChange={(e) => setSaleDiscountPercent(e.target.value)}
+                style={{
+                  borderColor: saleDiscountPercent ? "#DC2626" : undefined,
+                  fontWeight: 700
+                }}
+              />
+              <span style={{ fontSize: "0.75rem", color: "hsl(var(--muted-hsl))", display: "block", marginTop: "0.25rem" }}>
+                Applied to this apparel blank and customizer pricing. Leave blank or 0 to disable.
+              </span>
+            </div>
+
+            {/* Live sale price preview */}
+            {saleDiscountPercent !== "" && parseFloat(saleDiscountPercent) > 0 && (() => {
+              const baseRef = parseFloat(basePrice || 0);
+              if (baseRef <= 0) return null;
+              const disc = parseFloat(saleDiscountPercent);
+              if (isNaN(disc) || disc <= 0 || disc >= 100) return null;
+              const salePreview = (baseRef * (1 - disc / 100)).toFixed(2);
+              return (
+                <div style={{ display: "flex", alignItems: "center", gap: "1rem", padding: "0.75rem 1rem", borderRadius: "var(--radius-sm)", backgroundColor: "rgba(220, 38, 38, 0.08)", border: "1px solid rgba(220, 38, 38, 0.2)" }}>
+                  <div>
+                    <p style={{ fontSize: "0.7rem", color: "hsl(var(--muted-hsl))", fontWeight: 600, textTransform: "uppercase", margin: 0 }}>Regular Base Price</p>
+                    <p style={{ fontSize: "1rem", fontWeight: 700, textDecoration: "line-through", color: "hsl(var(--muted-hsl))", margin: "0.2rem 0 0" }}>${baseRef.toFixed(2)} CAD</p>
+                  </div>
+                  <span style={{ fontSize: "1.4rem", color: "hsl(var(--muted-hsl))" }}>→</span>
+                  <div>
+                    <p style={{ fontSize: "0.7rem", color: "#DC2626", fontWeight: 800, textTransform: "uppercase", margin: 0 }}>Sale Price ({disc}% off)</p>
+                    <p style={{ fontSize: "1.2rem", fontWeight: 900, color: "#DC2626", margin: "0.2rem 0 0" }}>${salePreview} CAD</p>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {saleDiscountPercent !== "" && parseFloat(saleDiscountPercent) > 0 && (
+              <button
+                type="button"
+                onClick={() => setSaleDiscountPercent("")}
+                style={{ alignSelf: "flex-start", fontSize: "0.78rem", padding: "0.3rem 0.75rem", borderRadius: "var(--radius-sm)", border: "1px solid rgba(220, 38, 38, 0.4)", background: "none", color: "#DC2626", cursor: "pointer", fontWeight: 700 }}
+              >
+                Remove Sale
+              </button>
+            )}
           </div>
 
           {/* Dedicated Garment Angle Views & Calibration */}

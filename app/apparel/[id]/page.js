@@ -109,6 +109,8 @@ export default function ApparelDetailPage({ params: paramsPromise }) {
     if (!product) return;
 
     const basePrice = parseFloat(product.basePrice || product.price || 0);
+    const saleDiscount = parseFloat(product.saleDiscountPercent);
+    const hasSale = !isNaN(saleDiscount) && saleDiscount > 0 && saleDiscount < 100;
 
     addToCart({
       productId: product.id,
@@ -123,6 +125,8 @@ export default function ApparelDetailPage({ params: paramsPromise }) {
       category: product.category || "Apparel",
       basePrice: basePrice,
       price: mockupCartPayload.unitPrice || basePrice,
+      originalPrice: mockupCartPayload.originalPrice || (hasSale ? (mockupCartPayload.regularUnitPrice || basePrice) : undefined),
+      saleDiscountPercent: mockupCartPayload.saleDiscountPercent || (hasSale ? saleDiscount : undefined),
       ...mockupCartPayload,
       isApparel: true,
       isCustom: true
@@ -168,6 +172,9 @@ export default function ApparelDetailPage({ params: paramsPromise }) {
   const title = product.name || "Custom Apparel";
   const views = product.garmentViews || product.apparelViews || {};
   const startingPrice = parseFloat(product.basePrice || product.price || 0);
+  const saleDiscountPercent = parseFloat(product.saleDiscountPercent);
+  const hasSale = !isNaN(saleDiscountPercent) && saleDiscountPercent > 0 && saleDiscountPercent < 100;
+  const salePrice = hasSale ? Math.round(startingPrice * (1 - saleDiscountPercent / 100) * 100) / 100 : null;
   const moq = parseInt(product.minimumOrderQuantity || product.moq || 12);
 
   return (
@@ -218,15 +225,32 @@ export default function ApparelDetailPage({ params: paramsPromise }) {
 
             {/* Price & MOQ Summary */}
             <div style={{ display: "flex", alignItems: "center", gap: "1.25rem" }}>
-              <div style={{ textAlign: "right" }}>
-                <span style={{ fontSize: "0.75rem", color: "#64748B", textTransform: "uppercase", fontWeight: 700, display: "block" }}>
-                  Base Blank Price
-                </span>
-                <span style={{ fontSize: "1.75rem", fontWeight: 900, color: "#2563EB" }}>
-                  ${startingPrice.toFixed(2)}
-                </span>
-                <span style={{ fontSize: "0.8rem", color: "#94A3B8" }}> /piece</span>
-              </div>
+              {hasSale ? (
+                <div style={{ textAlign: "right" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "0.4rem", marginBottom: "0.15rem" }}>
+                    <span style={{ fontSize: "0.95rem", textDecoration: "line-through", color: "#94A3B8", fontWeight: 700 }}>
+                      ${startingPrice.toFixed(2)}
+                    </span>
+                    <span style={{ fontSize: "0.72rem", fontWeight: 800, color: "#DC2626", backgroundColor: "#FEE2E2", padding: "0.15rem 0.45rem", borderRadius: "4px" }}>
+                      -{saleDiscountPercent}% OFF
+                    </span>
+                  </div>
+                  <span style={{ fontSize: "1.75rem", fontWeight: 900, color: "#DC2626" }}>
+                    ${salePrice.toFixed(2)}
+                  </span>
+                  <span style={{ fontSize: "0.8rem", color: "#94A3B8" }}> /piece</span>
+                </div>
+              ) : (
+                <div style={{ textAlign: "right" }}>
+                  <span style={{ fontSize: "0.75rem", color: "#64748B", textTransform: "uppercase", fontWeight: 700, display: "block" }}>
+                    Base Blank Price
+                  </span>
+                  <span style={{ fontSize: "1.75rem", fontWeight: 900, color: "#2563EB" }}>
+                    ${startingPrice.toFixed(2)}
+                  </span>
+                  <span style={{ fontSize: "0.8rem", color: "#94A3B8" }}> /piece</span>
+                </div>
+              )}
 
               <div style={{ padding: "0.6rem 1rem", borderRadius: "10px", background: "#F1F5F9", border: "1px solid #E2E8F0", textAlign: "center" }}>
                 <span style={{ fontSize: "0.7rem", color: "#64748B", display: "block", fontWeight: 700, textTransform: "uppercase" }}>Minimum Order</span>

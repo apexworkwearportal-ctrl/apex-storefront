@@ -496,6 +496,9 @@ function ApparelCatalogContent() {
                     const frontImg = views.front?.image || product.thumbnail || product.imageUrl || "/images/apparel-placeholder.png";
                     const viewCount = Object.keys(views).length;
                     const displayPrice = parseFloat(product.basePrice || product.price || 0);
+                    const saleDiscountPercent = parseFloat(product.saleDiscountPercent);
+                    const hasSale = !isNaN(saleDiscountPercent) && saleDiscountPercent > 0 && saleDiscountPercent < 100;
+                    const salePrice = hasSale ? Math.round(displayPrice * (1 - saleDiscountPercent / 100) * 100) / 100 : null;
 
                     return (
                       <Link
@@ -593,6 +596,25 @@ function ApparelCatalogContent() {
                                 {formatCategoryName(product.category)}
                               </span>
                             )}
+
+                            {/* Sale Badge */}
+                            {hasSale && (
+                              <span style={{
+                                position: "absolute",
+                                top: "0.75rem",
+                                right: "0.75rem",
+                                background: "#DC2626",
+                                color: "#FFFFFF",
+                                fontSize: "0.7rem",
+                                fontWeight: 800,
+                                padding: "0.2rem 0.55rem",
+                                borderRadius: "6px",
+                                boxShadow: "0 2px 4px rgba(220, 38, 38, 0.3)",
+                                letterSpacing: "0.02em"
+                              }}>
+                                SALE -{saleDiscountPercent}%
+                              </span>
+                            )}
                           </div>
 
                           {/* Info Body */}
@@ -644,15 +666,22 @@ function ApparelCatalogContent() {
                               marginTop: "0.5rem"
                             }}>
                               <div>
-                                <span style={{ fontSize: "0.7rem", color: "#64748B", display: "block", textTransform: "uppercase", fontWeight: 600 }}>
-                                  Starting at
+                                <span style={{ fontSize: "0.7rem", color: hasSale ? "#DC2626" : "#64748B", display: "block", textTransform: "uppercase", fontWeight: 700 }}>
+                                  {hasSale ? "Sale Price" : "Starting at"}
                                 </span>
-                                <span style={{ fontSize: "1.15rem", fontWeight: 900, color: "#2563EB" }}>
-                                  ${displayPrice.toFixed(2)}
-                                </span>
-                                <span style={{ fontSize: "0.75rem", color: "#94A3B8", marginLeft: "0.2rem" }}>
-                                  /ea
-                                </span>
+                                <div style={{ display: "flex", alignItems: "baseline", gap: "0.35rem", flexWrap: "wrap" }}>
+                                  {hasSale && (
+                                    <span style={{ fontSize: "0.85rem", textDecoration: "line-through", color: "#94A3B8", fontWeight: 600 }}>
+                                      ${displayPrice.toFixed(2)}
+                                    </span>
+                                  )}
+                                  <span style={{ fontSize: "1.15rem", fontWeight: 900, color: hasSale ? "#DC2626" : "#2563EB" }}>
+                                    ${(hasSale ? salePrice : displayPrice).toFixed(2)}
+                                  </span>
+                                  <span style={{ fontSize: "0.75rem", color: "#94A3B8" }}>
+                                    /ea
+                                  </span>
+                                </div>
                               </div>
 
                               <div style={{ textAlign: "right" }}>
