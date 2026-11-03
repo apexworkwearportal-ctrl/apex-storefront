@@ -479,6 +479,29 @@ export default function ProductDetailPage({ params: paramsPromise }) {
     setUploadError("");
 
     try {
+      // Pre-check for image files: inspect width, height and aspect ratio client-side
+      let imageDim = null;
+      if (file.type.startsWith("image/")) {
+        try {
+          imageDim = await new Promise((resolve) => {
+            const url = URL.createObjectURL(file);
+            const img = new Image();
+            img.onload = () => {
+              const res = { width: img.naturalWidth || img.width, height: img.naturalHeight || img.height };
+              URL.revokeObjectURL(url);
+              resolve(res);
+            };
+            img.onerror = () => {
+              URL.revokeObjectURL(url);
+              resolve(null);
+            };
+            img.src = url;
+          });
+        } catch (dimErr) {
+          console.warn("Could not read image dimensions client-side:", dimErr);
+        }
+      }
+
       const formData = new FormData();
       formData.append("file", file);
 
@@ -492,14 +515,27 @@ export default function ProductDetailPage({ params: paramsPromise }) {
         throw new Error(data.error || "Failed to upload file.");
       }
 
-      setArtworkFiles(prev => [...prev, { name: file.name, url: data.url }]);
+      const newArtwork = {
+        name: file.name,
+        url: data.url,
+        width: imageDim?.width || null,
+        height: imageDim?.height || null
+      };
+
+      setArtworkFiles(prev => [...prev, newArtwork]);
       setProofApproved(false);
       setProofDetails(null);
+
+      // Auto-open print proof inspection modal immediately so user sees bleed, DPI, and dimensions
+      setSelectedArtworkForProof(newArtwork);
+      setProofModalOpen(true);
     } catch (err) {
       console.error("Upload error:", err);
       setUploadError(err.message || "File upload failed.");
     } finally {
       setUploadingFile(false);
+      // Reset input value so user can re-upload same filename if they fixed it
+      e.target.value = "";
     }
   };
 
