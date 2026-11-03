@@ -496,9 +496,7 @@ export default function Header() {
                                 {p.categoryName || "Print Product"}
                               </p>
                             </div>
-                            <div style={{ fontWeight: 700, fontSize: "0.875rem", color: "hsl(var(--accent-hsl))" }}>
-                              ${p.price || p.basePrice || "0.00"}
-                            </div>
+
                           </Link>
                         ))}
                         <button

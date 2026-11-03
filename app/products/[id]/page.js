@@ -6,6 +6,7 @@ import Footer from "@/components/Footer";
 import { db } from "@/lib/firebase";
 import { doc, getDoc } from "firebase/firestore";
 import { useCart } from "@/lib/cart-context";
+import { useAuth } from "@/lib/auth-context";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, ShoppingBag, Loader2, Sparkles, FileCheck, Eye, FileText, CheckCircle2, Layers, ShieldCheck } from "lucide-react";
@@ -43,6 +44,8 @@ export default function ProductDetailPage({ params: paramsPromise }) {
   const productId = params.id;
   const router = useRouter();
   const { addToCart } = useCart();
+  const { user, userData } = useAuth();
+  const isAdmin = user && (userData?.role === "admin" || user.email === "admin@apexworkwear.ca" || user.email?.endsWith("@apexworkwear.ca"));
 
   const [product, setProduct] = useState(null);
   const [loadingProduct, setLoadingProduct] = useState(true);
@@ -848,6 +851,93 @@ export default function ProductDetailPage({ params: paramsPromise }) {
                 </div>
               </div>
             </div>
+
+            {/* Admin-only: Sinalite Cost, Markup & Customer Price Comparison */}
+            {isAdmin && allSelected && !calculatingPrice && effectivePriceData && (
+              <div style={{
+                padding: "0.85rem 1rem",
+                backgroundColor: "#0F172A",
+                color: "#F8FAFC",
+                borderRadius: "8px",
+                border: "1.5px solid #F59E0B",
+                fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+                fontSize: "0.8rem",
+                lineHeight: "1.6"
+              }}>
+                <div style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  marginBottom: "0.5rem",
+                  paddingBottom: "0.35rem",
+                  borderBottom: "1px solid rgba(245, 158, 11, 0.3)"
+                }}>
+                  <span style={{ color: "#F59E0B", fontWeight: 800, fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                    🔒 Admin Pricing Comparison (SinaLite)
+                  </span>
+                  <span style={{ fontSize: "0.7rem", color: "#94A3B8" }}>
+                    Only visible to Admin
+                  </span>
+                </div>
+
+                {(() => {
+                  const baseCost = parseFloat(effectivePriceData.rawBaseCost ?? effectivePriceData.baseCost ?? 0);
+                  const markupPct = parseFloat(effectivePriceData.markupPercent ?? 0);
+                  const markupAmt = parseFloat(effectivePriceData.markupAmount ?? 0);
+                  const customerFinalPrice = parseFloat(effectivePriceData.price || effectivePriceData.price?.price || 0);
+                  const resolvedSaleDiscount = parseFloat(effectivePriceData?.saleDiscountPercent ?? product.saleDiscountPercent);
+                  const hasSale = !isNaN(resolvedSaleDiscount) && resolvedSaleDiscount > 0 && resolvedSaleDiscount < 100;
+                  const salePrice = hasSale ? Math.round(customerFinalPrice * (1 - resolvedSaleDiscount / 100) * 100) / 100 : null;
+
+                  if (baseCost <= 0 && customerFinalPrice <= 0) {
+                    return (
+                      <span style={{ color: "#EF4444" }}>
+                        Price not available from SinaLite for this combination.
+                      </span>
+                    );
+                  }
+
+                  return (
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: "0.75rem 1rem" }}>
+                      <div>
+                        <div style={{ color: "#94A3B8", fontSize: "0.7rem", textTransform: "uppercase" }}>SinaLite Cost</div>
+                        <div style={{ color: "#4ADE80", fontWeight: 800, fontSize: "1.05rem" }}>
+                          ${baseCost.toFixed(2)} <span style={{ fontSize: "0.7rem", color: "#94A3B8" }}>CAD</span>
+                        </div>
+                      </div>
+
+                      <div>
+                        <div style={{ color: "#94A3B8", fontSize: "0.7rem", textTransform: "uppercase" }}>Applied Markup</div>
+                        <div style={{ color: "#60A5FA", fontWeight: 800, fontSize: "1.05rem" }}>
+                          +{markupPct}%
+                          {markupAmt > 0 && (
+                            <span style={{ fontSize: "0.75rem", color: "#93C5FD", marginLeft: "0.3rem", fontWeight: 500 }}>
+                              (+${markupAmt.toFixed(2)})
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div>
+                        <div style={{ color: "#94A3B8", fontSize: "0.7rem", textTransform: "uppercase" }}>Customer Price</div>
+                        <div style={{ color: "#FDE047", fontWeight: 800, fontSize: "1.05rem" }}>
+                          ${customerFinalPrice.toFixed(2)} <span style={{ fontSize: "0.7rem", color: "#94A3B8" }}>CAD</span>
+                        </div>
+                      </div>
+
+                      {hasSale && (
+                        <div>
+                          <div style={{ color: "#94A3B8", fontSize: "0.7rem", textTransform: "uppercase" }}>Customer Sale Price</div>
+                          <div style={{ color: "#F87171", fontWeight: 800, fontSize: "1.05rem" }}>
+                            ${salePrice.toFixed(2)} <span style={{ fontSize: "0.7rem", color: "#FCA5A5" }}>(-{resolvedSaleDiscount}%)</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
 
             {/* Configuration Summary */}
             {allSelected && (
