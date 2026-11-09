@@ -48,6 +48,7 @@ export default function AdminProductEditPage({ params: paramsPromise }) {
     { id: "sz_4", name: '5.5" x 8.5"', imposition: 4, costPerM: 35.00 }
   ]);
 
+  const [sidesPagesType, setSidesPagesType] = useState("sides"); // "sides" | "pages"
   const [sidesPagesOptions, setSidesPagesOptions] = useState([
     { id: "1_sided", name: "1 Sided", value: 1 },
     { id: "2_sided", name: "2 Sided", value: 2 }
@@ -143,6 +144,11 @@ export default function AdminProductEditPage({ params: paramsPromise }) {
             }
             if (Array.isArray(data.sidesPagesOptions) && data.sidesPagesOptions.length > 0) {
               setSidesPagesOptions(data.sidesPagesOptions);
+            }
+            if (data.sidesPagesType) {
+              setSidesPagesType(data.sidesPagesType);
+            } else if (Array.isArray(data.sidesPagesOptions) && data.sidesPagesOptions.some(s => (s.name || "").toLowerCase().includes("page"))) {
+              setSidesPagesType("pages");
             }
             if (Array.isArray(data.printModeOptions) && data.printModeOptions.length > 0) {
               setPrintModeOptions(data.printModeOptions);
@@ -262,11 +268,38 @@ export default function AdminProductEditPage({ params: paramsPromise }) {
   };
 
   // Sides / Pages Handlers
+  const handleSwitchSidesPagesType = (newType) => {
+    setSidesPagesType(newType);
+    if (newType === "sides") {
+      setSidesPagesOptions([
+        { id: "1_sided", name: "1 Sided", value: 1 },
+        { id: "2_sided", name: "2 Sided", value: 2 }
+      ]);
+    } else if (newType === "pages") {
+      handleGeneratePageRange(8, 36, 4);
+    }
+  };
+
+  const handleGeneratePageRange = (start, end, step) => {
+    const list = [];
+    for (let p = start; p <= end; p += step) {
+      list.push({
+        id: `page_${p}`,
+        name: `${p} Pages`,
+        value: p
+      });
+    }
+    setSidesPagesOptions(list);
+  };
+
   const addSidesOption = () => {
-    const nextVal = sidesPagesOptions.length + 1;
+    const isPages = sidesPagesType === "pages";
+    const nextVal = sidesPagesOptions.length > 0 
+      ? (parseFloat(sidesPagesOptions[sidesPagesOptions.length - 1].value) || 0) + (isPages ? 4 : 1)
+      : (isPages ? 8 : 1);
     setSidesPagesOptions(prev => [
       ...prev,
-      { id: `sides_${Date.now()}`, name: `${nextVal} Pages`, value: nextVal }
+      { id: `sides_${Date.now()}`, name: isPages ? `${nextVal} Pages` : `${nextVal} Sided`, value: nextVal }
     ]);
   };
 
@@ -419,6 +452,7 @@ export default function AdminProductEditPage({ params: paramsPromise }) {
           isCustomPrint: true,
           customPrintSizes,
           quantityOptions,
+          sidesPagesType,
           sidesPagesOptions,
           printModeOptions,
           options: optionGroups,
@@ -798,19 +832,132 @@ export default function AdminProductEditPage({ params: paramsPromise }) {
                 
                 {/* Sides / Pages Card */}
                 <div className="card" style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "0.5rem" }}>
                     <div>
                       <h3 style={{ fontSize: "1rem", fontWeight: 800, margin: 0 }}>
-                        2. Sides / Pages
+                        2. {sidesPagesType === "pages" ? "Pages" : "Sides"}
                       </h3>
-                      <span style={{ fontSize: "0.75rem", color: "#64748B" }}>Multiplied in Paper Cost</span>
+                      <span style={{ fontSize: "0.75rem", color: "#64748B" }}>
+                        {sidesPagesType === "pages" ? "Auto-multiplies in paper calculation & shown as dropdown to customer" : "Multiplied in Paper Cost"}
+                      </span>
                     </div>
-                    <button type="button" onClick={addSidesOption} className="btn btn-outline" style={{ padding: "0.3rem 0.6rem", fontSize: "0.75rem" }}>
-                      <Plus size={12} /> Add
-                    </button>
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                      {/* Toggle between Sides and Pages */}
+                      <div style={{
+                        display: "inline-flex",
+                        backgroundColor: "#F1F5F9",
+                        borderRadius: "6px",
+                        padding: "2px",
+                        border: "1px solid #CBD5E1"
+                      }}>
+                        <button
+                          type="button"
+                          onClick={() => handleSwitchSidesPagesType("sides")}
+                          style={{
+                            padding: "0.25rem 0.6rem",
+                            fontSize: "0.75rem",
+                            fontWeight: 700,
+                            border: "none",
+                            borderRadius: "4px",
+                            cursor: "pointer",
+                            backgroundColor: sidesPagesType === "sides" ? "#2563EB" : "transparent",
+                            color: sidesPagesType === "sides" ? "#FFFFFF" : "#64748B"
+                          }}
+                        >
+                          Sides
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleSwitchSidesPagesType("pages")}
+                          style={{
+                            padding: "0.25rem 0.6rem",
+                            fontSize: "0.75rem",
+                            fontWeight: 700,
+                            border: "none",
+                            borderRadius: "4px",
+                            cursor: "pointer",
+                            backgroundColor: sidesPagesType === "pages" ? "#2563EB" : "transparent",
+                            color: sidesPagesType === "pages" ? "#FFFFFF" : "#64748B"
+                          }}
+                        >
+                          Pages
+                        </button>
+                      </div>
+
+                      <button type="button" onClick={addSidesOption} className="btn btn-outline" style={{ padding: "0.25rem 0.55rem", fontSize: "0.75rem" }}>
+                        <Plus size={12} /> Add
+                      </button>
+                    </div>
                   </div>
 
-                  <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                  {/* Pages Quick Auto-Fill Toolbar */}
+                  {sidesPagesType === "pages" && (
+                    <div style={{
+                      padding: "0.6rem 0.75rem",
+                      backgroundColor: "#EFF6FF",
+                      borderRadius: "6px",
+                      border: "1px solid #BFDBFE",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "0.4rem"
+                    }}>
+                      <span style={{ fontSize: "0.72rem", fontWeight: 800, color: "#1E40AF", textTransform: "uppercase", letterSpacing: "0.03em" }}>
+                        ⚡ Auto-Fill Page Ranges:
+                      </span>
+                      <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap" }}>
+                        <button
+                          type="button"
+                          onClick={() => handleGeneratePageRange(8, 36, 4)}
+                          style={{
+                            padding: "0.25rem 0.55rem",
+                            fontSize: "0.72rem",
+                            fontWeight: 700,
+                            backgroundColor: "#FFFFFF",
+                            color: "#1D4ED8",
+                            border: "1px solid #93C5FD",
+                            borderRadius: "4px",
+                            cursor: "pointer"
+                          }}
+                        >
+                          8 to 36 pages (step 4)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleGeneratePageRange(40, 400, 2)}
+                          style={{
+                            padding: "0.25rem 0.55rem",
+                            fontSize: "0.72rem",
+                            fontWeight: 700,
+                            backgroundColor: "#FFFFFF",
+                            color: "#1D4ED8",
+                            border: "1px solid #93C5FD",
+                            borderRadius: "4px",
+                            cursor: "pointer"
+                          }}
+                        >
+                          40 to 400 pages (multiples of 2)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleGeneratePageRange(8, 64, 4)}
+                          style={{
+                            padding: "0.25rem 0.55rem",
+                            fontSize: "0.72rem",
+                            fontWeight: 600,
+                            backgroundColor: "#FFFFFF",
+                            color: "#475569",
+                            border: "1px solid #CBD5E1",
+                            borderRadius: "4px",
+                            cursor: "pointer"
+                          }}
+                        >
+                          8 to 64 (step 4)
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", maxHeight: "320px", overflowY: "auto" }}>
                     {sidesPagesOptions.map((side, idx) => (
                       <div key={side.id || idx} style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
                         <input
@@ -818,7 +965,7 @@ export default function AdminProductEditPage({ params: paramsPromise }) {
                           className="input"
                           value={side.name}
                           onChange={(e) => handleSidesChange(idx, "name", e.target.value)}
-                          placeholder="e.g. 1 Sided, 2 Sided, 8 Pages"
+                          placeholder={sidesPagesType === "pages" ? "e.g. 16 Pages" : "e.g. 1 Sided, 2 Sided"}
                           style={{ flex: 1.8, fontSize: "0.85rem", padding: "0.45rem 0.65rem" }}
                           required
                         />

@@ -159,8 +159,15 @@ export default function ProductDetailPage({ params: paramsPromise }) {
     const sizeOpt = (optionGroups["Size"] || optionGroups["size"] || []).find(o => o.id === selectedSizeId);
 
     // 3. Extract Sides / Pages
-    const selectedSidesId = selectedOptions["Sides / Pages"] || selectedOptions["sides"] || selectedOptions["Pages"];
-    const sidesOpt = (optionGroups["Sides / Pages"] || optionGroups["sides"] || optionGroups["Pages"] || []).find(o => o.id === selectedSidesId);
+    const selectedSidesId = selectedOptions["Sides / Pages"] || selectedOptions["Pages"] || selectedOptions["Sides"] || selectedOptions["sides"] || selectedOptions["pages"];
+    const sidesOpt = (
+      optionGroups["Sides / Pages"] || 
+      optionGroups["Pages"] || 
+      optionGroups["Sides"] || 
+      optionGroups["sides"] || 
+      optionGroups["pages"] || 
+      []
+    ).find(o => o.id === selectedSidesId);
 
     // 4. Extract Print Mode
     const selectedModeId = selectedOptions["Print Mode"] || selectedOptions["printMode"] || selectedOptions["Mode"];
@@ -169,7 +176,7 @@ export default function ProductDetailPage({ params: paramsPromise }) {
     // 5. Additional options upcharges (if any)
     let additionalUpcharges = 0;
     Object.entries(selectedOptions).forEach(([groupName, selectedId]) => {
-      if (["Quantity", "quantity", "Qty", "Size", "size", "Sides / Pages", "sides", "Pages", "Print Mode", "printMode", "Mode"].includes(groupName)) {
+      if (["Quantity", "quantity", "Qty", "Size", "size", "Sides / Pages", "Pages", "Sides", "sides", "pages", "Print Mode", "printMode", "Mode"].includes(groupName)) {
         return;
       }
       const choices = optionGroups[groupName] || [];
@@ -341,7 +348,11 @@ export default function ProductDetailPage({ params: paramsPromise }) {
             costPerM: parseFloat(s.costPerM) || 0
           }));
 
-          // 3. Sides / Pages Choices
+          // 3. Sides or Pages Choices
+          const isPagesType = data.sidesPagesType === "pages" || 
+            (Array.isArray(data.sidesPagesOptions) && data.sidesPagesOptions.some(s => (s.name || "").toLowerCase().includes("page")));
+          const sidesGroupLabel = isPagesType ? "Pages" : "Sides";
+
           const sidesList = Array.isArray(data.sidesPagesOptions) && data.sidesPagesOptions.length > 0
             ? data.sidesPagesOptions
             : [
@@ -349,7 +360,7 @@ export default function ProductDetailPage({ params: paramsPromise }) {
                 { id: "2_sided", name: "2 Sided", value: 2 }
               ];
 
-          customGroups["Sides / Pages"] = sidesList.map(s => ({
+          customGroups[sidesGroupLabel] = sidesList.map(s => ({
             id: s.name,
             name: s.name,
             value: parseFloat(s.value) || 1
@@ -756,9 +767,11 @@ export default function ProductDetailPage({ params: paramsPromise }) {
               ) : (
                 Object.entries(optionGroups).map(([groupName, options]) => {
                   const isQuantity = groupName.toLowerCase().includes("qty") || groupName.toLowerCase().includes("quantity");
+                  const isPages = groupName.toLowerCase() === "pages" || (groupName.toLowerCase().includes("page") && !groupName.toLowerCase().includes("side"));
 
-                  if (isQuantity) {
-                    const selectedQtyVal = selectedOptions[groupName] || "";
+                  // Render dropdown for Quantity or Pages (since page count can have dozens of options)
+                  if (isQuantity || (isPages && options.length > 4)) {
+                    const selectedVal = selectedOptions[groupName] || "";
                     return (
                       <div key={groupName} style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
                         <label className="label" htmlFor={`opt-${groupName}`} style={{ textTransform: "capitalize", fontWeight: 700 }}>
@@ -767,10 +780,10 @@ export default function ProductDetailPage({ params: paramsPromise }) {
                         <select
                           id={`opt-${groupName}`}
                           className="input"
-                          value={selectedQtyVal}
+                          value={selectedVal}
                           onChange={(e) => handleOptionChange(groupName, e.target.value)}
                         >
-                          <option value="">Select quantity...</option>
+                          <option value="">Select {groupName.toLowerCase()}...</option>
                           {options.map(opt => (
                             <option key={opt.id} value={opt.id.toString()}>
                               {opt.name}
