@@ -17,7 +17,11 @@ import {
   FileText, 
   ExternalLink,
   Loader2,
-  RefreshCw
+  RefreshCw,
+  UploadCloud,
+  Trash2,
+  Plus,
+  Edit2
 } from "lucide-react";
 
 function AdminOrdersContent() {
@@ -30,6 +34,181 @@ function AdminOrdersContent() {
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [submittingSinalite, setSubmittingSinalite] = useState(false);
   const [approvingProof, setApprovingProof] = useState(false);
+  const [uploadingArtworkIdx, setUploadingArtworkIdx] = useState(null);
+  const [artworkStatusMsg, setArtworkStatusMsg] = useState("");
+
+  const handleAdminArtworkUpload = async (orderId, itemIndex, file, targetSide = null) => {
+    if (!file || !orderId || itemIndex === undefined) return;
+    setUploadingArtworkIdx(itemIndex);
+    setArtworkStatusMsg("Uploading new artwork file...");
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const uploadRes = await fetch("/api/upload", {
+        method: "POST",
+        body: formData
+      });
+
+      const uploadData = await uploadRes.json();
+      if (!uploadRes.ok || !uploadData.url) {
+        throw new Error(uploadData.error || "Failed to upload file to storage.");
+      }
+
+      setArtworkStatusMsg("Saving updated artwork to order...");
+
+      const currentItem = selectedOrder.items?.[itemIndex];
+      const existingFiles = Array.isArray(currentItem?.artworkFiles) ? [...currentItem.artworkFiles] : [];
+
+      let updatedFiles = [];
+      if (targetSide) {
+        // Replace or add artwork for specific side
+        const sideIdx = existingFiles.findIndex(f => f.side === targetSide);
+        const newEntry = {
+          name: file.name,
+          url: uploadData.url,
+          side: targetSide,
+          size: uploadData.size,
+          uploadedBy: "admin",
+          uploadedAt: new Date().toISOString()
+        };
+        if (sideIdx >= 0) {
+          existingFiles[sideIdx] = newEntry;
+          updatedFiles = existingFiles;
+        } else {
+          updatedFiles = [...existingFiles, newEntry];
+        }
+      } else {
+        // Append or replace main file
+        updatedFiles = [
+          ...existingFiles,
+          {
+            name: file.name,
+            url: uploadData.url,
+            side: existingFiles.length === 0 ? "front" : (existingFiles.length === 1 ? "back" : `side_${existingFiles.length + 1}`),
+            size: uploadData.size,
+            uploadedBy: "admin",
+            uploadedAt: new Date().toISOString()
+          }
+        ];
+      }
+
+      const saveRes = await fetch("/api/admin/orders/update-artwork", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orderId,
+          itemIndex,
+          artworkFiles: updatedFiles
+        })
+      });
+
+      const saveData = await saveRes.json();
+      if (!saveRes.ok || !saveData.success) {
+        throw new Error(saveData.error || "Failed to update order in database.");
+      }
+
+      // Update local state
+      setSelectedOrder(prev => {
+        if (!prev) return null;
+        const newItems = [...(prev.items || [])];
+        newItems[itemIndex] = {
+          ...newItems[itemIndex],
+          artworkFiles: updatedFiles,
+          artworkUrl: updatedFiles[0]?.url || newItems[itemIndex].artworkUrl,
+          artworkModifiedByAdmin: true
+        };
+        return { ...prev, items: newItems };
+      });
+
+      setOrders(prev => prev.map(o => {
+        if (o.id !== orderId) return o;
+        const newItems = [...(o.items || [])];
+        if (newItems[itemIndex]) {
+          newItems[itemIndex] = {
+            ...newItems[itemIndex],
+            artworkFiles: updatedFiles,
+            artworkUrl: updatedFiles[0]?.url || newItems[itemIndex].artworkUrl,
+            artworkModifiedByAdmin: true
+          };
+        }
+        return { ...o, items: newItems };
+      }));
+
+      setArtworkStatusMsg("Artwork updated successfully!");
+      setTimeout(() => setArtworkStatusMsg(""), 3500);
+    } catch (err) {
+      console.error("Failed to upload/update artwork:", err);
+      alert(`Artwork update failed: ${err.message}`);
+      setArtworkStatusMsg("");
+    } finally {
+      setUploadingArtworkIdx(null);
+    }
+  };
+
+  const handleAdminRemoveArtworkFile = async (orderId, itemIndex, fileIndex) => {
+    if (!window.confirm("Are you sure you want to remove this artwork file?")) return;
+    setUploadingArtworkIdx(itemIndex);
+    setArtworkStatusMsg("Removing file...");
+
+    try {
+      const currentItem = selectedOrder.items?.[itemIndex];
+      const existingFiles = Array.isArray(currentItem?.artworkFiles) ? [...currentItem.artworkFiles] : [];
+      const updatedFiles = existingFiles.filter((_, idx) => idx !== fileIndex);
+
+      const saveRes = await fetch("/api/admin/orders/update-artwork", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orderId,
+          itemIndex,
+          artworkFiles: updatedFiles
+        })
+      });
+
+      const saveData = await saveRes.json();
+      if (!saveRes.ok || !saveData.success) {
+        throw new Error(saveData.error || "Failed to update order in database.");
+      }
+
+      // Update local state
+      setSelectedOrder(prev => {
+        if (!prev) return null;
+        const newItems = [...(prev.items || [])];
+        newItems[itemIndex] = {
+          ...newItems[itemIndex],
+          artworkFiles: updatedFiles,
+          artworkUrl: updatedFiles[0]?.url || null,
+          artworkModifiedByAdmin: true
+        };
+        return { ...prev, items: newItems };
+      });
+
+      setOrders(prev => prev.map(o => {
+        if (o.id !== orderId) return o;
+        const newItems = [...(o.items || [])];
+        if (newItems[itemIndex]) {
+          newItems[itemIndex] = {
+            ...newItems[itemIndex],
+            artworkFiles: updatedFiles,
+            artworkUrl: updatedFiles[0]?.url || null,
+            artworkModifiedByAdmin: true
+          };
+        }
+        return { ...o, items: newItems };
+      }));
+
+      setArtworkStatusMsg("Artwork file removed.");
+      setTimeout(() => setArtworkStatusMsg(""), 3500);
+    } catch (err) {
+      console.error("Failed to remove artwork:", err);
+      alert(`Failed to remove artwork: ${err.message}`);
+      setArtworkStatusMsg("");
+    } finally {
+      setUploadingArtworkIdx(null);
+    }
+  };
 
   const handleManualSubmitSinalite = async (orderId) => {
     if (!orderId) return;
@@ -697,35 +876,182 @@ function AdminOrdersContent() {
                         {item.optionSummary}
                       </p>
 
-                      {/* Customer Artwork Files */}
-                      {item.artworkFiles && item.artworkFiles.length > 0 && (
-                        <div style={{ marginTop: "0.35rem", display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-                          <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "hsl(var(--accent-hsl))" }}>Customer Artwork Files:</span>
-                          <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                      {/* Customer Artwork Files & Admin Artwork Management */}
+                      <div style={{
+                        marginTop: "0.5rem",
+                        padding: "0.75rem",
+                        backgroundColor: "hsl(var(--secondary-hsl) / 0.25)",
+                        borderRadius: "6px",
+                        border: "1px solid hsl(var(--border-hsl))",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: "0.5rem"
+                      }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <span style={{ fontSize: "0.78rem", fontWeight: 700, color: "hsl(var(--primary-hsl))", display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
+                            <FileText size={13} style={{ color: "hsl(var(--accent-hsl))" }} />
+                            Production Artwork Files
+                            {item.artworkModifiedByAdmin && (
+                              <span style={{ fontSize: "0.65rem", padding: "0.1rem 0.4rem", backgroundColor: "#FEF3C7", color: "#92400E", borderRadius: "4px", fontWeight: 800 }}>
+                                Modified by Admin
+                              </span>
+                            )}
+                          </span>
+
+                          {/* Quick Add / Replace Artwork Input */}
+                          <label style={{
+                            padding: "0.25rem 0.55rem",
+                            fontSize: "0.72rem",
+                            fontWeight: 700,
+                            borderRadius: "4px",
+                            backgroundColor: "hsl(var(--accent-hsl))",
+                            color: "white",
+                            cursor: uploadingArtworkIdx === idx ? "wait" : "pointer",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "0.25rem",
+                            margin: 0
+                          }}>
+                            {uploadingArtworkIdx === idx ? (
+                              <Loader2 size={12} className="animate-spin" />
+                            ) : (
+                              <Plus size={12} />
+                            )}
+                            {uploadingArtworkIdx === idx ? "Uploading..." : "Add / Replace File"}
+                            <input
+                              type="file"
+                              accept=".pdf,.ai,.eps,.psd,.tiff,.tif,.png,.jpg,.jpeg"
+                              disabled={uploadingArtworkIdx !== null}
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) {
+                                  handleAdminArtworkUpload(selectedOrder.id, idx, file);
+                                }
+                                e.target.value = "";
+                              }}
+                              style={{ display: "none" }}
+                            />
+                          </label>
+                        </div>
+
+                        {/* Files list */}
+                        {item.artworkFiles && item.artworkFiles.length > 0 ? (
+                          <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
                             {item.artworkFiles.map((file, fIdx) => (
-                              <a
+                              <div
                                 key={fIdx}
-                                href={file.url}
-                                target="_blank"
-                                rel="noopener noreferrer"
                                 style={{
-                                  fontSize: "0.75rem",
-                                  padding: "0.2rem 0.5rem",
-                                  backgroundColor: "hsl(var(--secondary-hsl))",
-                                  borderRadius: "4px",
-                                  color: "hsl(var(--primary-hsl))",
-                                  display: "inline-flex",
+                                  display: "flex",
+                                  justifyContent: "space-between",
                                   alignItems: "center",
-                                  gap: "0.25rem",
-                                  textDecoration: "underline"
+                                  padding: "0.35rem 0.55rem",
+                                  backgroundColor: "#FFFFFF",
+                                  borderRadius: "4px",
+                                  border: "1px solid hsl(var(--border-hsl))",
+                                  fontSize: "0.75rem"
                                 }}
                               >
-                                <FileText size={12} /> {file.name || `Artwork ${fIdx + 1}`}
-                              </a>
+                                <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", minWidth: 0 }}>
+                                  <span style={{
+                                    fontSize: "0.65rem",
+                                    fontWeight: 800,
+                                    textTransform: "uppercase",
+                                    padding: "0.1rem 0.35rem",
+                                    backgroundColor: file.side === "back" ? "#E0E7FF" : "#DCFCE7",
+                                    color: file.side === "back" ? "#3730A3" : "#166534",
+                                    borderRadius: "3px"
+                                  }}>
+                                    {file.side || (fIdx === 0 ? "front" : "back")}
+                                  </span>
+                                  <a
+                                    href={file.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    style={{
+                                      color: "hsl(var(--primary-hsl))",
+                                      textDecoration: "underline",
+                                      fontWeight: 600,
+                                      overflow: "hidden",
+                                      textOverflow: "ellipsis",
+                                      whiteSpace: "nowrap",
+                                      maxWidth: "180px"
+                                    }}
+                                    title={file.name}
+                                  >
+                                    {file.name || `Artwork File ${fIdx + 1}`}
+                                  </a>
+                                  {file.uploadedBy === "admin" && (
+                                    <span style={{ fontSize: "0.65rem", color: "#D97706", fontWeight: 700 }}>
+                                      (Admin)
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
+                                  {/* Replace specific file input */}
+                                  <label style={{
+                                    padding: "0.2rem 0.45rem",
+                                    fontSize: "0.68rem",
+                                    fontWeight: 700,
+                                    color: "hsl(var(--accent-hsl))",
+                                    backgroundColor: "hsl(var(--accent-hsl) / 0.1)",
+                                    borderRadius: "3px",
+                                    cursor: "pointer",
+                                    margin: 0,
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: "0.2rem"
+                                  }}>
+                                    <Edit2 size={10} /> Replace
+                                    <input
+                                      type="file"
+                                      accept=".pdf,.ai,.eps,.psd,.tiff,.tif,.png,.jpg,.jpeg"
+                                      disabled={uploadingArtworkIdx !== null}
+                                      onChange={(e) => {
+                                        const f = e.target.files?.[0];
+                                        if (f) {
+                                          handleAdminArtworkUpload(selectedOrder.id, idx, f, file.side || (fIdx === 0 ? "front" : "back"));
+                                        }
+                                        e.target.value = "";
+                                      }}
+                                      style={{ display: "none" }}
+                                    />
+                                  </label>
+
+                                  {/* Delete file */}
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAdminRemoveArtworkFile(selectedOrder.id, idx, fIdx)}
+                                    disabled={uploadingArtworkIdx !== null}
+                                    style={{
+                                      background: "none",
+                                      border: "none",
+                                      color: "#EF4444",
+                                      cursor: "pointer",
+                                      padding: "0.2rem",
+                                      display: "flex",
+                                      alignItems: "center"
+                                    }}
+                                    title="Delete file"
+                                  >
+                                    <Trash2 size={13} />
+                                  </button>
+                                </div>
+                              </div>
                             ))}
                           </div>
-                        </div>
-                      )}
+                        ) : (
+                          <div style={{ fontSize: "0.75rem", color: "hsl(var(--muted-hsl))", fontStyle: "italic" }}>
+                            No customer artwork attached yet. You can attach a print-ready file above before transmitting to SinaLite.
+                          </div>
+                        )}
+
+                        {artworkStatusMsg && uploadingArtworkIdx === idx && (
+                          <span style={{ fontSize: "0.72rem", color: "hsl(var(--accent-hsl))", fontWeight: 600 }}>
+                            {artworkStatusMsg}
+                          </span>
+                        )}
+                      </div>
 
                       {/* Item-level SinaLite Digital Proof Link */}
                       {(item.reviewURL || item.reviewFILE) && (
