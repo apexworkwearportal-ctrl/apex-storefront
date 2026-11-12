@@ -21,7 +21,9 @@ import {
   UploadCloud,
   Trash2,
   Plus,
-  Edit2
+  Edit2,
+  Package,
+  DollarSign
 } from "lucide-react";
 
 function AdminOrdersContent() {
@@ -36,6 +38,115 @@ function AdminOrdersContent() {
   const [approvingProof, setApprovingProof] = useState(false);
   const [uploadingArtworkIdx, setUploadingArtworkIdx] = useState(null);
   const [artworkStatusMsg, setArtworkStatusMsg] = useState("");
+
+  // Shipping Adjustment States (Admin)
+  const [isChangingShipping, setIsChangingShipping] = useState(false);
+  const [loadingShippingMethods, setLoadingShippingMethods] = useState(false);
+  const [availableShippingMethods, setAvailableShippingMethods] = useState([]);
+  const [shippingMethodsError, setShippingMethodsError] = useState("");
+  const [selectedNewShippingMethod, setSelectedNewShippingMethod] = useState("");
+  const [selectedNewShippingPrice, setSelectedNewShippingPrice] = useState(0);
+  const [savingShippingUpdate, setSavingShippingUpdate] = useState(false);
+
+  // Editable destination address fields
+  const [editAddress, setEditAddress] = useState({
+    ShipAddr: "",
+    ShipAddr2: "",
+    ShipCity: "",
+    ShipState: "",
+    ShipZip: "",
+    ShipCountry: "CA",
+    ShipPhone: "",
+    ShipFName: "",
+    ShipLName: ""
+  });
+
+  const handleOpenShippingChange = async (order) => {
+    if (!order) return;
+    setIsChangingShipping(true);
+    setShippingMethodsError("");
+    setAvailableShippingMethods([]);
+    setSelectedNewShippingMethod("");
+    setSelectedNewShippingPrice(0);
+
+    const addr = order.shippingAddress || {};
+    setEditAddress({
+      ShipAddr: addr.ShipAddr || addr.address || "",
+      ShipAddr2: addr.ShipAddr2 || addr.apartment || "",
+      ShipCity: addr.ShipCity || addr.city || "",
+      ShipState: addr.ShipState || addr.state || "ON",
+      ShipZip: addr.ShipZip || addr.zip || "",
+      ShipCountry: addr.ShipCountry || addr.country || "CA",
+      ShipPhone: addr.ShipPhone || addr.phone || "",
+      ShipFName: addr.ShipFName || addr.fullName?.split(" ")?.[0] || "",
+      ShipLName: addr.ShipLName || addr.fullName?.split(" ")?.slice(1)?.join(" ") || ""
+    });
+
+    await fetchShippingMethodsForOrder(order.id);
+  };
+
+  const fetchShippingMethodsForOrder = async (orderId) => {
+    setLoadingShippingMethods(true);
+    setShippingMethodsError("");
+    try {
+      const res = await fetch("/api/admin/orders/shipping-methods", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to fetch shipping rates from SinaLite.");
+      }
+      setAvailableShippingMethods(data.methods || []);
+      if (data.methods && data.methods.length > 0) {
+        // Pre-select matching or first method
+        const match = data.methods.find(m => m.serviceName === data.currentMethod) || data.methods[0];
+        setSelectedNewShippingMethod(match.serviceName);
+        setSelectedNewShippingPrice(match.price);
+      }
+    } catch (err) {
+      console.error("Shipping methods fetch error:", err);
+      setShippingMethodsError(err.message || "Failed to retrieve shipping options from SinaLite.");
+    } finally {
+      setLoadingShippingMethods(false);
+    }
+  };
+
+  const handleSaveShippingUpdate = async (orderId) => {
+    if (!orderId || !selectedNewShippingMethod) return;
+    setSavingShippingUpdate(true);
+    try {
+      const res = await fetch("/api/admin/orders/update-shipping", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orderId,
+          newShippingMethod: selectedNewShippingMethod,
+          newShippingPrice: selectedNewShippingPrice,
+          updatedAddress: editAddress
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Failed to update shipping method.");
+      }
+
+      // Update local state without modifying customer charged totals
+      const updatedOrder = data.order;
+      setSelectedOrder(prev => prev ? ({ ...prev, ...updatedOrder }) : null);
+      setOrders(prev => prev.map(o => o.id === orderId ? { ...o, ...updatedOrder } : o));
+
+      alert(`Shipping method successfully updated to "${selectedNewShippingMethod}"!`);
+      setIsChangingShipping(false);
+    } catch (err) {
+      console.error("Save shipping error:", err);
+      alert(`Could not save shipping update: ${err.message}`);
+    } finally {
+      setSavingShippingUpdate(false);
+    }
+  };
 
   const handleAdminArtworkUpload = async (orderId, itemIndex, file, targetSide = null) => {
     if (!file || !orderId || itemIndex === undefined) return;
@@ -850,16 +961,213 @@ function AdminOrdersContent() {
                 </div>
               )}
 
-              {/* Shipping Address Details */}
+              {/* Shipping Details & Admin Shipping Adjustment */}
               <div>
-                <h3 style={{ fontSize: "1rem", fontWeight: 700, marginBottom: "0.5rem" }}>Shipping Destination</h3>
-                <div style={{ fontSize: "0.9rem", color: "hsl(var(--foreground-hsl) / 0.8)", lineHeight: 1.5, backgroundColor: "hsl(var(--secondary-hsl) / 0.2)", padding: "0.75rem", borderRadius: "var(--radius-sm)" }}>
-                  <p style={{ fontWeight: 600 }}>{selectedOrder.shippingAddress?.ShipFName} {selectedOrder.shippingAddress?.ShipLName}</p>
-                  <p>{selectedOrder.shippingAddress?.ShipAddr} {selectedOrder.shippingAddress?.ShipAddr2}</p>
-                  <p>{selectedOrder.shippingAddress?.ShipCity}, {selectedOrder.shippingAddress?.ShipState} {selectedOrder.shippingAddress?.ShipZip}</p>
-                  <p>{selectedOrder.shippingAddress?.ShipCountry}</p>
-                  <p style={{ marginTop: "0.25rem", color: "hsl(var(--muted-hsl))" }}>📞 {selectedOrder.shippingAddress?.ShipPhone}</p>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
+                  <h3 style={{ fontSize: "1rem", fontWeight: 700, margin: 0, display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                    <Truck size={16} /> Shipping & Fulfillment
+                  </h3>
+
+                  {/* Option to change shipping only for SinaLite print orders not yet submitted */}
+                  {isPaidOrder(selectedOrder) && !selectedOrder.sinaliteOrderId && selectedOrder.orderType !== "apparel" && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (isChangingShipping) {
+                          setIsChangingShipping(false);
+                        } else {
+                          handleOpenShippingChange(selectedOrder);
+                        }
+                      }}
+                      className="btn btn-outline"
+                      style={{ padding: "0.25rem 0.6rem", fontSize: "0.75rem", display: "inline-flex", alignItems: "center", gap: "0.3rem" }}
+                    >
+                      <Edit2 size={12} />
+                      {isChangingShipping ? "Cancel Change" : "Change Shipping Method"}
+                    </button>
+                  )}
                 </div>
+
+                <div style={{ fontSize: "0.9rem", color: "hsl(var(--foreground-hsl) / 0.8)", lineHeight: 1.5, backgroundColor: "hsl(var(--secondary-hsl) / 0.2)", padding: "0.85rem", borderRadius: "var(--radius-sm)", display: "flex", flexDirection: "column", gap: "0.4rem" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", borderBottom: "1px solid hsl(var(--border-hsl))", paddingBottom: "0.4rem" }}>
+                    <div>
+                      <span style={{ fontSize: "0.75rem", color: "hsl(var(--muted-hsl))", textTransform: "uppercase", fontWeight: 700, display: "block" }}>
+                        Assigned Shipping Method:
+                      </span>
+                      <strong style={{ fontSize: "0.95rem", color: "hsl(var(--primary-hsl))" }}>
+                        {selectedOrder.shippingMethod || selectedOrder.shippingAddress?.ShipMethod || "Standard Courier Shipping"}
+                      </strong>
+                    </div>
+
+                    <div style={{ textAlign: "right" }}>
+                      <span style={{ fontSize: "0.75rem", color: "hsl(var(--muted-hsl))", display: "block" }}>
+                        Customer Paid Shipping:
+                      </span>
+                      <strong style={{ color: "#0F172A" }}>
+                        ${parseFloat(selectedOrder.originalShippingCharged !== undefined ? selectedOrder.originalShippingCharged : (selectedOrder.totals?.shipping || 0)).toFixed(2)} CAD
+                      </strong>
+                    </div>
+                  </div>
+
+                  {/* Admin Shipping Expense Notice if adjusted */}
+                  {selectedOrder.adminShippingExpense > 0 && (
+                    <div style={{
+                      backgroundColor: "#FFFBEB",
+                      border: "1px solid #FCD34D",
+                      borderRadius: "6px",
+                      padding: "0.5rem 0.75rem",
+                      fontSize: "0.8rem",
+                      color: "#92400E",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      marginTop: "0.25rem"
+                    }}>
+                      <span>
+                        ⚠️ <strong>Admin Shipping Expense:</strong> Actual cost (${parseFloat(selectedOrder.actualShippingCost || 0).toFixed(2)}) exceeded customer payment.
+                      </span>
+                      <strong style={{ color: "#B45309", fontSize: "0.85rem" }}>
+                        +${parseFloat(selectedOrder.adminShippingExpense).toFixed(2)} (Store Expense)
+                      </strong>
+                    </div>
+                  )}
+
+                  {/* Destination Address View */}
+                  <div style={{ marginTop: "0.2rem" }}>
+                    <p style={{ fontWeight: 600, margin: "0 0 0.2rem 0" }}>{selectedOrder.shippingAddress?.ShipFName} {selectedOrder.shippingAddress?.ShipLName}</p>
+                    <p style={{ margin: 0 }}>{selectedOrder.shippingAddress?.ShipAddr} {selectedOrder.shippingAddress?.ShipAddr2}</p>
+                    <p style={{ margin: 0 }}>{selectedOrder.shippingAddress?.ShipCity}, {selectedOrder.shippingAddress?.ShipState} {selectedOrder.shippingAddress?.ShipZip}</p>
+                    <p style={{ margin: 0 }}>{selectedOrder.shippingAddress?.ShipCountry}</p>
+                    <p style={{ marginTop: "0.25rem", color: "hsl(var(--muted-hsl))", margin: "0.25rem 0 0 0" }}>📞 {selectedOrder.shippingAddress?.ShipPhone}</p>
+                  </div>
+                </div>
+
+                {/* Inline Shipping Method Selector (Admin Adjustment Modal/Card) */}
+                {isChangingShipping && (
+                  <div style={{
+                    marginTop: "0.75rem",
+                    padding: "1rem",
+                    backgroundColor: "#FFFFFF",
+                    border: "2px solid hsl(var(--accent-hsl))",
+                    borderRadius: "8px",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "0.85rem",
+                    boxShadow: "0 4px 15px rgba(0,0,0,0.06)"
+                  }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span style={{ fontWeight: 800, fontSize: "0.9rem", color: "hsl(var(--accent-hsl))", textTransform: "uppercase", letterSpacing: "0.03em" }}>
+                        SinaLite Live Shipping Rates
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => fetchShippingMethodsForOrder(selectedOrder.id)}
+                        disabled={loadingShippingMethods}
+                        className="btn btn-outline"
+                        style={{ padding: "0.2rem 0.5rem", fontSize: "0.72rem", display: "inline-flex", alignItems: "center", gap: "0.25rem" }}
+                      >
+                        <RefreshCw size={11} className={loadingShippingMethods ? "animate-spin" : ""} /> Refresh Rates
+                      </button>
+                    </div>
+
+                    <p style={{ fontSize: "0.78rem", color: "hsl(var(--muted-hsl))", margin: 0, lineHeight: 1.45 }}>
+                      Select a valid SinaLite shipping method to allow clean automated transmission. Customer will <strong>not</strong> receive an email notification or be charged any extra difference; variances are tracked as admin expenses.
+                    </p>
+
+                    {/* Loading or Error */}
+                    {loadingShippingMethods ? (
+                      <div style={{ padding: "1.5rem", textAlign: "center", color: "hsl(var(--muted-hsl))", fontSize: "0.85rem", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem" }}>
+                        <Loader2 size={16} className="animate-spin" /> Fetching live shipping methods from SinaLite API...
+                      </div>
+                    ) : shippingMethodsError ? (
+                      <div style={{ padding: "0.75rem", backgroundColor: "#FEF2F2", border: "1px solid #FCA5A5", borderRadius: "6px", color: "#B91C1C", fontSize: "0.8rem" }}>
+                        {shippingMethodsError}
+                      </div>
+                    ) : (
+                      <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                        {availableShippingMethods.map((method, mIdx) => {
+                          const isSelected = selectedNewShippingMethod === method.serviceName;
+                          const originalPaid = parseFloat(selectedOrder.originalShippingCharged !== undefined ? selectedOrder.originalShippingCharged : (selectedOrder.totals?.shipping || 0));
+                          const costDiff = method.price - originalPaid;
+
+                          return (
+                            <label
+                              key={mIdx}
+                              style={{
+                                display: "flex",
+                                justifyContent: "space-between",
+                                alignItems: "center",
+                                padding: "0.6rem 0.85rem",
+                                borderRadius: "6px",
+                                border: `1.5px solid ${isSelected ? "hsl(var(--accent-hsl))" : "hsl(var(--border-hsl))"}`,
+                                backgroundColor: isSelected ? "hsl(var(--accent-hsl) / 0.05)" : "#F8FAFC",
+                                cursor: "pointer",
+                                transition: "all 0.15s ease"
+                              }}
+                            >
+                              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                                <input
+                                  type="radio"
+                                  name="adminShippingMethod"
+                                  checked={isSelected}
+                                  onChange={() => {
+                                    setSelectedNewShippingMethod(method.serviceName);
+                                    setSelectedNewShippingPrice(method.price);
+                                  }}
+                                  style={{ accentColor: "hsl(var(--accent-hsl))" }}
+                                />
+                                <div>
+                                  <div style={{ fontWeight: 700, fontSize: "0.85rem", color: "hsl(var(--primary-hsl))" }}>
+                                    {method.serviceName}
+                                  </div>
+                                  <div style={{ fontSize: "0.72rem", color: "hsl(var(--muted-hsl))" }}>
+                                    Estimated Transit: {method.deliveryDays} business days
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div style={{ textAlign: "right" }}>
+                                <div style={{ fontWeight: 800, fontSize: "0.9rem", color: "#0F172A" }}>
+                                  ${method.price.toFixed(2)} CAD
+                                </div>
+                                <div style={{ fontSize: "0.7rem", fontWeight: 600 }}>
+                                  {costDiff > 0 ? (
+                                    <span style={{ color: "#D97706" }}>+${costDiff.toFixed(2)} Store Expense</span>
+                                  ) : costDiff < 0 ? (
+                                    <span style={{ color: "#16A34A" }}>-${Math.abs(costDiff).toFixed(2)} Saved</span>
+                                  ) : (
+                                    <span style={{ color: "#64748B" }}>Exact Match</span>
+                                  )}
+                                </div>
+                              </div>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem", marginTop: "0.5rem" }}>
+                      <button
+                        type="button"
+                        onClick={() => setIsChangingShipping(false)}
+                        className="btn btn-outline"
+                        style={{ padding: "0.4rem 0.85rem", fontSize: "0.8rem" }}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleSaveShippingUpdate(selectedOrder.id)}
+                        disabled={savingShippingUpdate || !selectedNewShippingMethod}
+                        className="btn btn-primary"
+                        style={{ padding: "0.4rem 1.15rem", fontSize: "0.8rem", display: "inline-flex", alignItems: "center", gap: "0.4rem" }}
+                      >
+                        {savingShippingUpdate ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />}
+                        Save Shipping Method
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Items List */}
