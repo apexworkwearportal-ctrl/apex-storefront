@@ -1,0 +1,10 @@
+# robots.txt for Apex Workwear, https://www.apexworkwear.ca
+User-agent: *
+Allow: /
+
+# Customer accounts, cart and checkout have no search value
+Disallow: /account
+Disallow: /cart
+Disallow: /checkout
+
+Sitemap: https://www.apexworkwear.ca/sitemap.xml
