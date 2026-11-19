@@ -53,10 +53,9 @@ const STANDARD_COLORS_PRESET = [
 ];
 
 const DEFAULT_PRINT_LOCATIONS = [
-  { id: "front", label: "Front Only", priceUpcharge: 0, sides: ["front"] },
-  { id: "back", label: "Back Only", priceUpcharge: 0, sides: ["back"] },
-  { id: "front_back", label: "Front & Back", priceUpcharge: 5.00, sides: ["front", "back"] },
-  { id: "left_chest_back", label: "Left Chest + Full Back", priceUpcharge: 6.00, sides: ["left", "back"] },
+  { id: "front", label: "Front", priceUpcharge: 0, sides: ["front"] },
+  { id: "back", label: "Back", priceUpcharge: 0, sides: ["back"] },
+  { id: "front_back", label: "Front + Back", priceUpcharge: 5.00, sides: ["front", "back"] },
 ];
 
 const DEFAULT_SIZE_CHART_TABLE = [
@@ -117,8 +116,6 @@ export default function AdminApparelProductEditPage({ params: paramsPromise }) {
   const [garmentViews, setGarmentViews] = useState({
     front: { image: "", calibration: { isCalibrated: false } },
     back: { image: "", calibration: { isCalibrated: false } },
-    left: { image: "", calibration: { isCalibrated: false } },
-    right: { image: "", calibration: { isCalibrated: false } },
   });
 
   // Modal for calibration (main garment views or specific color photo)
@@ -131,12 +128,37 @@ export default function AdminApparelProductEditPage({ params: paramsPromise }) {
     const fetchProductAndCategories = async () => {
       setLoading(true);
       try {
-        const catSnap = await getDocs(collection(db, "categories"));
-        const catList = [];
-        catSnap.forEach(d => {
-          catList.push({ id: d.id, ...d.data() });
-        });
-        setCategories(catList);
+        let loadedCats = false;
+        try {
+          const res = await fetch("/api/admin/apparel-categories");
+          if (res.ok) {
+            const data = await res.json();
+            if (data.success && Array.isArray(data.categories) && data.categories.length > 0) {
+              setCategories(data.categories);
+              loadedCats = true;
+            }
+          }
+        } catch (e) {
+          console.warn("API apparel categories fetch fallback:", e);
+        }
+
+        if (!loadedCats) {
+          let catSnap = await getDocs(collection(db, "apparel_categories"));
+          let catList = [];
+          catSnap.forEach(d => {
+            catList.push({ id: d.id, ...d.data() });
+          });
+
+          if (catList.length === 0) {
+            catSnap = await getDocs(collection(db, "categories"));
+            catSnap.forEach(d => {
+              catList.push({ id: d.id, ...d.data() });
+            });
+          }
+
+          catList.sort((a, b) => (Number(a.displayOrder) || 99) - (Number(b.displayOrder) || 99));
+          setCategories(catList);
+        }
 
         let docRef = doc(db, "apparel_products", productId);
         let snap = await getDoc(docRef);
@@ -602,7 +624,17 @@ export default function AdminApparelProductEditPage({ params: paramsPromise }) {
         updatedAt: new Date(),
       };
 
-      await updateDoc(docRef, productPayload);
+      // Save via admin API endpoint to bypass client permission limits
+      const apiRes = await fetch("/api/admin/apparel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: productId, product: productPayload })
+      });
+
+      if (!apiRes.ok) {
+        // Fallback
+        await updateDoc(docRef, productPayload);
+      }
 
       setSuccess(true);
       setTimeout(() => {
@@ -832,7 +864,7 @@ export default function AdminApparelProductEditPage({ params: paramsPromise }) {
             <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
               {colors.map((col, cIdx) => {
                 const isExpanded = expandedColorIndices.includes(cIdx);
-                const photoCount = ["front", "back", "left", "right"].filter(s => col.views?.[s]?.image).length;
+                const photoCount = ["front", "back"].filter(s => col.views?.[s]?.image).length;
 
                 return (
                   <div
@@ -927,7 +959,7 @@ export default function AdminApparelProductEditPage({ params: paramsPromise }) {
                         </div>
 
                         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "0.75rem" }}>
-                          {["front", "back", "left", "right"].map((sideKey) => {
+                          {["front", "back"].map((sideKey) => {
                             const sideView = col.views?.[sideKey];
                             const hasImg = !!sideView?.image;
                             const isOverridden = Boolean(sideView?.calibration?.isCalibrated);
@@ -1425,7 +1457,7 @@ export default function AdminApparelProductEditPage({ params: paramsPromise }) {
 
             {/* View angle upload cards */}
             <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-              {["front", "back", "left", "right"].map((sideKey) => {
+              {["front", "back"].map((sideKey) => {
                 const view = garmentViews[sideKey];
                 const hasImg = !!view?.image;
                 const isCalibrated = !!view?.calibration?.isCalibrated;

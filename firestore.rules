@@ -27,6 +27,12 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // Apparel Categories (Taxonomy): Public read for storefront; Admin write
+    match /apparel_categories/{categoryId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
     // Products: Public read for storefront; Admin write
     match /products/{productId} {
       allow read: if true;

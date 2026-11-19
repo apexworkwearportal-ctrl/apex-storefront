@@ -4,7 +4,7 @@ import { useEffect, useState, Suspense } from "react";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { db } from "@/lib/firebase";
-import { collection, getDocs, query, orderBy } from "firebase/firestore";
+import { collection, getDocs, doc, getDoc, query, orderBy } from "firebase/firestore";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { 
@@ -43,6 +43,7 @@ function ApparelCatalogContent() {
 
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
+  const [pricingSettings, setPricingSettings] = useState(null);
   const [loading, setLoading] = useState(true);
 
   // Filter & Sort States
@@ -115,12 +116,67 @@ function ApparelCatalogContent() {
 
         setProducts(items);
 
-        const cats = Array.from(catMap.entries()).map(([name, count]) => ({
-          name,
-          count,
-        })).sort((a, b) => b.count - a.count);
+        // Fetch defined apparel categories from taxonomy
+        let definedCats = [];
+        try {
+          const res = await fetch("/api/admin/apparel-categories");
+          if (res.ok) {
+            const d = await res.json();
+            if (d.success && Array.isArray(d.categories)) {
+              definedCats = d.categories.filter(c => c.isVisible !== false);
+            }
+          }
+        } catch (apiErr) {
+          console.warn("Could not fetch apparel_categories via API:", apiErr);
+        }
+
+        if (definedCats.length === 0) {
+          try {
+            const appCatSnap = await getDocs(collection(db, "apparel_categories"));
+            appCatSnap.forEach((d) => {
+              const cData = d.data();
+              if (cData.isVisible !== false) {
+                definedCats.push({ id: d.id, ...cData });
+              }
+            });
+            definedCats.sort((a, b) => (Number(a.displayOrder) || 99) - (Number(b.displayOrder) || 99));
+          } catch (e) {
+            console.warn("Could not load apparel_categories:", e);
+          }
+        }
+
+        let cats = [];
+        if (definedCats.length > 0) {
+          cats = definedCats.map((c) => ({
+            id: c.id,
+            name: c.name,
+            count: catMap.get(c.name) || catMap.get(c.id) || 0,
+            saleDiscountPercent: c.saleDiscountPercent || null,
+          }));
+          // Add any remaining categories found in products but not yet in taxonomy
+          catMap.forEach((count, name) => {
+            if (!cats.some(c => c.name.toLowerCase() === name.toLowerCase())) {
+              cats.push({ id: name, name, count });
+            }
+          });
+        } else {
+          cats = Array.from(catMap.entries()).map(([name, count]) => ({
+            name,
+            count,
+          })).sort((a, b) => b.count - a.count);
+        }
 
         setCategories(cats);
+
+        // Fetch global pricing settings for sitewide sale discount
+        try {
+          const pricingDoc = await getDoc(doc(db, "settings", "pricing"));
+          if (pricingDoc.exists()) {
+            setPricingSettings(pricingDoc.data());
+          }
+        } catch (e) {
+          console.warn("Could not load pricing settings in apparel:", e);
+        }
       } catch (err) {
         console.error("Error fetching apparel products:", err);
       } finally {
@@ -228,7 +284,7 @@ function ApparelCatalogContent() {
                 <Shirt size={14} />
                 PREMIUM EMBROIDERY & SCREEN PRINTING
               </div>
-              <h1 style={{ fontSize: "clamp(2rem, 4vw, 2.75rem)", fontWeight: 900, letterSpacing: "-0.03em", lineHeight: 1.15, marginBottom: "0.75rem" }}>
+              <h1 style={{ color: "#CBD5E1", fontSize: "clamp(2rem, 4vw, 2.75rem)", fontWeight: 900, letterSpacing: "-0.03em", lineHeight: 1.15, marginBottom: "0.75rem" }}>
                 Custom Branded Apparel
               </h1>
               <p style={{ color: "#CBD5E1", fontSize: "1.05rem", maxWidth: "620px", lineHeight: 1.6 }}>
@@ -496,9 +552,16 @@ function ApparelCatalogContent() {
                     const frontImg = views.front?.image || product.thumbnail || product.imageUrl || "/images/apparel-placeholder.png";
                     const viewCount = Object.keys(views).length;
                     const displayPrice = parseFloat(product.basePrice || product.price || 0);
-                    const saleDiscountPercent = parseFloat(product.saleDiscountPercent);
-                    const hasSale = !isNaN(saleDiscountPercent) && saleDiscountPercent > 0 && saleDiscountPercent < 100;
-                    const salePrice = hasSale ? Math.round(displayPrice * (1 - saleDiscountPercent / 100) * 100) / 100 : null;
+                    const prodDiscount = parseFloat(product.saleDiscountPercent);
+                    const globalDiscount = parseFloat(pricingSettings?.saleDiscountPercent);
+                    const effectiveSaleDiscount = (!isNaN(prodDiscount) && prodDiscount > 0 && prodDiscount < 100)
+                      ? prodDiscount
+                      : (!isNaN(globalDiscount) && globalDiscount > 0 && globalDiscount < 100)
+                        ? globalDiscount
+                        : null;
+                    const hasSale = displayPrice > 0 && effectiveSaleDiscount !== null;
+                    const salePrice = hasSale ? Math.round(displayPrice * (1 - effectiveSaleDiscount / 100) * 100) / 100 : null;
+                    const saleDiscountPercent = effectiveSaleDiscount;
 
                     return (
                       <Link

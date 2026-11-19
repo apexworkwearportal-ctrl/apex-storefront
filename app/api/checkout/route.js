@@ -97,22 +97,29 @@ async function saveAddressToUserIfNeeded(userId, shippingAddress) {
 
 export async function POST(req) {
   try {
-    const { items, shippingAddress, selectedShippingRate, userId, promoCode } = await req.json();
+    const { items, shippingAddress, selectedShippingRate, userId, promoCode, isPickup, fulfillmentMethod } = await req.json();
 
-    if (!items || items.length === 0 || !shippingAddress || !selectedShippingRate) {
+    const pickupOrder = isPickup || fulfillmentMethod === "pickup";
+    const effectiveShippingRate = pickupOrder 
+      ? { serviceName: "Store Pickup (Free)", price: 0 }
+      : selectedShippingRate;
+
+    if (!items || items.length === 0 || !shippingAddress || !effectiveShippingRate) {
       return Response.json({ error: "Missing required checkout fields" }, { status: 400 });
     }
 
-    // Auto-save shipping address into user document if logged in
-    await saveAddressToUserIfNeeded(userId, shippingAddress);
+    // Auto-save shipping address into user document if logged in (for non-pickup orders)
+    if (!pickupOrder) {
+      await saveAddressToUserIfNeeded(userId, shippingAddress);
+    }
 
     // 1. Calculate Totals
     const subtotal = items.reduce((acc, item) => acc + (parseFloat(item.price) * parseInt(item.quantity)), 0);
     const discountAmount = promoCode && promoCode.discountAmount ? parseFloat(promoCode.discountAmount) : 0;
     const discountedSubtotal = Math.max(0, subtotal - discountAmount);
 
-    const shipping = parseFloat(selectedShippingRate.price || 0);
-    const taxRate = calculateTaxRate(shippingAddress.ShipState);
+    const shipping = parseFloat(effectiveShippingRate.price || 0);
+    const taxRate = calculateTaxRate(shippingAddress.ShipState || "ON");
     const tax = (discountedSubtotal + shipping) * taxRate;
     const grandTotal = discountedSubtotal + shipping + tax;
 
@@ -120,6 +127,9 @@ export async function POST(req) {
       userId: userId || "guest",
       status: "payment_pending",
       paymentStatus: "pending",
+      isPickup: pickupOrder,
+      fulfillmentMethod: pickupOrder ? "pickup" : "shipping",
+      pickupAddress: pickupOrder ? "1515 Britannia Rd E, Unit 14-15, Mississauga, ON L4W 4K1" : null,
       items: items.map(i => ({
         productId: i.productId,
         name: i.name,
@@ -228,7 +238,7 @@ export async function POST(req) {
         price_data: {
           currency: "cad",
           product_data: {
-            name: `Shipping: ${selectedShippingRate.serviceName}`,
+            name: pickupOrder ? "Fulfillment: Store Pickup (Free)" : `Shipping: ${effectiveShippingRate.serviceName}`,
           },
           unit_amount: Math.round(shipping * 100),
         },

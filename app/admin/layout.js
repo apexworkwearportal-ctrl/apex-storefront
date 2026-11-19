@@ -37,9 +37,10 @@ function AdminNavList({ pathname, navSections }) {
 
     // Handle apparel section
     if (href.startsWith("/admin/apparel")) {
-      if (pathname === "/admin/apparel/new") return href === "/admin/apparel/new";
-      if (pathname !== "/admin/apparel") return false;
-      return href === "/admin/apparel";
+      if (href === "/admin/apparel/categories") return pathname === "/admin/apparel/categories";
+      if (href === "/admin/apparel/new") return pathname === "/admin/apparel/new";
+      if (pathname === "/admin/apparel/categories" || pathname === "/admin/apparel/new") return false;
+      return pathname === "/admin/apparel";
     }
 
     // Handle products tabs (synced vs custom)
@@ -69,9 +70,9 @@ function AdminNavList({ pathname, navSections }) {
     if (href.startsWith("/admin/categories")) {
       if (pathname !== "/admin/categories") return false;
       const isMega = href.includes("tab=megamenu");
-      if (isMega) {
-        return currentTab === "megamenu";
-      }
+      if (isMega) return currentTab === "megamenu";
+      const isFeatured = href.includes("tab=featured");
+      if (isFeatured) return currentTab === "featured";
       return !currentTab || currentTab === "taxonomy";
     }
 
@@ -233,6 +234,7 @@ export default function AdminLayout({ children }) {
         { label: "Custom In-House Products", href: "/admin/products?type=custom", icon: Sparkles },
         { label: "Categories Taxonomy", href: "/admin/categories?tab=taxonomy", icon: FolderEdit },
         { label: "Header Mega Menu", href: "/admin/categories?tab=megamenu", icon: Layers },
+        { label: "Homepage Products", href: "/admin/categories?tab=featured", icon: Sparkles },
         { label: "Add Custom Product", href: "/admin/products/new", icon: Plus },
       ]
     },
@@ -240,6 +242,7 @@ export default function AdminLayout({ children }) {
       title: "APPAREL & EMBROIDERY",
       items: [
         { label: "Apparel Catalog", href: "/admin/apparel", icon: Shirt },
+        { label: "Apparel Taxonomy", href: "/admin/apparel/categories", icon: FolderEdit },
         { label: "Add Apparel Product", href: "/admin/apparel/new", icon: Plus },
       ]
     },

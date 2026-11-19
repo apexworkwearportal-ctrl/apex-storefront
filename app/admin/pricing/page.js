@@ -634,8 +634,9 @@ function CustomPrintCostingTab() {
   const activeClickCharge = testMode === "color" ? (parseFloat(colorClickCharge) || 0.08) : (parseFloat(grayscaleClickCharge) || 0.02);
   const activeMultiplier = Math.max(1, parseFloat(markupMultiplier) || 2.0);
 
-  const clicks = qtyNum / impNum;
-  const paperCost = (sidesNum * (costPerMNum / 1000)) * clicks;
+  const sheetsNeeded = (qtyNum / impNum)
+  const clicks = sheetsNeeded * sidesNum;
+  const paperCost = ( (costPerMNum / 1000)) * sheetsNeeded;
   const clickCost = clicks * activeClickCharge;
   const totalCost = paperCost + clickCost;
   const finalPrice = basePriceNum + (totalCost * activeMultiplier);

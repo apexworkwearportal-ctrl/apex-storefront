@@ -55,6 +55,20 @@ function ApparelCatalogContent() {
     let active = true;
     async function init() {
       try {
+        const res = await fetch("/api/admin/apparel");
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && Array.isArray(data.products) && active) {
+            setProducts(data.products);
+            setLoading(false);
+            return;
+          }
+        }
+      } catch (apiErr) {
+        console.warn("API apparel fetch fallback to Firestore:", apiErr);
+      }
+
+      try {
         const colRef = collection(db, "apparel_products");
         const snapshot = await getDocs(colRef);
         const list = [];
@@ -77,6 +91,16 @@ function ApparelCatalogContent() {
 
   const handleToggleVisibility = async (productId, currentVisibility) => {
     try {
+      const res = await fetch("/api/admin/apparel", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: productId, isVisible: !currentVisibility })
+      });
+      if (res.ok) {
+        setProducts(prev => prev.map(p => p.id === productId ? { ...p, isVisible: !currentVisibility } : p));
+        return;
+      }
+      // Fallback
       const productRef = doc(db, "apparel_products", productId);
       await updateDoc(productRef, { isVisible: !currentVisibility });
       setProducts(prev => prev.map(p => p.id === productId ? { ...p, isVisible: !currentVisibility } : p));
@@ -90,6 +114,14 @@ function ApparelCatalogContent() {
       return;
     }
     try {
+      const res = await fetch(`/api/admin/apparel?id=${encodeURIComponent(productId)}`, {
+        method: "DELETE"
+      });
+      if (res.ok) {
+        setProducts(prev => prev.filter(p => p.id !== productId));
+        return;
+      }
+      // Fallback
       await deleteDoc(doc(db, "apparel_products", productId));
       setProducts(prev => prev.filter(p => p.id !== productId));
     } catch (err) {

@@ -39,6 +39,13 @@ function AdminOrdersContent() {
   const [uploadingArtworkIdx, setUploadingArtworkIdx] = useState(null);
   const [artworkStatusMsg, setArtworkStatusMsg] = useState("");
 
+  // Custom Email Modal States
+  const [emailModalOpen, setEmailModalOpen] = useState(false);
+  const [customEmailSubject, setCustomEmailSubject] = useState("");
+  const [customEmailMessage, setCustomEmailMessage] = useState("");
+  const [sendingCustomEmail, setSendingCustomEmail] = useState(false);
+  const [customEmailStatus, setCustomEmailStatus] = useState("");
+
   // Shipping Adjustment States (Admin)
   const [isChangingShipping, setIsChangingShipping] = useState(false);
   const [loadingShippingMethods, setLoadingShippingMethods] = useState(false);
@@ -47,6 +54,13 @@ function AdminOrdersContent() {
   const [selectedNewShippingMethod, setSelectedNewShippingMethod] = useState("");
   const [selectedNewShippingPrice, setSelectedNewShippingPrice] = useState(0);
   const [savingShippingUpdate, setSavingShippingUpdate] = useState(false);
+
+  // Tracking details state (Admin)
+  const [carrierInput, setCarrierInput] = useState("");
+  const [trackingNumberInput, setTrackingNumberInput] = useState("");
+  const [trackingUrlInput, setTrackingUrlInput] = useState("");
+  const [savingTracking, setSavingTracking] = useState(false);
+  const [trackingSuccessMsg, setTrackingSuccessMsg] = useState("");
 
   // Editable destination address fields
   const [editAddress, setEditAddress] = useState({
@@ -60,6 +74,51 @@ function AdminOrdersContent() {
     ShipFName: "",
     ShipLName: ""
   });
+
+  useEffect(() => {
+    if (selectedOrder) {
+      setCarrierInput(selectedOrder.carrier || "UPS");
+      setTrackingNumberInput(selectedOrder.trackingNumber || selectedOrder.shippingTrackingNumber || selectedOrder.sinaliteTrackingNumber || "");
+      setTrackingUrlInput(selectedOrder.trackingUrl || "");
+      setTrackingSuccessMsg("");
+    }
+  }, [selectedOrder]);
+
+  const handleSaveTracking = async (notifyCustomer = false) => {
+    if (!selectedOrder?.id) return;
+    setSavingTracking(true);
+    setTrackingSuccessMsg("");
+    try {
+      const res = await fetch("/api/admin/orders/update-tracking", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orderId: selectedOrder.id,
+          carrier: carrierInput,
+          trackingNumber: trackingNumberInput,
+          trackingUrl: trackingUrlInput,
+          notifyCustomer
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Failed to update tracking details");
+      }
+
+      const updated = data.order;
+      setSelectedOrder(prev => prev ? ({ ...prev, ...updated }) : null);
+      setOrders(prev => prev.map(o => o.id === selectedOrder.id ? { ...o, ...updated } : o));
+
+      setTrackingSuccessMsg(notifyCustomer ? "Tracking saved and email sent to customer!" : "Tracking details saved!");
+      setTimeout(() => setTrackingSuccessMsg(""), 4000);
+    } catch (err) {
+      console.error("Save tracking error:", err);
+      alert(`Could not save tracking: ${err.message}`);
+    } finally {
+      setSavingTracking(false);
+    }
+  };
 
   const handleOpenShippingChange = async (order) => {
     if (!order) return;
@@ -423,8 +482,77 @@ function AdminOrdersContent() {
       if (selectedOrder?.id === orderId) {
         setSelectedOrder(prev => ({ ...prev, status: newStatus }));
       }
+
+      // Prompt admin if they want to notify the customer via email
+      const sendEmail = window.confirm(
+        `Order status updated to "${newStatus.toUpperCase()}".\n\nDo you want to send an email notification to the customer?`
+      );
+
+      if (sendEmail) {
+        setArtworkStatusMsg("Sending status update email to customer...");
+        try {
+          const res = await fetch("/api/admin/orders/send-email", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              orderId,
+              type: "status_update",
+              statusText: newStatus,
+              trackingNumber: selectedOrder?.sinaliteTrackingNumber || selectedOrder?.trackingNumber || ""
+            })
+          });
+          const data = await res.json();
+          if (data.success) {
+            setArtworkStatusMsg("Status update email sent to customer!");
+          } else {
+            setArtworkStatusMsg(data.error ? `Failed to send email: ${data.error}` : "Failed to send email");
+          }
+        } catch (emailErr) {
+          console.error("Error sending status email:", emailErr);
+          setArtworkStatusMsg("Failed to send status email");
+        }
+        setTimeout(() => setArtworkStatusMsg(""), 4000);
+      }
     } catch (err) {
       console.error("Failed to update status:", err);
+      alert("Failed to update status: " + err.message);
+    }
+  };
+
+  const handleSendCustomEmail = async (e) => {
+    e?.preventDefault();
+    if (!customEmailMessage.trim()) {
+      alert("Please enter a message before sending.");
+      return;
+    }
+    setSendingCustomEmail(true);
+    setCustomEmailStatus("");
+    try {
+      const res = await fetch("/api/admin/orders/send-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orderId: selectedOrder.id,
+          type: "custom",
+          subject: customEmailSubject,
+          message: customEmailMessage
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setCustomEmailStatus("Email sent successfully!");
+        setTimeout(() => {
+          setEmailModalOpen(false);
+          setCustomEmailStatus("");
+        }, 1500);
+      } else {
+        setCustomEmailStatus(data.error || "Failed to send email");
+      }
+    } catch (err) {
+      console.error(err);
+      setCustomEmailStatus("Network error sending email");
+    } finally {
+      setSendingCustomEmail(false);
     }
   };
 
@@ -935,9 +1063,24 @@ function AdminOrdersContent() {
               {/* Status Updater - Only for Paid Orders */}
               {isPaidOrder(selectedOrder) && (
                 <div>
-                  <label className="label">Update Order Status</label>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.4rem" }}>
+                    <label className="label" style={{ margin: 0 }}>Update Order Status</label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCustomEmailSubject(`Regarding your Apex Workwear & Print Order #${(selectedOrder.id || "").substring(0, 8)}`);
+                        setCustomEmailMessage("");
+                        setCustomEmailStatus("");
+                        setEmailModalOpen(true);
+                      }}
+                      className="btn btn-outline"
+                      style={{ padding: "0.25rem 0.65rem", fontSize: "0.75rem", display: "inline-flex", alignItems: "center", gap: "0.35rem" }}
+                    >
+                      <Mail size={13} /> Send Email to Customer
+                    </button>
+                  </div>
                   <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-                    {["pending", "processing", "submitted", "in_production", "shipped", "completed", "cancelled"].map(status => (
+                    {["pending", "processing", "submitted", "in_production", "ready_to_pickup", "shipped", "completed", "cancelled"].map(status => (
                       <button
                         key={status}
                         onClick={() => handleUpdateStatus(selectedOrder.id, status)}
@@ -954,7 +1097,7 @@ function AdminOrdersContent() {
                           cursor: "pointer"
                         }}
                       >
-                        {status}
+                        {status === "ready_to_pickup" ? "Ready for Pickup" : status.replace(/_/g, " ")}
                       </button>
                     ))}
                   </div>
@@ -965,11 +1108,11 @@ function AdminOrdersContent() {
               <div>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
                   <h3 style={{ fontSize: "1rem", fontWeight: 700, margin: 0, display: "flex", alignItems: "center", gap: "0.4rem" }}>
-                    <Truck size={16} /> Shipping & Fulfillment
+                    <Truck size={16} /> Shipping &amp; Fulfillment
                   </h3>
 
                   {/* Option to change shipping only for SinaLite print orders not yet submitted */}
-                  {isPaidOrder(selectedOrder) && !selectedOrder.sinaliteOrderId && selectedOrder.orderType !== "apparel" && (
+                  {isPaidOrder(selectedOrder) && !selectedOrder.sinaliteOrderId && selectedOrder.orderType !== "apparel" && !selectedOrder.isPickup && (
                     <button
                       type="button"
                       onClick={() => {
@@ -988,7 +1131,44 @@ function AdminOrdersContent() {
                   )}
                 </div>
 
-                <div style={{ fontSize: "0.9rem", color: "hsl(var(--foreground-hsl) / 0.8)", lineHeight: 1.5, backgroundColor: "hsl(var(--secondary-hsl) / 0.2)", padding: "0.85rem", borderRadius: "var(--radius-sm)", display: "flex", flexDirection: "column", gap: "0.4rem" }}>
+                <div style={{ fontSize: "0.9rem", color: "hsl(var(--foreground-hsl) / 0.8)", lineHeight: 1.5, backgroundColor: "hsl(var(--secondary-hsl) / 0.2)", padding: "0.85rem", borderRadius: "var(--radius-sm)", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                  {/* Store Pickup Banner if applicable */}
+                  {(selectedOrder.isPickup || selectedOrder.fulfillmentMethod === "pickup" || String(selectedOrder.shippingAddress?.ShipMethod || "").toLowerCase().includes("pickup")) && (
+                    <div style={{
+                      backgroundColor: "#F0FDF4",
+                      border: "1px solid #86EFAC",
+                      borderRadius: "6px",
+                      padding: "0.55rem 0.75rem",
+                      color: "#166534",
+                      fontSize: "0.825rem",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      flexWrap: "wrap",
+                      gap: "0.5rem"
+                    }}>
+                      <span>🏬 <strong>Store Pickup Order:</strong> Customer will collect at Mississauga facility (Free).</span>
+                      {selectedOrder.status !== "ready_to_pickup" && (
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateStatus(selectedOrder.id, "ready_to_pickup")}
+                          style={{
+                            padding: "0.2rem 0.55rem",
+                            fontSize: "0.72rem",
+                            fontWeight: 700,
+                            borderRadius: "4px",
+                            border: "1px solid #86EFAC",
+                            backgroundColor: "#DCFCE7",
+                            color: "#15803D",
+                            cursor: "pointer"
+                          }}
+                        >
+                          Mark Ready for Pickup
+                        </button>
+                      )}
+                    </div>
+                  )}
+
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", borderBottom: "1px solid hsl(var(--border-hsl))", paddingBottom: "0.4rem" }}>
                     <div>
                       <span style={{ fontSize: "0.75rem", color: "hsl(var(--muted-hsl))", textTransform: "uppercase", fontWeight: 700, display: "block" }}>
@@ -1039,6 +1219,97 @@ function AdminOrdersContent() {
                     <p style={{ margin: 0 }}>{selectedOrder.shippingAddress?.ShipCity}, {selectedOrder.shippingAddress?.ShipState} {selectedOrder.shippingAddress?.ShipZip}</p>
                     <p style={{ margin: 0 }}>{selectedOrder.shippingAddress?.ShipCountry}</p>
                     <p style={{ marginTop: "0.25rem", color: "hsl(var(--muted-hsl))", margin: "0.25rem 0 0 0" }}>📞 {selectedOrder.shippingAddress?.ShipPhone}</p>
+                  </div>
+                </div>
+
+                {/* Tracking & Carrier Information (Admin) */}
+                <div style={{
+                  marginTop: "0.75rem",
+                  padding: "0.95rem",
+                  backgroundColor: "#FFFFFF",
+                  border: "1px solid #CBD5E1",
+                  borderRadius: "8px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "0.65rem",
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.03)"
+                }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ fontSize: "0.82rem", fontWeight: 800, color: "#1E293B", textTransform: "uppercase", letterSpacing: "0.04em", display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                      <Truck size={14} style={{ color: "#2563EB" }} /> Shipping Tracking &amp; Link
+                    </span>
+                    {trackingSuccessMsg && (
+                      <span style={{ fontSize: "0.75rem", color: "#16A34A", fontWeight: 700 }}>
+                        ✓ {trackingSuccessMsg}
+                      </span>
+                    )}
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "140px 1fr", gap: "0.6rem" }}>
+                    <div>
+                      <label style={{ display: "block", fontSize: "0.72rem", color: "#64748B", fontWeight: 700, marginBottom: "0.2rem" }}>Carrier</label>
+                      <input
+                        type="text"
+                        placeholder="UPS, FedEx, etc."
+                        value={carrierInput}
+                        onChange={(e) => setCarrierInput(e.target.value)}
+                        style={{ width: "100%", padding: "0.4rem 0.55rem", fontSize: "0.82rem", borderRadius: "5px", border: "1px solid #CBD5E1" }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: "block", fontSize: "0.72rem", color: "#64748B", fontWeight: 700, marginBottom: "0.2rem" }}>Tracking Number / Waybill</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. 1Z9999999999999999"
+                        value={trackingNumberInput}
+                        onChange={(e) => setTrackingNumberInput(e.target.value)}
+                        style={{ width: "100%", padding: "0.4rem 0.55rem", fontSize: "0.82rem", borderRadius: "5px", border: "1px solid #CBD5E1" }}
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label style={{ display: "block", fontSize: "0.72rem", color: "#64748B", fontWeight: 700, marginBottom: "0.2rem" }}>Carrier Tracking Link (URL)</label>
+                    <input
+                      type="url"
+                      placeholder="https://www.ups.com/track?tracknum=..."
+                      value={trackingUrlInput}
+                      onChange={(e) => setTrackingUrlInput(e.target.value)}
+                      style={{ width: "100%", padding: "0.4rem 0.55rem", fontSize: "0.82rem", borderRadius: "5px", border: "1px solid #CBD5E1" }}
+                    />
+                  </div>
+
+                  <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: "0.5rem", marginTop: "0.25rem" }}>
+                    {trackingUrlInput && (
+                      <a
+                        href={trackingUrlInput}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="btn btn-outline"
+                        style={{ padding: "0.3rem 0.65rem", fontSize: "0.75rem", display: "inline-flex", alignItems: "center", gap: "0.3rem" }}
+                      >
+                        <ExternalLink size={12} /> Test Link
+                      </a>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => handleSaveTracking(false)}
+                      disabled={savingTracking}
+                      className="btn btn-secondary"
+                      style={{ padding: "0.35rem 0.75rem", fontSize: "0.75rem" }}
+                    >
+                      Save Details
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleSaveTracking(true)}
+                      disabled={savingTracking}
+                      className="btn btn-primary"
+                      style={{ padding: "0.35rem 0.85rem", fontSize: "0.75rem", display: "inline-flex", alignItems: "center", gap: "0.35rem" }}
+                    >
+                      {savingTracking ? <Loader2 size={12} className="animate-spin" /> : <Mail size={12} />}
+                      Save &amp; Notify Customer
+                    </button>
                   </div>
                 </div>
 
@@ -1434,6 +1705,108 @@ function AdminOrdersContent() {
                 <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 800, fontSize: "1rem", color: "hsl(var(--accent-hsl))", borderTop: "1px dashed hsl(var(--border-hsl))", paddingTop: "0.25rem" }}>
                   <span>Grand Total:</span>
                   <span>${parseFloat(selectedOrder.totals?.grandTotal || 0).toFixed(2)} CAD</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Custom Email to Customer Modal */}
+          {emailModalOpen && selectedOrder && (
+            <div style={{
+              position: "fixed",
+              inset: 0,
+              backgroundColor: "rgba(0, 0, 0, 0.55)",
+              zIndex: 99999,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "1rem"
+            }}>
+              <div style={{
+                backgroundColor: "hsl(var(--card-hsl))",
+                border: "1px solid hsl(var(--border-hsl))",
+                borderRadius: "var(--radius-lg, 12px)",
+                maxWidth: "560px",
+                width: "100%",
+                padding: "1.5rem",
+                boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.3)",
+                display: "flex",
+                flexDirection: "column",
+                gap: "1rem"
+              }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid hsl(var(--border-hsl))", paddingBottom: "0.75rem" }}>
+                  <h3 style={{ margin: 0, fontSize: "1.1rem", fontWeight: 700, display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                    <Mail size={18} /> Send Customer Email
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => setEmailModalOpen(false)}
+                    style={{ background: "none", border: "none", fontSize: "1.2rem", cursor: "pointer", color: "hsl(var(--muted-hsl))" }}
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <p style={{ fontSize: "0.85rem", color: "hsl(var(--muted-hsl))", margin: 0 }}>
+                  This email will be delivered to <strong>{selectedOrder.shippingAddress?.ShipEmail || selectedOrder.shippingAddress?.email || selectedOrder.userEmail || "Customer"}</strong> with the official Apex Workwear &amp; Print branded header and footer.
+                </p>
+
+                <div>
+                  <label className="label" style={{ fontSize: "0.8rem", marginBottom: "0.25rem" }}>Subject Line</label>
+                  <input
+                    type="text"
+                    className="input"
+                    value={customEmailSubject}
+                    onChange={(e) => setCustomEmailSubject(e.target.value)}
+                    placeholder="Subject"
+                    style={{ width: "100%", fontSize: "0.9rem" }}
+                  />
+                </div>
+
+                <div>
+                  <label className="label" style={{ fontSize: "0.8rem", marginBottom: "0.25rem" }}>Message Content</label>
+                  <textarea
+                    className="input"
+                    rows={6}
+                    value={customEmailMessage}
+                    onChange={(e) => setCustomEmailMessage(e.target.value)}
+                    placeholder="Write your email body here... Newlines are formatted into paragraphs."
+                    style={{ width: "100%", fontSize: "0.9rem", resize: "vertical" }}
+                  />
+                </div>
+
+                {customEmailStatus && (
+                  <div style={{
+                    padding: "0.6rem 0.85rem",
+                    borderRadius: "6px",
+                    fontSize: "0.85rem",
+                    fontWeight: 600,
+                    backgroundColor: customEmailStatus.includes("success") ? "#D1FAE5" : "#FEE2E2",
+                    color: customEmailStatus.includes("success") ? "#065F46" : "#991B1B"
+                  }}>
+                    {customEmailStatus}
+                  </div>
+                )}
+
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem", marginTop: "0.5rem" }}>
+                  <button
+                    type="button"
+                    onClick={() => setEmailModalOpen(false)}
+                    className="btn btn-outline"
+                    disabled={sendingCustomEmail}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSendCustomEmail}
+                    className="btn btn-primary"
+                    disabled={sendingCustomEmail}
+                    style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem" }}
+                  >
+                    {sendingCustomEmail ? <Loader2 size={16} className="animate-spin" /> : <Mail size={16} />}
+                    {sendingCustomEmail ? "Sending..." : "Send Email"}
+                  </button>
                 </div>
               </div>
             </div>

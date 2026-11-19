@@ -503,6 +503,24 @@ export default function HomeClient({ categories, featuredProducts = [] }) {
                     {p.badge}
                   </span>
                 )}
+                {p.salePrice && (
+                  <span style={{
+                    position: "absolute",
+                    top: "1rem",
+                    right: "1rem",
+                    backgroundColor: "#DC2626",
+                    color: "white",
+                    fontSize: "0.65rem",
+                    fontWeight: 900,
+                    textTransform: "uppercase",
+                    padding: "0.25rem 0.5rem",
+                    borderRadius: "4px",
+                    zIndex: 5,
+                    letterSpacing: "0.05em"
+                  }}>
+                    SALE {p.saleDiscountPercent ? `-${p.saleDiscountPercent}%` : ""}
+                  </span>
+                )}
                 <div style={{ width: "100%", height: "180px", overflow: "hidden", borderBottom: "1px solid hsl(var(--border-hsl))", backgroundColor: "white" }}>
                   <img
                     src={p.image}
@@ -523,10 +541,23 @@ export default function HomeClient({ categories, featuredProducts = [] }) {
                   
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "auto", paddingTop: "0.5rem" }}>
                     <div>
-                      <p style={{ fontSize: "0.6rem", color: "hsl(var(--muted-hsl))", textTransform: "uppercase", fontWeight: 600 }}>Starting from</p>
-                      <p style={{ fontWeight: 800, color: "hsl(var(--accent-hsl))", fontSize: "1rem" }}>
-                        {p.price ? (p.price.includes("$") ? p.price : `$${p.price}`) : "$19.99"} CAD
+                      <p style={{ fontSize: "0.6rem", color: "hsl(var(--muted-hsl))", textTransform: "uppercase", fontWeight: 600 }}>
+                        {p.salePrice ? "Sale Price" : "Starting from"}
                       </p>
+                      {p.salePrice ? (
+                        <div style={{ display: "flex", flexDirection: "column" }}>
+                          <span style={{ fontSize: "0.8rem", color: "hsl(var(--muted-hsl))", textDecoration: "line-through", fontWeight: 700 }}>
+                            {p.price} CAD
+                          </span>
+                          <span style={{ fontWeight: 900, color: "#DC2626", fontSize: "1.05rem" }}>
+                            {p.salePrice} CAD
+                          </span>
+                        </div>
+                      ) : (
+                        <p style={{ fontWeight: 800, color: "hsl(var(--accent-hsl))", fontSize: "1rem" }}>
+                          {p.price && p.price !== "$0.00" ? (p.price.includes("$") ? p.price : `$${p.price}`) : "Select Options"} {p.price && p.price !== "$0.00" ? "CAD" : ""}
+                        </p>
+                      )}
                     </div>
                     <Link href={p.href || `/products/${p.id}`} className="btn btn-primary" style={{
                       fontSize: "0.75rem",

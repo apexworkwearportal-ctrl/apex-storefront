@@ -1293,7 +1293,7 @@ export default function ProductDetailPage({ params: paramsPromise }) {
                     </li>
                     <li style={{ display: "flex", alignItems: "flex-start", gap: "0.6rem" }}>
                       <CheckCircle2 size={16} style={{ color: "hsl(var(--success-hsl))", flexShrink: 0, marginTop: "3px" }} />
-                      <span><strong>Bleed Margin:</strong> 0.125&quot; (1/8&quot;) on all trimmed edges to avoid unprinted borders.</span>
+                      <span><strong>Bleed Margin:</strong> 0.025&quot; (1/8&quot;) on all trimmed edges to avoid unprinted borders.</span>
                     </li>
                     <li style={{ display: "flex", alignItems: "flex-start", gap: "0.6rem" }}>
                       <CheckCircle2 size={16} style={{ color: "hsl(var(--success-hsl))", flexShrink: 0, marginTop: "3px" }} />
@@ -1305,7 +1305,7 @@ export default function ProductDetailPage({ params: paramsPromise }) {
                     </li>
                     <li style={{ display: "flex", alignItems: "flex-start", gap: "0.6rem" }}>
                       <CheckCircle2 size={16} style={{ color: "hsl(var(--success-hsl))", flexShrink: 0, marginTop: "3px" }} />
-                      <span><strong>Safety Zone:</strong> Keep critical text and logos at least 0.125&quot; away from the trim line.</span>
+                      <span><strong>Safety Zone:</strong> Keep critical text and logos at least 0.025&quot; away from the trim line.</span>
                     </li>
                   </ul>
                 </div>

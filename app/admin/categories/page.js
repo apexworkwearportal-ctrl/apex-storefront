@@ -6,6 +6,7 @@ import { db } from "@/lib/firebase";
 import { collection, getDocs, doc, getDoc, setDoc, updateDoc, query, orderBy } from "firebase/firestore";
 import { useRouter, useSearchParams } from "next/navigation";
 import AdminMegaMenuManager from "@/components/admin/AdminMegaMenuManager";
+import AdminHomepageFeaturedManager from "@/components/admin/AdminHomepageFeaturedManager";
 import { 
   Save, 
   Upload, 
@@ -27,7 +28,8 @@ function AdminCategoriesContent() {
   const { user } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const currentTab = searchParams.get("tab") === "megamenu" ? "megamenu" : "taxonomy";
+  const tabParam = searchParams.get("tab");
+  const currentTab = tabParam === "megamenu" ? "megamenu" : tabParam === "featured" ? "featured" : "taxonomy";
 
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -287,11 +289,17 @@ function AdminCategoriesContent() {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.5rem", flexWrap: "wrap", gap: "1rem" }}>
         <div>
           <h1 style={{ fontSize: "2rem", marginBottom: "0.25rem" }}>
-            {currentTab === "megamenu" ? "Header Mega Menu Navigation" : "Categories Taxonomy & Pricing Rules"}
+            {currentTab === "megamenu" 
+              ? "Header Mega Menu Navigation" 
+              : currentTab === "featured" 
+              ? "Homepage Featured Products" 
+              : "Categories Taxonomy & Pricing Rules"}
           </h1>
           <p style={{ color: "hsl(var(--muted-hsl))", fontSize: "0.95rem" }}>
             {currentTab === "megamenu"
               ? "Customize the top navbar categories, dropdown subcategories, badges, icons, and spotlight feature banners."
+              : currentTab === "featured"
+              ? "Configure spotlight products displayed in the featured section on the storefront homepage."
               : "Edit catalog hierarchy, hero images, descriptions, home visibility, and category-level markup overrides."}
           </p>
         </div>
@@ -372,10 +380,35 @@ function AdminCategoriesContent() {
             Live
           </span>
         </button>
+
+        <button
+          onClick={() => router.push("/admin/categories?tab=featured")}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "0.5rem",
+            padding: "0.75rem 1.25rem",
+            fontSize: "0.9rem",
+            fontWeight: currentTab === "featured" ? 700 : 500,
+            color: currentTab === "featured" ? "#2563EB" : "#64748B",
+            borderBottom: currentTab === "featured" ? "2px solid #2563EB" : "2px solid transparent",
+            background: "none",
+            borderTop: "none",
+            borderLeft: "none",
+            borderRight: "none",
+            cursor: "pointer",
+            transition: "all 0.15s ease"
+          }}
+        >
+          <Sparkles size={16} />
+          Homepage Products
+        </button>
       </div>
 
       {currentTab === "megamenu" ? (
         <AdminMegaMenuManager categories={categories} onCategoriesUpdated={fetchCategories} />
+      ) : currentTab === "featured" ? (
+        <AdminHomepageFeaturedManager categories={categories} />
       ) : (
         <>
 

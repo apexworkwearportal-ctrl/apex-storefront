@@ -969,13 +969,17 @@ export default function AccountDashboard() {
                                 textTransform: "uppercase",
                                 backgroundColor: !isPaid
                                   ? "#FEF3C7"
-                                  : (isShipped ? "hsl(var(--success-hsl) / 0.15)" : "hsl(var(--accent-hsl) / 0.15)"),
+                                  : statusUpper === "READY_TO_PICKUP"
+                                    ? "#DCFCE7"
+                                    : (isShipped ? "hsl(var(--success-hsl) / 0.15)" : "hsl(var(--accent-hsl) / 0.15)"),
                                 color: !isPaid
                                   ? "#92400E"
-                                  : (isShipped ? "hsl(var(--success-hsl))" : "hsl(var(--accent-hsl))"),
-                                border: !isPaid ? "1px solid #FCD34D" : "none"
+                                  : statusUpper === "READY_TO_PICKUP"
+                                    ? "#15803D"
+                                    : (isShipped ? "hsl(var(--success-hsl))" : "hsl(var(--accent-hsl))"),
+                                border: !isPaid ? "1px solid #FCD34D" : statusUpper === "READY_TO_PICKUP" ? "1px solid #86EFAC" : "none"
                               }}>
-                                {!isPaid ? "PAYMENT PENDING" : statusUpper}
+                                {!isPaid ? "PAYMENT PENDING" : (statusUpper === "READY_TO_PICKUP" ? "READY FOR PICKUP" : statusUpper)}
                               </span>
 
                               <span style={{ fontSize: "1.1rem", fontWeight: 900, color: "hsl(var(--primary-hsl))" }}>
@@ -984,19 +988,87 @@ export default function AccountDashboard() {
                             </div>
                           </div>
 
-                          {/* Tracking Number Callout Banner (If Available) */}
-                          {order.shippingTrackingNumber || order.shipping && (
+                          {/* Store Pickup Banner (If Applicable) */}
+                          {(order.isPickup || order.fulfillmentMethod === "pickup" || String(order.shippingAddress?.ShipMethod || "").toLowerCase().includes("pickup")) && (
+                            statusUpper === "READY_TO_PICKUP" ? (
+                              <div style={{
+                                padding: "0.85rem 1.25rem",
+                                backgroundColor: "#F0FDF4",
+                                borderBottom: "1px solid #86EFAC",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "space-between",
+                                flexWrap: "wrap",
+                                gap: "0.5rem"
+                              }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
+                                  <CheckCircle2 size={18} style={{ color: "#16A34A" }} />
+                                  <div>
+                                    <span style={{ fontWeight: 800, fontSize: "0.85rem", color: "#166534", display: "block" }}>
+                                      🎉 Your Order is Ready for Pickup!
+                                    </span>
+                                    <span style={{ fontSize: "0.78rem", color: "#15803D" }}>
+                                      1515 Britannia Rd E, Unit 14-15, Mississauga, ON L4W 4K1 &bull; (647) 570-1249
+                                    </span>
+                                  </div>
+                                </div>
+                                <a
+                                  href="https://maps.google.com/?q=1515+Britannia+Rd+E+Mississauga+ON+L4W+4K1"
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="btn btn-outline"
+                                  style={{ padding: "0.3rem 0.75rem", fontSize: "0.75rem", borderColor: "#86EFAC", color: "#15803D", backgroundColor: "#FFFFFF", display: "inline-flex", alignItems: "center", gap: "0.3rem" }}
+                                >
+                                  <MapPin size={12} /> View Map &amp; Directions
+                                </a>
+                              </div>
+                            ) : (
+                              <div style={{
+                                padding: "0.55rem 1.25rem",
+                                backgroundColor: "#F8FAFC",
+                                borderBottom: "1px solid hsl(var(--border-hsl))",
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "0.5rem",
+                                fontSize: "0.8rem",
+                                color: "#475569"
+                              }}>
+                                <MapPin size={14} style={{ color: "#2563EB" }} />
+                                <span>Fulfillment: <strong>Store Pickup</strong> (1515 Britannia Rd E, Unit 14-15, Mississauga) &bull; We will notify you when ready</span>
+                              </div>
+                            )
+                          )}
+
+                          {/* Courier Tracking Callout Banner & Track Package Button */}
+                          {((order.trackingNumber || order.shippingTrackingNumber || order.sinaliteTrackingNumber) || order.trackingUrl) && (
                             <div style={{
-                              padding: "0.65rem 1.25rem",
-                              backgroundColor: "hsl(var(--accent-hsl) / 0.08)",
-                              borderBottom: "1px solid hsl(var(--border-hsl))",
+                              padding: "0.75rem 1.25rem",
+                              backgroundColor: "#EFF6FF",
+                              borderBottom: "1px solid #BFDBFE",
                               display: "flex",
                               alignItems: "center",
-                              gap: "0.6rem",
-                              fontSize: "0.825rem"
+                              justifyContent: "space-between",
+                              flexWrap: "wrap",
+                              gap: "0.5rem"
                             }}>
-                              <Truck size={16} style={{ color: "hsl(var(--accent-hsl))" }} />
-                              <span>Tracking Number: <strong>{order.shippingTrackingNumber || order.shipping}</strong></span>
+                              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.85rem", color: "#1E3A8A" }}>
+                                <Truck size={17} style={{ color: "#2563EB" }} />
+                                <span>
+                                  {order.carrier ? <strong>{order.carrier} </strong> : ""}
+                                  Tracking #: <strong style={{ fontFamily: "monospace", letterSpacing: "0.02em" }}>{order.trackingNumber || order.shippingTrackingNumber || order.sinaliteTrackingNumber || "Active"}</strong>
+                                </span>
+                              </div>
+                              {order.trackingUrl && (
+                                <a
+                                  href={order.trackingUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="btn btn-primary"
+                                  style={{ padding: "0.35rem 0.85rem", fontSize: "0.78rem", display: "inline-flex", alignItems: "center", gap: "0.35rem" }}
+                                >
+                                  Track Package <ExternalLink size={13} />
+                                </a>
+                              )}
                             </div>
                           )}
 

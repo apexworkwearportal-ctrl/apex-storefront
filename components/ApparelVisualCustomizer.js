@@ -57,10 +57,9 @@ const DEFAULT_COLORS = [
 ];
 
 const DEFAULT_PRINT_LOCATIONS = [
-  { id: "front", label: "Front Only", priceUpcharge: 0, sides: ["front"] },
-  { id: "back", label: "Back Only", priceUpcharge: 0, sides: ["back"] },
-  { id: "front_back", label: "Front & Back", priceUpcharge: 5.00, sides: ["front", "back"] },
-  { id: "left_chest_back", label: "Left Chest + Full Back", priceUpcharge: 6.00, sides: ["left", "back"] },
+  { id: "front", label: "Front", priceUpcharge: 0, sides: ["front"] },
+  { id: "back", label: "Back", priceUpcharge: 0, sides: ["back"] },
+  { id: "front_back", label: "Front + Back", priceUpcharge: 5.00, sides: ["front", "back"] },
 ];
 
 export default function ApparelVisualCustomizer({
@@ -101,11 +100,25 @@ export default function ApparelVisualCustomizer({
     return DEFAULT_COLORS;
   }, [product.colors]);
 
-  // Print Locations Setup
+  // Print Locations Setup - strictly Front, Back, and Front + Back
   const availablePrintLocations = useMemo(() => {
-    if (product.printLocations && product.printLocations.length > 0) return product.printLocations;
-    return DEFAULT_PRINT_LOCATIONS;
-  }, [product.printLocations]);
+    const defaults = [
+      { id: "front", label: "Front", priceUpcharge: 0, sides: ["front"] },
+      { id: "back", label: "Back", priceUpcharge: 0, sides: ["back"] },
+      { id: "front_back", label: "Front + Back", priceUpcharge: parseFloat(product.twoSidedUpcharge || 5.00), sides: ["front", "back"] },
+    ];
+    if (product.printLocations && product.printLocations.length > 0) {
+      const frontLoc = product.printLocations.find(p => p.id === "front");
+      const backLoc = product.printLocations.find(p => p.id === "back");
+      const frontBackLoc = product.printLocations.find(p => p.id === "front_back" || (p.sides?.includes("front") && p.sides?.includes("back")));
+      return [
+        { id: "front", label: "Front", priceUpcharge: frontLoc?.priceUpcharge ?? 0, sides: ["front"] },
+        { id: "back", label: "Back", priceUpcharge: backLoc?.priceUpcharge ?? 0, sides: ["back"] },
+        { id: "front_back", label: "Front + Back", priceUpcharge: frontBackLoc?.priceUpcharge ?? parseFloat(product.twoSidedUpcharge || 5.00), sides: ["front", "back"] }
+      ];
+    }
+    return defaults;
+  }, [product.printLocations, product.twoSidedUpcharge]);
 
   const moq = Math.max(1, parseInt(product.minimumOrderQuantity || 12));
   const basePrice = parseFloat(product.pricing?.basePrice || product.pricing?.startingPrice || product.basePrice || 28);
@@ -166,12 +179,10 @@ export default function ApparelVisualCustomizer({
   const [showGrid, setShowGrid] = useState(false);
   const [exportingMockup, setExportingMockup] = useState(false);
 
-  // Multi-logo state per side: { front: [ { id, label, imageUrl, fileName, widthIn, heightIn, rotationDeg, offsetXIn, offsetYIn, positionX, positionY } ], back: ... }
+  // Multi-logo state per side: { front: [ ... ], back: [ ... ] }
   const [logosBySide, setLogosBySide] = useState({
     front: [],
-    back: [],
-    left: [],
-    right: []
+    back: []
   });
 
   const [selectedLogoId, setSelectedLogoId] = useState(null);
@@ -214,18 +225,17 @@ export default function ApparelVisualCustomizer({
   const currentCalibration = isColorCalibrated ? selectedColorView.calibration : mainCalibration;
   const currentAspect = imgAspectBySide[`${selectedColor?.name || 'def'}-${currentEditingSide}`] || imgAspectBySide[currentEditingSide] || 1.1;
 
-  // Available view sides across product.garmentViews, selectedColor.views, and activeSides
+  // Available view sides strictly front and back
   const availableViewSides = useMemo(() => {
     const set = new Set();
-    Object.keys(views).forEach(k => {
-      if (views[k]?.image) set.add(k);
+    ["front", "back"].forEach(k => {
+      if (views[k]?.image || selectedColor?.views?.[k]?.image || activeSides.includes(k)) {
+        set.add(k);
+      }
     });
-    if (selectedColor?.views) {
-      Object.keys(selectedColor.views).forEach(k => {
-        if (selectedColor.views[k]?.image) set.add(k);
-      });
-    }
-    activeSides.forEach(s => set.add(s));
+    activeSides.forEach(s => {
+      if (s === "front" || s === "back") set.add(s);
+    });
     if (set.size === 0) set.add("front");
     return Array.from(set);
   }, [views, selectedColor, activeSides]);
@@ -1921,24 +1931,10 @@ export default function ApparelVisualCustomizer({
                 </button>
               </div>
 
-              {/* Placement Presets (Left Chest, Right Chest, Centre Chest, Full Front, Jumbo Front) */}
+              {/* Placement Presets (Centre Chest, Full Front, Jumbo Front) */}
               <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap" }}>
                 {currentEditingSide === "front" ? (
                   <>
-                    <button
-                      type="button"
-                      onClick={() => applyPresetOffsets(-3.5, 8, 4)}
-                      style={{ padding: "0.35rem 0.75rem", fontSize: "0.75rem", fontWeight: 600, borderRadius: "6px", border: "1px solid #CBD5E1", backgroundColor: "#FFFFFF", color: "#334155", cursor: "pointer" }}
-                    >
-                      Left Chest
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => applyPresetOffsets(3.5, 8, 4)}
-                      style={{ padding: "0.35rem 0.75rem", fontSize: "0.75rem", fontWeight: 600, borderRadius: "6px", border: "1px solid #CBD5E1", backgroundColor: "#FFFFFF", color: "#334155", cursor: "pointer" }}
-                    >
-                      Right Chest
-                    </button>
                     <button
                       type="button"
                       onClick={() => applyPresetOffsets(0, 8, 10)}

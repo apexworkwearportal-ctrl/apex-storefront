@@ -4,7 +4,7 @@ import { useEffect, useState, Suspense } from "react";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { db } from "@/lib/firebase";
-import { collection, getDocs, query, orderBy } from "firebase/firestore";
+import { collection, getDocs, doc, getDoc, query, orderBy } from "firebase/firestore";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Search, SlidersHorizontal, ArrowUpDown, ChevronRight, Loader2, ShoppingBag, Sparkles, ChevronDown, Plus, Minus, X, Filter } from "lucide-react";
@@ -35,6 +35,7 @@ function CatalogContent() {
   const [sortBy, setSortBy] = useState("priority");
   const [expandedFaqIdx, setExpandedFaqIdx] = useState(null);
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
+  const [pricingSettings, setPricingSettings] = useState(null);
 
   // Lock body scroll when mobile category filter modal is open
   useEffect(() => {
@@ -101,10 +102,15 @@ function CatalogContent() {
         });
         setCategories(catList);
 
-        const [prodSnap, apparelSnap] = await Promise.all([
+        const [prodSnap, apparelSnap, pricingSnap] = await Promise.all([
           getDocs(collection(db, "products")),
-          getDocs(collection(db, "apparel_products")).catch(() => ({ forEach: () => {} }))
+          getDocs(collection(db, "apparel_products")).catch(() => ({ forEach: () => {} })),
+          getDoc(doc(db, "settings", "pricing")).catch(() => null)
         ]);
+
+        if (pricingSnap && pricingSnap.exists()) {
+          setPricingSettings(pricingSnap.data());
+        }
         
         const prodList = [];
         prodSnap.forEach(doc => {
@@ -337,13 +343,13 @@ function CatalogContent() {
       return nameB.localeCompare(nameA);
     }
     if (sortBy === "price-asc") {
-      const priceA = parseFloat(a.pricing?.startingPriceOverride || a.pricing?.startingPrice || 19.99);
-      const priceB = parseFloat(b.pricing?.startingPriceOverride || b.pricing?.startingPrice || 19.99);
+      const priceA = parseFloat(a.pricing?.startingPriceOverride || a.pricing?.startingPrice || a.basePrice || a.price || 0);
+      const priceB = parseFloat(b.pricing?.startingPriceOverride || b.pricing?.startingPrice || b.basePrice || b.price || 0);
       return priceA - priceB;
     }
     if (sortBy === "price-desc") {
-      const priceA = parseFloat(a.pricing?.startingPriceOverride || a.pricing?.startingPrice || 19.99);
-      const priceB = parseFloat(b.pricing?.startingPriceOverride || b.pricing?.startingPrice || 19.99);
+      const priceA = parseFloat(a.pricing?.startingPriceOverride || a.pricing?.startingPrice || a.basePrice || a.price || 0);
+      const priceB = parseFloat(b.pricing?.startingPriceOverride || b.pricing?.startingPrice || b.basePrice || b.price || 0);
       return priceB - priceA;
     }
     return 0;
@@ -385,8 +391,14 @@ function CatalogContent() {
     );
 
     // Fallback alias resolution for apparel root
-    if (!catObj && (selectedCategory === "apparel" || selectedCategory === "custom-apparel")) {
-      catObj = categories.find(c => c.id === "apparel-promotional-wear");
+    if (!catObj && (selectedCategory === "apparel" || selectedCategory === "custom-apparel" || selectedCategory === "apparel-promotional-wear")) {
+      catObj = categories.find(c => c.id === "apparel-promotional-wear") || {
+        id: "apparel-promotional-wear",
+        name: "Custom Apparel & Promotional Wear",
+        description: "Custom t-shirts, hoodies, headwear, and embroidered apparel for teams, staff, and merch runs.",
+        isVisible: true,
+        parentId: null
+      };
     }
 
     if (catObj) {
@@ -1193,14 +1205,28 @@ function CatalogContent() {
                     >
                       {paginatedProducts.map((product, idx) => {
                         const image = product.images?.[0] || "https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?q=80&w=600&auto=format&fit=crop";
-                        const startingPrice = parseFloat(product.pricing?.startingPriceOverride || product.pricing?.startingPrice || product.basePrice || 0);
-                        const displayPrice = startingPrice > 0 ? startingPrice : 19.99;
-                        // Sale price: stored saleDiscountPercent or cached pricing.salePrice
-                        const cardSaleDiscount = parseFloat(product.saleDiscountPercent ?? product.pricing?.saleDiscountPercent);
-                        const cardSalePrice = (product.pricing?.salePrice !== undefined && product.pricing?.salePrice !== null && parseFloat(product.pricing.salePrice) < displayPrice)
-                          ? parseFloat(product.pricing.salePrice)
-                          : (!isNaN(cardSaleDiscount) && cardSaleDiscount > 0 && cardSaleDiscount < 100)
-                            ? Math.round(displayPrice * (1 - cardSaleDiscount / 100) * 100) / 100
+                        const startingPrice = parseFloat(product.pricing?.startingPriceOverride || product.pricing?.startingPrice || product.basePrice || product.price || 0);
+                        const displayPrice = startingPrice;
+                        // Resolve sale discount hierarchy: product > category > parentCategory > global pricing settings
+                        const productCat = categories.find(c => c.id === product.categoryId || c.name === product.categoryName);
+                        const parentCat = productCat?.parentId ? categories.find(c => c.id === productCat.parentId) : null;
+
+                        const prodDiscount = parseFloat(product.saleDiscountPercent ?? product.pricing?.saleDiscountPercent);
+                        const catDiscount = parseFloat(productCat?.saleDiscountPercent);
+                        const parentCatDiscount = parseFloat(parentCat?.saleDiscountPercent);
+                        const globalDiscount = parseFloat(pricingSettings?.saleDiscountPercent);
+
+                        const cardSaleDiscount = 
+                          (!isNaN(prodDiscount) && prodDiscount > 0 && prodDiscount < 100) ? prodDiscount :
+                          (!isNaN(catDiscount) && catDiscount > 0 && catDiscount < 100) ? catDiscount :
+                          (!isNaN(parentCatDiscount) && parentCatDiscount > 0 && parentCatDiscount < 100) ? parentCatDiscount :
+                          (!isNaN(globalDiscount) && globalDiscount > 0 && globalDiscount < 100) ? globalDiscount :
+                          null;
+
+                        const cardSalePrice = (displayPrice > 0 && cardSaleDiscount !== null)
+                          ? Math.round(displayPrice * (1 - cardSaleDiscount / 100) * 100) / 100
+                          : (displayPrice > 0 && product.pricing?.salePrice !== undefined && product.pricing?.salePrice !== null && parseFloat(product.pricing.salePrice) < displayPrice)
+                            ? parseFloat(product.pricing.salePrice)
                             : null;
 
                         return (
@@ -1270,15 +1296,15 @@ function CatalogContent() {
                                   right: "0.75rem",
                                   backgroundColor: "#DC2626",
                                   color: "white",
-                                  fontSize: "0.6rem",
+                                  fontSize: "0.62rem",
                                   fontWeight: 900,
                                   textTransform: "uppercase",
-                                  padding: "0.2rem 0.5rem",
+                                  padding: "0.2rem 0.55rem",
                                   borderRadius: "4px",
                                   zIndex: 2,
                                   letterSpacing: "0.05em"
                                 }}>
-                                  SALE
+                                  SALE {cardSaleDiscount ? `-${cardSaleDiscount}%` : ""}
                                 </span>
                               )}
                               <Link 
@@ -1322,9 +1348,13 @@ function CatalogContent() {
                                           ${cardSalePrice.toFixed(2)} CAD
                                         </span>
                                       </div>
-                                    ) : (
+                                    ) : displayPrice > 0 ? (
                                       <p style={{ fontWeight: 850, fontSize: "1.05rem", color: "hsl(var(--accent-hsl))" }}>
                                         ${displayPrice.toFixed(2)} CAD
+                                      </p>
+                                    ) : (
+                                      <p style={{ fontWeight: 700, fontSize: "0.85rem", color: "hsl(var(--muted-hsl))" }}>
+                                        Select Options
                                       </p>
                                     )}
                                   </div>

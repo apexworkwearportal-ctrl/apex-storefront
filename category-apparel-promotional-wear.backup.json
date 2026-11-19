@@ -1,0 +1,13 @@
+{
+  "homeOrder": 7,
+  "faqs": [],
+  "markupPercent": 30,
+  "displayOrder": 7,
+  "name": "Apparel & Promotional Wear",
+  "description": "Custom t-shirts, hoodies, headwear, and embroidered apparel for teams, staff, and merch runs. Screen printing and DTG both available, no setup fees on DTG orders.",
+  "showOnHome": false,
+  "useCustomMarkup": false,
+  "heroImage": "",
+  "isVisible": true,
+  "parentId": null
+}

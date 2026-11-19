@@ -469,7 +469,7 @@ export default function Header() {
                         {matchingProducts.map((p) => (
                           <Link
                             key={p.id}
-                            href={p.isApparel ? `/apparel/${p.id}` : `/products?product=${p.id}`}
+                            href={p.isApparel ? `/apparel/${p.id}` : `/products/${p.id}`}
                             onClick={() => setIsSearchFocused(false)}
                             style={{
                               display: "flex",
@@ -535,7 +535,7 @@ export default function Header() {
           <div style={{ display: "flex", alignItems: "center", gap: "1.25rem" }} className="header-action-group">
             {/* Custom Apparel Builder CTA */}
             <Link
-              href="/products?category=apparel-promotional-wear"
+              href="/apparel"
               className="btn btn-primary header-cta-btn"
               style={{
                 padding: "0.55rem 1.15rem",
@@ -1100,7 +1100,7 @@ export default function Header() {
                 Home
               </Link>
               
-              <Link href="/products?category=apparel-promotional-wear" onClick={() => setMenuOpen(false)} style={{ fontWeight: 700, fontSize: "1rem", color: "hsl(var(--accent-hsl))", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              <Link href="/apparel" onClick={() => setMenuOpen(false)} style={{ fontWeight: 700, fontSize: "1rem", color: "hsl(var(--accent-hsl))", display: "flex", alignItems: "center", gap: "0.5rem" }}>
                 <Sparkles size={18} /> Design Custom Apparel
               </Link>
 

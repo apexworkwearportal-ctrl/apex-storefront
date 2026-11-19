@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { X, AlertTriangle, ShieldCheck, FileCheck, ExternalLink, FileText, Image as ImageIcon, AlertOctagon, CheckCircle2, RefreshCw } from "lucide-react";
 import { computeGuides, describeSize, describeIn, analyzeArtworkPreflight } from "@/lib/proof-geometry";
 
@@ -13,6 +13,50 @@ import { computeGuides, describeSize, describeIn, analyzeArtworkPreflight } from
  *          distorts the frame (e.g. a square logo inside a 3.5"×2" business card appears correctly
  *          centered within the card shape, not stretching everything to a square).
  */
+function loadPdfJsEngine() {
+  if (typeof window === "undefined") return Promise.resolve(null);
+  if (window.pdfjsLib) {
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdfjs/pdf.worker.min.js";
+    return Promise.resolve(window.pdfjsLib);
+  }
+
+  return new Promise((resolve, reject) => {
+    let script = document.getElementById("pdfjs-lib-engine-script");
+    if (!script) {
+      script = document.createElement("script");
+      script.id = "pdfjs-lib-engine-script";
+      script.src = "/pdfjs/pdf.min.js";
+      script.onload = () => {
+        if (window.pdfjsLib) {
+          window.pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdfjs/pdf.worker.min.js";
+          resolve(window.pdfjsLib);
+        } else {
+          reject(new Error("PDF engine failed to initialize"));
+        }
+      };
+      script.onerror = () => reject(new Error("Failed to load PDF engine"));
+      document.head.appendChild(script);
+    } else {
+      const checkInterval = setInterval(() => {
+        if (window.pdfjsLib) {
+          clearInterval(checkInterval);
+          window.pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdfjs/pdf.worker.min.js";
+          resolve(window.pdfjsLib);
+        }
+      }, 50);
+      setTimeout(() => {
+        clearInterval(checkInterval);
+        if (window.pdfjsLib) {
+          window.pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdfjs/pdf.worker.min.js";
+          resolve(window.pdfjsLib);
+        } else {
+          reject(new Error("Timeout waiting for PDF engine"));
+        }
+      }, 5000);
+    }
+  });
+}
+
 export default function PrintProofModal({
   isOpen,
   onClose,
@@ -24,7 +68,7 @@ export default function PrintProofModal({
   productSpecs,
   finishedWidthIn = 3.5,
   finishedHeightIn = 2.0,
-  bleedIn = 0.125,
+  bleedIn = 0.025,
   safeInsetIn = 0.0625,
   onApproveProof,
   onApprove
@@ -34,20 +78,26 @@ export default function PrintProofModal({
   const [iframeError, setIframeError] = useState(false);
   const [iframeLoaded, setIframeLoaded] = useState(false);
   const [imageDimensions, setImageDimensions] = useState({ width: 0, height: 0 });
+  const [measuredPageIn, setMeasuredPageIn] = useState(null);
+
+  // Multi-page PDF extraction states
+  const [pdfDoc, setPdfDoc] = useState(null);
+  const [pdfNumPages, setPdfNumPages] = useState(1);
+  const [activeSheet, setActiveSheet] = useState(0); // 0 = Front, 1 = Back
+  const [pdfRendering, setPdfRendering] = useState(false);
+  const [pdfError, setPdfError] = useState("");
+  const canvasRef = useRef(null);
+  const renderTaskRef = useRef(null);
 
   // Resolve active URL/filename
   const activeUrl = fileUrl || artworkUrl || (typeof artworkFile === "string" ? artworkFile : artworkFile?.url) || "";
   const activeFileName = (typeof artworkFile === "object" && artworkFile?.name) ? artworkFile.name : fileName;
 
   // Parse finished size:
-  // 1. Props finishedWidthIn / finishedHeightIn are authoritative (set by parent from selected option).
-  // 2. As a secondary fallback, try to parse productSpecs.Size string (e.g. "8.5\" x 11\"").
-  //    This covers any other caller that doesn't pass explicit dimension props.
   let resolvedWidth = Number(finishedWidthIn) || 3.5;
   let resolvedHeight = Number(finishedHeightIn) || 2.0;
 
   if (resolvedWidth === 3.5 && resolvedHeight === 2.0 && productSpecs && typeof productSpecs === "object") {
-    // Check if any value in productSpecs has a dimension string (e.g. "8.5\" x 11\"", "24 x 36")
     const candidates = [
       productSpecs.Size,
       productSpecs.size,
@@ -75,29 +125,189 @@ export default function PrintProofModal({
   const isPdf = lowerUrl.includes(".pdf") || lowerName.endsWith(".pdf");
   const isImage = !isPdf;
 
-  // The proof frame aspect ratio includes bleed on all sides
-  const mediaW = resolvedWidth + bleedIn * 2;
-  const mediaH = resolvedHeight + bleedIn * 2;
-  const frameAspectRatio = `${mediaW} / ${mediaH}`;
-
   useEffect(() => {
     setApproved(false);
     setOverrideWarning(false);
     setIframeError(false);
     setIframeLoaded(false);
     setImageDimensions({ width: 0, height: 0 });
+    setMeasuredPageIn(null);
 
     if (activeUrl && isImage) {
       const img = new Image();
       img.onload = () => {
-        setImageDimensions({
-          width: img.naturalWidth || img.width,
-          height: img.naturalHeight || img.height
+        const nw = img.naturalWidth || img.width;
+        const nh = img.naturalHeight || img.height;
+        setImageDimensions({ width: nw, height: nh });
+
+        const aspect = nw / nh;
+        const targetAspect = resolvedWidth / resolvedHeight;
+        const isFlushFinished = Math.abs(aspect - targetAspect) < 0.05;
+
+        setMeasuredPageIn({
+          w: isFlushFinished ? resolvedWidth : (resolvedWidth + bleedIn * 2),
+          h: isFlushFinished ? resolvedHeight : (resolvedHeight + bleedIn * 2)
         });
       };
       img.src = activeUrl;
     }
-  }, [activeUrl, isOpen, isImage]);
+  }, [activeUrl, isOpen, isImage, resolvedWidth, resolvedHeight, bleedIn]);
+
+  const activeMediaW = measuredPageIn ? measuredPageIn.w : (resolvedWidth + bleedIn * 2);
+  const activeMediaH = measuredPageIn ? measuredPageIn.h : (resolvedHeight + bleedIn * 2);
+  const dynamicAspectRatio = `${activeMediaW} / ${activeMediaH}`;
+
+  const guides = useMemo(() => {
+    let cutWIn = resolvedWidth;
+    let cutHIn = resolvedHeight;
+    let cutXIn = Math.max(0, (activeMediaW - cutWIn) / 2);
+    let cutYIn = Math.max(0, (activeMediaH - cutHIn) / 2);
+
+    if (activeMediaW <= cutWIn + 0.04) {
+      cutXIn = 0;
+      cutWIn = activeMediaW;
+    }
+    if (activeMediaH <= cutHIn + 0.04) {
+      cutYIn = 0;
+      cutHIn = activeMediaH;
+    }
+
+    const safeXIn = cutXIn + safeInsetIn;
+    const safeYIn = cutYIn + safeInsetIn;
+    const safeWIn = Math.max(0, cutWIn - safeInsetIn * 2);
+    const safeHIn = Math.max(0, cutHIn - safeInsetIn * 2);
+
+    return {
+      cut: {
+        left: `${(cutXIn / activeMediaW) * 100}%`,
+        top: `${(cutYIn / activeMediaH) * 100}%`,
+        width: `${(cutWIn / activeMediaW) * 100}%`,
+        height: `${(cutHIn / activeMediaH) * 100}%`
+      },
+      safe: {
+        left: `${(safeXIn / activeMediaW) * 100}%`,
+        top: `${(safeYIn / activeMediaH) * 100}%`,
+        width: `${(safeWIn / activeMediaW) * 100}%`,
+        height: `${(safeHIn / activeMediaH) * 100}%`
+      }
+    };
+  }, [activeMediaW, activeMediaH, resolvedWidth, resolvedHeight, safeInsetIn]);
+
+  // Load PDF Document when modal opens with a PDF file
+  useEffect(() => {
+    let isCancelled = false;
+    if (!isOpen || !activeUrl || !isPdf) {
+      setPdfDoc(null);
+      setPdfNumPages(1);
+      setActiveSheet(0);
+      return;
+    }
+
+    async function loadPdfDocument() {
+      setPdfRendering(true);
+      setPdfError("");
+      try {
+        const pdfjs = await loadPdfJsEngine();
+        if (!pdfjs) throw new Error("PDF engine not available");
+
+        const loadingTask = pdfjs.getDocument({ url: activeUrl });
+        const doc = await loadingTask.promise;
+        if (isCancelled) return;
+
+        setPdfDoc(doc);
+        setPdfNumPages(doc.numPages || 1);
+        setActiveSheet(0);
+      } catch (err) {
+        if (!isCancelled) {
+          console.error("PDF load error:", err);
+          setPdfError(err.message || "Failed to load PDF file");
+        }
+      } finally {
+        if (!isCancelled) setPdfRendering(false);
+      }
+    }
+
+    loadPdfDocument();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [isOpen, activeUrl, isPdf]);
+
+  // Render the selected PDF page (Front = Page 1, Back = Page 2, etc.) to canvas
+  useEffect(() => {
+    if (!isOpen || !pdfDoc || !isPdf || !canvasRef.current) return;
+    let isCancelled = false;
+
+    async function renderPage() {
+      setPdfRendering(true);
+      try {
+        const pageNum = Math.min(Math.max(1, activeSheet + 1), pdfDoc.numPages);
+        const page = await pdfDoc.getPage(pageNum);
+        if (isCancelled) return;
+
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+
+        const naturalViewport = page.getViewport({ scale: 1, rotation: 0 });
+        const containerWidth = canvas.parentElement?.clientWidth || 700;
+        const scale = containerWidth / naturalViewport.width;
+        const viewport = page.getViewport({ scale: Math.max(scale, 0.5), rotation: 0 });
+
+        const dpr = typeof window !== "undefined" ? Math.min(window.devicePixelRatio || 1, 2) : 1;
+        canvas.width = Math.round(viewport.width * dpr);
+        canvas.height = Math.round(viewport.height * dpr);
+        canvas.style.width = "100%";
+        canvas.style.height = "100%";
+        canvas.style.objectFit = "contain";
+
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+        if (renderTaskRef.current) {
+          try {
+            renderTaskRef.current.cancel();
+          } catch {}
+        }
+
+        const renderTask = page.render({
+          canvasContext: ctx,
+          viewport: viewport
+        });
+        renderTaskRef.current = renderTask;
+
+        await renderTask.promise;
+
+        if (!isCancelled) {
+          const pageWIn = naturalViewport.width / 72;
+          const pageHIn = naturalViewport.height / 72;
+          setMeasuredPageIn({ w: pageWIn, h: pageHIn });
+          setImageDimensions({
+            width: Math.round(naturalViewport.width * (300 / 72)),
+            height: Math.round(naturalViewport.height * (300 / 72))
+          });
+        }
+      } catch (err) {
+        if (err?.name !== "RenderingCancelledException") {
+          console.error("PDF render page error:", err);
+        }
+      } finally {
+        if (!isCancelled) setPdfRendering(false);
+      }
+    }
+
+    renderPage();
+
+    return () => {
+      isCancelled = true;
+      if (renderTaskRef.current) {
+        try {
+          renderTaskRef.current.cancel();
+        } catch {}
+      }
+    };
+  }, [isOpen, pdfDoc, activeSheet, isPdf]);
 
   const preflight = analyzeArtworkPreflight({
     imageWidthPx: imageDimensions.width,
@@ -109,8 +319,6 @@ export default function PrintProofModal({
   });
 
   if (!isOpen) return null;
-
-  const guides = computeGuides({ finishedWidthIn: resolvedWidth, finishedHeightIn: resolvedHeight, bleedIn, safeInsetIn });
 
   const handleConfirm = () => {
     if (!approved) return;
@@ -197,6 +405,75 @@ export default function PrintProofModal({
               </div>
             </div>
 
+            {/* Sheet Selector for Multi-Page PDF (Front / Back) */}
+            {isPdf && pdfNumPages >= 2 && (
+              <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "0.5rem", marginBottom: "1rem" }}>
+                <span style={{ fontSize: "0.8rem", fontWeight: 700, color: "hsl(var(--muted-hsl))", marginRight: "0.25rem" }}>
+                  Inspecting Page:
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setActiveSheet(0)}
+                  style={{
+                    padding: "0.35rem 1rem",
+                    fontSize: "0.8rem",
+                    fontWeight: 800,
+                    borderRadius: "6px",
+                    border: "1.5px solid",
+                    borderColor: activeSheet === 0 ? "hsl(var(--accent-hsl))" : "hsl(var(--border-hsl))",
+                    backgroundColor: activeSheet === 0 ? "hsl(var(--accent-hsl))" : "#ffffff",
+                    color: activeSheet === 0 ? "#ffffff" : "hsl(var(--foreground-hsl))",
+                    cursor: "pointer",
+                    transition: "all 0.15s ease"
+                  }}
+                >
+                  Front (Page 1)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveSheet(1)}
+                  style={{
+                    padding: "0.35rem 1rem",
+                    fontSize: "0.8rem",
+                    fontWeight: 800,
+                    borderRadius: "6px",
+                    border: "1.5px solid",
+                    borderColor: activeSheet === 1 ? "hsl(var(--accent-hsl))" : "hsl(var(--border-hsl))",
+                    backgroundColor: activeSheet === 1 ? "hsl(var(--accent-hsl))" : "#ffffff",
+                    color: activeSheet === 1 ? "#ffffff" : "hsl(var(--foreground-hsl))",
+                    cursor: "pointer",
+                    transition: "all 0.15s ease"
+                  }}
+                >
+                  Back (Page 2)
+                </button>
+                {pdfNumPages > 2 && Array.from({ length: pdfNumPages - 2 }).map((_, i) => {
+                  const pIdx = i + 2;
+                  return (
+                    <button
+                      key={pIdx}
+                      type="button"
+                      onClick={() => setActiveSheet(pIdx)}
+                      style={{
+                        padding: "0.35rem 0.85rem",
+                        fontSize: "0.8rem",
+                        fontWeight: 800,
+                        borderRadius: "6px",
+                        border: "1.5px solid",
+                        borderColor: activeSheet === pIdx ? "hsl(var(--accent-hsl))" : "hsl(var(--border-hsl))",
+                        backgroundColor: activeSheet === pIdx ? "hsl(var(--accent-hsl))" : "#ffffff",
+                        color: activeSheet === pIdx ? "#ffffff" : "hsl(var(--foreground-hsl))",
+                        cursor: "pointer",
+                        transition: "all 0.15s ease"
+                      }}
+                    >
+                      Page {pIdx + 1}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
             {/*
               ════════════════════════════════════════════════════
               PROOF VIEWPORT — dark bg
@@ -218,13 +495,13 @@ export default function PrintProofModal({
               padding: "2.75rem 2rem",
               overflow: "hidden"
             }}>
-              {/* Product frame — aspect ratio locked to product dimensions */}
+              {/* Product frame — dynamically matching actual rendered artwork aspect ratio */}
               <div style={{
                 position: "relative",
-                aspectRatio: frameAspectRatio,
+                aspectRatio: dynamicAspectRatio,
                 maxWidth: "100%",
-                maxHeight: "340px",
-                width: `min(100%, calc(340px * (${mediaW} / ${mediaH})))`,
+                maxHeight: "360px",
+                width: `min(100%, calc(360px * (${activeMediaW} / ${activeMediaH})))`,
                 height: "auto",
                 backgroundColor: "#ffffff",
                 boxShadow: "0 10px 35px rgba(0,0,0,0.65)",
@@ -254,33 +531,24 @@ export default function PrintProofModal({
                     />
                   )}
 
-                  {/* PDF artwork — iframe with graceful fallback */}
+                  {/* PDF artwork — exact page rasterized to high-res canvas */}
                   {isPdf && (
-                    <div style={{ position: "absolute", inset: 0 }}>
-                      {!iframeError ? (
-                        <>
-                          {/* Loading shimmer */}
-                          {!iframeLoaded && (
-                            <div style={{
-                              position: "absolute", inset: 0, zIndex: 1,
-                              display: "flex", flexDirection: "column",
-                              alignItems: "center", justifyContent: "center",
-                              backgroundColor: "#f8fafc", gap: "0.6rem"
-                            }}>
-                              <FileText size={32} style={{ color: "#7C3AED", opacity: 0.7 }} />
-                              <p style={{ fontSize: "0.72rem", color: "#64748B", fontWeight: 700 }}>Loading PDF preview…</p>
-                            </div>
-                          )}
-                          <iframe
-                            src={`${activeUrl}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
-                            title="PDF Proof Preview"
-                            style={{ position: "absolute", inset: 0, width: "100%", height: "100%", border: "none", backgroundColor: "white" }}
-                            onLoad={() => setIframeLoaded(true)}
-                            onError={() => setIframeError(true)}
-                          />
-                        </>
-                      ) : (
-                        /* Cross-origin fallback card */
+                    <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      {pdfRendering && (
+                        <div style={{
+                          position: "absolute", inset: 0, zIndex: 5,
+                          display: "flex", flexDirection: "column",
+                          alignItems: "center", justifyContent: "center",
+                          backgroundColor: "rgba(248, 250, 252, 0.85)", gap: "0.6rem"
+                        }}>
+                          <RefreshCw size={28} className="animate-spin" style={{ color: "hsl(var(--accent-hsl))" }} />
+                          <p style={{ fontSize: "0.75rem", color: "#64748B", fontWeight: 700 }}>
+                            Extracting {activeSheet === 0 ? "Front Page" : activeSheet === 1 ? "Back Page" : `Page ${activeSheet + 1}`}…
+                          </p>
+                        </div>
+                      )}
+
+                      {pdfError ? (
                         <div style={{
                           position: "absolute", inset: 0,
                           display: "flex", flexDirection: "column",
@@ -290,27 +558,37 @@ export default function PrintProofModal({
                         }}>
                           <FileText size={36} style={{ color: "#7C3AED" }} />
                           <div>
-                            <p style={{ fontWeight: 800, fontSize: "0.85rem", color: "#1e293b", marginBottom: "0.2rem" }}>PDF Artwork Attached</p>
-                            <p style={{ fontSize: "0.68rem", color: "#64748B", wordBreak: "break-all", maxWidth: "180px" }}>{activeFileName}</p>
+                            <p style={{ fontWeight: 800, fontSize: "0.85rem", color: "#1e293b", marginBottom: "0.2rem" }}>PDF Attached</p>
+                            <p style={{ fontSize: "0.68rem", color: "#64748B", wordBreak: "break-all", maxWidth: "200px" }}>{activeFileName}</p>
                           </div>
                           <a href={activeUrl} target="_blank" rel="noopener noreferrer"
                             className="btn btn-outline"
                             style={{ fontSize: "0.72rem", padding: "0.3rem 0.65rem", display: "inline-flex", alignItems: "center", gap: "0.3rem" }}>
-                            <ExternalLink size={11} /> Open PDF to Inspect
+                            <ExternalLink size={11} /> Open PDF Directly
                           </a>
                         </div>
+                      ) : (
+                        <canvas
+                          ref={canvasRef}
+                          style={{
+                            width: "100%",
+                            height: "100%",
+                            objectFit: "contain",
+                            display: "block"
+                          }}
+                        />
                       )}
                     </div>
                   )}
                 </div>
 
-                {/* Cut Line overlay (Red) — z-index above artwork */}
+                {/* Cut Line overlay (Red) — matching exact print cut line and Image 2 styling */}
                 <div style={{
                   position: "absolute",
                   left: guides.cut.left, top: guides.cut.top,
                   width: guides.cut.width, height: guides.cut.height,
-                  border: "2px solid #e11d48",
-                  boxShadow: "0 0 0 1px rgba(255,255,255,0.85)",
+                  border: "1px solid #e11d48",
+                  boxShadow: "0 0 0 1px rgba(255,255,255,0.92)",
                   pointerEvents: "none",
                   zIndex: 10
                 }}>
@@ -318,28 +596,32 @@ export default function PrintProofModal({
                     position: "absolute",
                     top: 0,
                     left: "50%",
-                    transform: "translate(-50%, -50%)",
-                    backgroundColor: "#e11d48",
-                    color: "white",
+                    transform: "translate(-50%, -100%)",
+                    backgroundColor: "#ffffff",
+                    color: "#e11d48",
+                    border: "1px solid rgba(225, 29, 72, 0.45)",
+                    borderBottom: "none",
+                    borderRadius: "4px 4px 0 0",
                     fontSize: "0.62rem",
-                    fontWeight: 800,
-                    padding: "0.15rem 0.5rem",
-                    borderRadius: "4px",
+                    fontWeight: 900,
+                    padding: "0.15rem 0.55rem",
                     whiteSpace: "nowrap",
-                    boxShadow: "0 2px 8px rgba(0,0,0,0.5)",
+                    letterSpacing: "0.05em",
+                    textTransform: "uppercase",
+                    boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
                     zIndex: 20
                   }}>
-                    Cut Edge: {describeSize(resolvedWidth, resolvedHeight)}
+                    CUT &middot; {describeSize(resolvedWidth, resolvedHeight)}
                   </span>
                 </div>
 
-                {/* Safe Area overlay (Green dashed) — z-index above artwork */}
+                {/* Safe Area overlay (Green dashed) — matching Image 2 styling */}
                 <div style={{
                   position: "absolute",
                   left: guides.safe.left, top: guides.safe.top,
                   width: guides.safe.width, height: guides.safe.height,
-                  border: "2px dashed #15803d",
-                  boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.85)",
+                  border: "1px dashed #15803d",
+                  boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.92)",
                   pointerEvents: "none",
                   zIndex: 10
                 }}>
@@ -347,18 +629,22 @@ export default function PrintProofModal({
                     position: "absolute",
                     bottom: 0,
                     left: "50%",
-                    transform: "translate(-50%, 50%)",
-                    backgroundColor: "#15803d",
-                    color: "white",
+                    transform: "translate(-50%, 100%)",
+                    backgroundColor: "#ffffff",
+                    color: "#15803d",
+                    border: "1px solid rgba(21, 128, 61, 0.45)",
+                    borderTop: "none",
+                    borderRadius: "0 0 4px 4px",
                     fontSize: "0.62rem",
-                    fontWeight: 800,
-                    padding: "0.15rem 0.5rem",
-                    borderRadius: "4px",
+                    fontWeight: 900,
+                    padding: "0.15rem 0.55rem",
                     whiteSpace: "nowrap",
-                    boxShadow: "0 2px 8px rgba(0,0,0,0.5)",
+                    letterSpacing: "0.05em",
+                    textTransform: "uppercase",
+                    boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
                     zIndex: 20
                   }}>
-                    Safe Area ({describeIn(safeInsetIn)} inset)
+                    SAFE AREA &middot; {describeIn(safeInsetIn)} IN
                   </span>
                 </div>
               </div>
@@ -499,7 +785,7 @@ export default function PrintProofModal({
             <div style={{ marginTop: "1.1rem", padding: "0.85rem 1rem", backgroundColor: "hsl(var(--secondary-hsl) / 0.3)", borderRadius: "var(--radius-sm)", fontSize: "0.85rem" }}>
               <p style={{ fontWeight: 700, marginBottom: "0.2rem" }}>Artwork Details</p>
               <p style={{ color: "hsl(var(--muted-hsl))" }}>
-                File: <strong>{activeFileName}</strong> &bull; Finished Size: <strong>{describeSize(resolvedWidth, resolvedHeight)}</strong> &bull; Bleed Area: <strong>{describeSize(mediaW, mediaH)}</strong>
+                File: <strong>{activeFileName}</strong> &bull; Finished Size: <strong>{describeSize(resolvedWidth, resolvedHeight)}</strong> &bull; Bleed Area: <strong>{describeSize(activeMediaW, activeMediaH)}</strong>
               </p>
             </div>
 

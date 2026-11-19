@@ -887,7 +887,10 @@ function ProductsContent() {
 
                         {/* Starting Price */}
                         <td style={{ padding: "1.25rem 1.5rem", fontWeight: 700, color: "hsl(var(--primary-hsl))" }}>
-                          ${parseFloat(product.pricing?.startingPriceOverride || product.pricing?.startingPrice || 19.99).toFixed(2)} CAD
+                          {(() => {
+                            const p = parseFloat(product.pricing?.startingPriceOverride || product.pricing?.startingPrice || product.basePrice || product.price || 0);
+                            return p > 0 ? `$${p.toFixed(2)} CAD` : "—";
+                          })()}
                         </td>
 
                         {/* Status Badges */}
@@ -979,7 +982,10 @@ function ProductsContent() {
 
                         {/* Starting Price */}
                         <td style={{ padding: "1.25rem 1.5rem", fontWeight: 700, color: "hsl(var(--primary-hsl))" }}>
-                          ${parseFloat(product.pricing?.startingPriceOverride || product.pricing?.startingPrice || 19.99).toFixed(2)} CAD
+                          {(() => {
+                            const p = parseFloat(product.pricing?.startingPriceOverride || product.pricing?.startingPrice || product.basePrice || product.price || 0);
+                            return p > 0 ? `$${p.toFixed(2)} CAD` : "—";
+                          })()}
                         </td>
 
                         {/* Status */}

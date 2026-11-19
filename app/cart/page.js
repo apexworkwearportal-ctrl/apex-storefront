@@ -29,7 +29,8 @@ export default function CartPage() {
   const [zip, setZip] = useState("");
   const [country, setCountry] = useState("CA");
 
-  // Shipping & Checkout states
+  // Fulfillment & Checkout states
+  const [fulfillmentMethod, setFulfillmentMethod] = useState("shipping"); // "shipping" | "pickup"
   const [shippingRates, setShippingRates] = useState([]);
   const [loadingRates, setLoadingRates] = useState(false);
   const [ratesError, setRatesError] = useState("");
@@ -214,12 +215,15 @@ export default function CartPage() {
   };
 
   // Math totals
+  const isPickup = fulfillmentMethod === "pickup";
   const subtotal = cart.reduce((acc, item) => acc + (parseFloat(item.price) * item.quantity), 0);
   const discountAmount = appliedPromo ? parseFloat(appliedPromo.discountAmount || 0) : 0;
   const discountedSubtotal = Math.max(0, subtotal - discountAmount);
-  const shipping = selectedRate ? parseFloat(selectedRate.price) : 0;
+  const shipping = isPickup ? 0 : (selectedRate ? parseFloat(selectedRate.price) : 0);
   
-  const taxRate = state ? (["ON", "ONTARIO"].includes(state.toUpperCase().trim()) ? 0.13 : (["NS", "NOVA SCOTIA", "NB", "NEW BRUNSWICK", "NL", "NEWFOUNDLAND", "PE", "PRINCE EDWARD ISLAND"].includes(state.toUpperCase().trim()) ? 0.15 : 0.05)) : 0;
+  // For pickup, facility is in Ontario (13% HST). For shipping, use destination province.
+  const effectiveProvince = isPickup ? "ON" : state;
+  const taxRate = effectiveProvince ? (["ON", "ONTARIO"].includes(effectiveProvince.toUpperCase().trim()) ? 0.13 : (["NS", "NOVA SCOTIA", "NB", "NEW BRUNSWICK", "NL", "NEWFOUNDLAND", "PE", "PRINCE EDWARD ISLAND"].includes(effectiveProvince.toUpperCase().trim()) ? 0.15 : 0.05)) : 0.13;
   const tax = (discountedSubtotal + shipping) * taxRate;
   const grandTotal = discountedSubtotal + shipping + tax;
 
@@ -229,8 +233,18 @@ export default function CartPage() {
       return;
     }
 
-    if (!selectedRate) {
+    if (!firstName || !lastName || !phone || !email) {
+      setCheckoutError("Please enter your name, phone number, and email address.");
+      return;
+    }
+
+    if (!isPickup && !selectedRate) {
       setCheckoutError("Please calculate and select a shipping method before checking out.");
+      return;
+    }
+
+    if (!isPickup && (!address || !city || !state || !zip)) {
+      setCheckoutError("Please complete your delivery address fields.");
       return;
     }
 
@@ -238,24 +252,28 @@ export default function CartPage() {
     setCheckoutError("");
 
     try {
+      const activeRate = isPickup ? { serviceName: "Store Pickup (Free)", price: 0 } : selectedRate;
       const res = await fetch("/api/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           items: cart,
+          isPickup,
+          fulfillmentMethod,
           shippingAddress: {
             ShipFName: firstName,
             ShipLName: lastName,
             ShipPhone: phone,
             ShipEmail: email,
-            ShipAddr: address,
-            ShipAddr2: suite,
-            ShipCity: city,
-            ShipState: state,
-            ShipZip: zip,
-            ShipCountry: country,
+            ShipAddr: isPickup ? "1515 Britannia Rd E, Unit 14-15" : address,
+            ShipAddr2: isPickup ? "" : suite,
+            ShipCity: isPickup ? "Mississauga" : city,
+            ShipState: isPickup ? "ON" : state,
+            ShipZip: isPickup ? "L4W 4K1" : zip,
+            ShipCountry: isPickup ? "CA" : country,
+            ShipMethod: isPickup ? "Store Pickup (Free)" : (selectedRate?.serviceName || "Standard Courier"),
           },
-          selectedShippingRate: selectedRate,
+          selectedShippingRate: activeRate,
           userId: user ? user.uid : null,
           promoCode: appliedPromo || null,
         }),
@@ -449,14 +467,101 @@ export default function CartPage() {
               ))}
             </div>
 
-            {/* Shipping Address Card */}
+            {/* Fulfillment & Address Card */}
             <div className="card checkout-card-padding" style={{ padding: "2rem" }}>
               <h2 style={{ fontSize: "1.25rem", fontWeight: 700, borderBottom: "1px solid hsl(var(--border-hsl))", paddingBottom: "0.5rem", marginBottom: "1.25rem" }}>
-                Delivery Address
+                Fulfillment & Delivery
               </h2>
 
-              {/* Saved Address Pre-fill Dropdown */}
-              {user && userData?.addresses && userData.addresses.length > 0 && (
+              {/* Fulfillment Method Selector */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem", marginBottom: "1.5rem" }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFulfillmentMethod("shipping");
+                    setSelectedRate(shippingRates.length > 0 ? shippingRates[0] : null);
+                    setRatesError("");
+                  }}
+                  style={{
+                    padding: "0.85rem 1rem",
+                    borderRadius: "8px",
+                    border: "2px solid",
+                    borderColor: fulfillmentMethod === "shipping" ? "#2563EB" : "hsl(var(--border-hsl))",
+                    backgroundColor: fulfillmentMethod === "shipping" ? "rgba(37, 99, 235, 0.08)" : "#FFFFFF",
+                    color: fulfillmentMethod === "shipping" ? "#1D4ED8" : "hsl(var(--foreground-hsl))",
+                    fontWeight: 700,
+                    fontSize: "0.9rem",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "0.5rem",
+                    cursor: "pointer",
+                    transition: "all 0.15s ease"
+                  }}
+                >
+                  🚚 Courier Shipping
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFulfillmentMethod("pickup");
+                    setSelectedRate({ serviceName: "Store Pickup (Free)", price: 0 });
+                    setRatesError("");
+                  }}
+                  style={{
+                    padding: "0.85rem 1rem",
+                    borderRadius: "8px",
+                    border: "2px solid",
+                    borderColor: fulfillmentMethod === "pickup" ? "#16A34A" : "hsl(var(--border-hsl))",
+                    backgroundColor: fulfillmentMethod === "pickup" ? "rgba(22, 163, 74, 0.08)" : "#FFFFFF",
+                    color: fulfillmentMethod === "pickup" ? "#15803D" : "hsl(var(--foreground-hsl))",
+                    fontWeight: 700,
+                    fontSize: "0.9rem",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "0.5rem",
+                    cursor: "pointer",
+                    transition: "all 0.15s ease"
+                  }}
+                >
+                  🏬 Store Pickup (Free)
+                </button>
+              </div>
+
+              {/* Pickup Notice Banner */}
+              {isPickup ? (
+                <div style={{
+                  backgroundColor: "#F0FDF4",
+                  border: "1px solid #86EFAC",
+                  borderRadius: "8px",
+                  padding: "1.25rem",
+                  marginBottom: "1.5rem"
+                }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", color: "#166534", fontWeight: 800, fontSize: "0.95rem", marginBottom: "0.5rem" }}>
+                    <CheckCircle2 size={18} style={{ color: "#16A34A" }} />
+                    Free Store Pickup at Mississauga Facility
+                  </div>
+                  <p style={{ fontSize: "0.85rem", color: "#15803D", margin: "0 0 0.75rem 0", lineHeight: 1.5 }}>
+                    Your order will be printed and packed for collection at our central location with zero shipping charges.
+                  </p>
+                  <div style={{ backgroundColor: "#FFFFFF", border: "1px solid #BBF7D0", borderRadius: "6px", padding: "0.85rem", fontSize: "0.85rem", color: "#0F172A", lineHeight: 1.5 }}>
+                    <div style={{ fontWeight: 700 }}>Apex Workwear & Print Facility</div>
+                    <div>1515 Britannia Rd E, Unit 14-15, Mississauga, ON L4W 4K1</div>
+                    <div style={{ color: "#2563EB", marginTop: "0.25rem", fontWeight: 600 }}>📞 (647) 570-1249</div>
+                    <div style={{ fontSize: "0.78rem", color: "#64748B", marginTop: "0.35rem" }}>
+                      Hours: Mon – Fri: 9:00 AM – 6:00 PM | Sat: 10:00 AM – 4:00 PM
+                    </div>
+                  </div>
+                  <p style={{ fontSize: "0.78rem", color: "#166534", marginTop: "0.75rem", fontStyle: "italic", margin: "0.75rem 0 0 0" }}>
+                    * We will notify you via email as soon as your items are ready for pickup.
+                  </p>
+                </div>
+              ) : null}
+
+              {/* Saved Address Pre-fill Dropdown (Only for Shipping) */}
+              {!isPickup && user && userData?.addresses && userData.addresses.length > 0 && (
                 <div style={{ marginBottom: "1.25rem" }}>
                   <label className="label">Populate Saved Address</label>
                   <select
@@ -490,80 +595,84 @@ export default function CartPage() {
                     <input className="input" placeholder="647-555-0199" value={phone} onChange={(e) => setPhone(e.target.value)} required />
                   </div>
                   <div>
-                    <label className="label">Email Address</label>
+                    <label className="label">Email Address (for order updates)</label>
                     <input type="email" className="input" placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} required />
                   </div>
                 </div>
 
-                <div>
-                  <label className="label">Street Address</label>
-                  <input className="input" placeholder="123 Print Ave" value={address} onChange={(e) => setAddress(e.target.value)} required />
-                </div>
+                {!isPickup && (
+                  <>
+                    <div>
+                      <label className="label">Street Address</label>
+                      <input className="input" placeholder="123 Print Ave" value={address} onChange={(e) => setAddress(e.target.value)} required={!isPickup} />
+                    </div>
 
-                <div>
-                  <label className="label">Suite, Unit, Apt (Optional)</label>
-                  <input className="input" placeholder="Suite 100" value={suite} onChange={(e) => setSuite(e.target.value)} />
-                </div>
+                    <div>
+                      <label className="label">Suite, Unit, Apt (Optional)</label>
+                      <input className="input" placeholder="Suite 100" value={suite} onChange={(e) => setSuite(e.target.value)} />
+                    </div>
 
-                <div className="form-row-2col">
-                  <div>
-                    <label className="label">Country</label>
-                    <select
-                      className="input"
-                      value={country}
-                      onChange={(e) => {
-                        const newC = e.target.value;
-                        setCountry(newC);
-                        setState(newC === "CA" ? "ON" : "NY");
-                      }}
-                      required
-                    >
-                      {COUNTRIES.map((c) => (
-                        <option key={c.code} value={c.code}>
-                          {c.name} ({c.code})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="label">City</label>
-                    <input className="input" placeholder="Toronto" value={city} onChange={(e) => setCity(e.target.value)} required />
-                  </div>
-                </div>
+                    <div className="form-row-2col">
+                      <div>
+                        <label className="label">Country</label>
+                        <select
+                          className="input"
+                          value={country}
+                          onChange={(e) => {
+                            const newC = e.target.value;
+                            setCountry(newC);
+                            setState(newC === "CA" ? "ON" : "NY");
+                          }}
+                          required={!isPickup}
+                        >
+                          {COUNTRIES.map((c) => (
+                            <option key={c.code} value={c.code}>
+                              {c.name} ({c.code})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="label">City</label>
+                        <input className="input" placeholder="Toronto" value={city} onChange={(e) => setCity(e.target.value)} required={!isPickup} />
+                      </div>
+                    </div>
 
-                <div className="form-row-2col">
-                  <div>
-                    <label className="label">{country === "CA" ? "Province" : "State"}</label>
-                    <select
-                      className="input"
-                      value={state}
-                      onChange={(e) => setState(e.target.value)}
-                      required
-                    >
-                      {(country === "CA" ? CANADIAN_PROVINCES : US_STATES).map((st) => (
-                        <option key={st.code} value={st.code}>
-                          {st.code} - {st.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="label">Postal / ZIP Code</label>
-                    <input className="input" placeholder={country === "CA" ? "M5V 1A1" : "90210"} value={zip} onChange={(e) => setZip(e.target.value)} required />
-                  </div>
-                </div>
+                    <div className="form-row-2col">
+                      <div>
+                        <label className="label">{country === "CA" ? "Province" : "State"}</label>
+                        <select
+                          className="input"
+                          value={state}
+                          onChange={(e) => setState(e.target.value)}
+                          required={!isPickup}
+                        >
+                          {(country === "CA" ? CANADIAN_PROVINCES : US_STATES).map((st) => (
+                            <option key={st.code} value={st.code}>
+                              {st.code} - {st.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="label">Postal / ZIP Code</label>
+                        <input className="input" placeholder={country === "CA" ? "M5V 1A1" : "90210"} value={zip} onChange={(e) => setZip(e.target.value)} required={!isPickup} />
+                      </div>
+                    </div>
 
-                <button type="submit" className="btn btn-secondary" style={{ width: "100%", justifyContent: "center", marginTop: "0.5rem" }} disabled={loadingRates}>
-                  {loadingRates ? (
-                    <>
-                      <Loader2 size={16} className="animate-spin" style={{ animation: "spin 1s linear infinite" }} /> Estimating Shipping...
-                    </>
-                  ) : (
-                    <>
-                      <MapPin size={16} /> Calculate Shipping Costs
-                    </>
-                  )}
-                </button>
+                    <button type="submit" className="btn btn-secondary" style={{ width: "100%", justifyContent: "center", marginTop: "0.5rem" }} disabled={loadingRates}>
+                      {loadingRates ? (
+                        <>
+                          <Loader2 size={16} className="animate-spin" style={{ animation: "spin 1s linear infinite" }} /> Estimating Shipping...
+                        </>
+                      ) : (
+                        <>
+                          <MapPin size={16} /> Calculate Shipping Costs
+                        </>
+                      )}
+                    </button>
+                  </>
+                )}
               </form>
             </div>
           </motion.div>
@@ -576,8 +685,8 @@ export default function CartPage() {
             style={{ display: "flex", flexDirection: "column", gap: "1.75rem" }}
           >
             
-            {/* Shipping Rates list card */}
-            {shippingRates.length > 0 && (
+            {/* Shipping Rates list card (Only for Delivery) */}
+            {!isPickup && shippingRates.length > 0 && (
               <div className="card checkout-card-padding" style={{ padding: "2rem" }}>
                 <h3 style={{ fontSize: "1.15rem", fontWeight: 700, borderBottom: "1px solid hsl(var(--border-hsl))", paddingBottom: "0.5rem", marginBottom: "1rem" }}>
                   Select Shipping Speed
@@ -728,18 +837,22 @@ export default function CartPage() {
                 )}
                 
                 <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span style={{ color: "hsl(var(--muted-hsl))" }}>Shipping</span>
+                  <span style={{ color: "hsl(var(--muted-hsl))" }}>Fulfillment / Shipping</span>
                   <span style={{ fontWeight: 600 }}>
-                    {selectedRate ? `$${shipping.toFixed(2)}` : <span style={{ fontSize: "0.8rem", color: "hsl(var(--muted-hsl))" }}>Calculate above</span>}
+                    {isPickup ? (
+                      <span style={{ color: "#16A34A", fontWeight: 700 }}>Store Pickup (Free)</span>
+                    ) : selectedRate ? (
+                      `$${shipping.toFixed(2)}`
+                    ) : (
+                      <span style={{ fontSize: "0.8rem", color: "hsl(var(--muted-hsl))" }}>Calculate above</span>
+                    )}
                   </span>
                 </div>
 
-                {state && (
-                  <div style={{ display: "flex", justifyContent: "space-between" }}>
-                    <span style={{ color: "hsl(var(--muted-hsl))" }}>GST/HST Sales Tax ({(taxRate * 100).toFixed(0)}%)</span>
-                    <span style={{ fontWeight: 600 }}>${tax.toFixed(2)}</span>
-                  </div>
-                )}
+                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                  <span style={{ color: "hsl(var(--muted-hsl))" }}>GST/HST Sales Tax ({(taxRate * 100).toFixed(0)}%{isPickup ? " ON" : ""})</span>
+                  <span style={{ fontWeight: 600 }}>${tax.toFixed(2)}</span>
+                </div>
 
                 <div style={{ borderTop: "1px solid hsl(var(--border-hsl))", paddingTop: "1rem", marginTop: "0.25rem", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <span style={{ fontWeight: 800, fontSize: "1.1rem" }}>Grand Total</span>
