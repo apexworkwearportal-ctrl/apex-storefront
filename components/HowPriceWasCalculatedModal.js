@@ -189,3 +189,4 @@ export default function HowPriceWasCalculatedModal({ isOpen, onClose, breakdown 
     </div>
   );
 }
+

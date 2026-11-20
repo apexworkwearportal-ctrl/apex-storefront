@@ -916,31 +916,7 @@ export default function ProductDetailPage({ params: paramsPromise }) {
                       })()}
                     </div>
                   )}
-                  {product?.isCustom && effectivePriceData?.breakdown?.steps && (
-                    <div style={{ marginTop: "0.4rem" }}>
-                      <button
-                        type="button"
-                        onClick={() => setCalculationModalOpen(true)}
-                        style={{
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: "0.35rem",
-                          fontSize: "0.82rem",
-                          fontWeight: 600,
-                          color: "#2563EB",
-                          backgroundColor: "transparent",
-                          border: "none",
-                          padding: 0,
-                          cursor: "pointer",
-                          textDecoration: "underline",
-                          textUnderlineOffset: "3px"
-                        }}
-                      >
-                        <Calculator size={13} />
-                        How this price was calculated
-                      </button>
-                    </div>
-                  )}
+        
                 </div>
               </div>
             </div>
@@ -1397,12 +1373,7 @@ export default function ProductDetailPage({ params: paramsPromise }) {
         onApproveProof={handleProofApproval}
       />
 
-      {/* How This Price Was Calculated Modal */}
-      <HowPriceWasCalculatedModal
-        isOpen={calculationModalOpen}
-        onClose={() => setCalculationModalOpen(false)}
-        breakdown={effectivePriceData?.breakdown}
-      />
+      
 
       <Footer />
     </div>
