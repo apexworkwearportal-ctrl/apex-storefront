@@ -68,7 +68,7 @@ export default function PrintProofModal({
   productSpecs,
   finishedWidthIn = 3.5,
   finishedHeightIn = 2.0,
-  bleedIn = 0.025,
+  bleedIn = 0.125,
   safeInsetIn = 0.0625,
   onApproveProof,
   onApprove
@@ -119,6 +119,12 @@ export default function PrintProofModal({
     }
   }
 
+  // Expected sheet size including standard bleed
+  const targetSheetW = resolvedWidth + (bleedIn * 2);
+  const targetSheetH = resolvedHeight + (bleedIn * 2);
+  const targetSheetAspect = targetSheetW / targetSheetH;
+  const trimAspect = resolvedWidth / resolvedHeight;
+
   // Detect file type
   const lowerUrl = activeUrl.toLowerCase();
   const lowerName = activeFileName.toLowerCase();
@@ -141,57 +147,56 @@ export default function PrintProofModal({
         setImageDimensions({ width: nw, height: nh });
 
         const aspect = nw / nh;
-        const targetAspect = resolvedWidth / resolvedHeight;
-        const isFlushFinished = Math.abs(aspect - targetAspect) < 0.05;
+        const matchesSheetAspect = Math.abs(aspect - targetSheetAspect) < 0.05;
+        const matchesTrimAspect = Math.abs(aspect - trimAspect) < 0.05;
+
+        const wAt300 = nw / 300;
+        const hAt300 = nh / 300;
+        const isBleedAt300 = wAt300 >= resolvedWidth + 0.08 && hAt300 >= resolvedHeight + 0.08;
+
+        const hasBleed = matchesSheetAspect || isBleedAt300 || (!matchesTrimAspect && aspect > 0);
 
         setMeasuredPageIn({
-          w: isFlushFinished ? resolvedWidth : (resolvedWidth + bleedIn * 2),
-          h: isFlushFinished ? resolvedHeight : (resolvedHeight + bleedIn * 2)
+          w: hasBleed ? targetSheetW : resolvedWidth,
+          h: hasBleed ? targetSheetH : resolvedHeight,
+          hasBleed: hasBleed
         });
       };
       img.src = activeUrl;
     }
-  }, [activeUrl, isOpen, isImage, resolvedWidth, resolvedHeight, bleedIn]);
+  }, [activeUrl, isOpen, isImage, resolvedWidth, resolvedHeight, bleedIn, targetSheetW, targetSheetH, targetSheetAspect, trimAspect]);
 
-  const activeMediaW = measuredPageIn ? measuredPageIn.w : (resolvedWidth + bleedIn * 2);
-  const activeMediaH = measuredPageIn ? measuredPageIn.h : (resolvedHeight + bleedIn * 2);
-  const dynamicAspectRatio = `${activeMediaW} / ${activeMediaH}`;
+  const frameW = targetSheetW;
+  const frameH = targetSheetH;
+  const dynamicAspectRatio = `${frameW} / ${frameH}`;
+  const fileHasBleed = measuredPageIn?.hasBleed !== false;
 
   const guides = useMemo(() => {
-    let cutWIn = resolvedWidth;
-    let cutHIn = resolvedHeight;
-    let cutXIn = Math.max(0, (activeMediaW - cutWIn) / 2);
-    let cutYIn = Math.max(0, (activeMediaH - cutHIn) / 2);
+    const cutW = resolvedWidth;
+    const cutH = resolvedHeight;
+    const cutX = (frameW - cutW) / 2;
+    const cutY = (frameH - cutH) / 2;
 
-    if (activeMediaW <= cutWIn + 0.04) {
-      cutXIn = 0;
-      cutWIn = activeMediaW;
-    }
-    if (activeMediaH <= cutHIn + 0.04) {
-      cutYIn = 0;
-      cutHIn = activeMediaH;
-    }
-
-    const safeXIn = cutXIn + safeInsetIn;
-    const safeYIn = cutYIn + safeInsetIn;
-    const safeWIn = Math.max(0, cutWIn - safeInsetIn * 2);
-    const safeHIn = Math.max(0, cutHIn - safeInsetIn * 2);
+    const safeW = Math.max(0, cutW - safeInsetIn * 2);
+    const safeH = Math.max(0, cutH - safeInsetIn * 2);
+    const safeX = cutX + safeInsetIn;
+    const safeY = cutY + safeInsetIn;
 
     return {
       cut: {
-        left: `${(cutXIn / activeMediaW) * 100}%`,
-        top: `${(cutYIn / activeMediaH) * 100}%`,
-        width: `${(cutWIn / activeMediaW) * 100}%`,
-        height: `${(cutHIn / activeMediaH) * 100}%`
+        left: `${(cutX / frameW) * 100}%`,
+        top: `${(cutY / frameH) * 100}%`,
+        width: `${(cutW / frameW) * 100}%`,
+        height: `${(cutH / frameH) * 100}%`
       },
       safe: {
-        left: `${(safeXIn / activeMediaW) * 100}%`,
-        top: `${(safeYIn / activeMediaH) * 100}%`,
-        width: `${(safeWIn / activeMediaW) * 100}%`,
-        height: `${(safeHIn / activeMediaH) * 100}%`
+        left: `${(safeX / frameW) * 100}%`,
+        top: `${(safeY / frameH) * 100}%`,
+        width: `${(safeW / frameW) * 100}%`,
+        height: `${(safeH / frameH) * 100}%`
       }
     };
-  }, [activeMediaW, activeMediaH, resolvedWidth, resolvedHeight, safeInsetIn]);
+  }, [frameW, frameH, resolvedWidth, resolvedHeight, safeInsetIn]);
 
   // Load PDF Document when modal opens with a PDF file
   useEffect(() => {
@@ -282,7 +287,8 @@ export default function PrintProofModal({
         if (!isCancelled) {
           const pageWIn = naturalViewport.width / 72;
           const pageHIn = naturalViewport.height / 72;
-          setMeasuredPageIn({ w: pageWIn, h: pageHIn });
+          const hasBleed = (pageWIn >= resolvedWidth + 0.1) && (pageHIn >= resolvedHeight + 0.1);
+          setMeasuredPageIn({ w: pageWIn, h: pageHIn, hasBleed });
           setImageDimensions({
             width: Math.round(naturalViewport.width * (300 / 72)),
             height: Math.round(naturalViewport.height * (300 / 72))
@@ -501,21 +507,46 @@ export default function PrintProofModal({
                 aspectRatio: dynamicAspectRatio,
                 maxWidth: "100%",
                 maxHeight: "360px",
-                width: `min(100%, calc(360px * (${activeMediaW} / ${activeMediaH})))`,
+                width: `min(100%, calc(360px * (${frameW} / ${frameH})))`,
                 height: "auto",
-                backgroundColor: "#ffffff",
+                backgroundColor: fileHasBleed ? "#ffffff" : "#F8FAFC",
+                backgroundImage: !fileHasBleed ? "repeating-linear-gradient(45deg, #F1F5F9, #F1F5F9 10px, #E2E8F0 10px, #E2E8F0 20px)" : undefined,
                 boxShadow: "0 10px 35px rgba(0,0,0,0.65)",
-                flexShrink: 0
+                flexShrink: 0,
+                overflow: "hidden"
               }}>
+                {/* Missing bleed indicator badge if file has no bleed */}
+                {!fileHasBleed && (
+                  <div style={{
+                    position: "absolute",
+                    top: "6px",
+                    left: "6px",
+                    fontSize: "0.62rem",
+                    fontWeight: 800,
+                    color: "#B45309",
+                    backgroundColor: "rgba(254, 243, 199, 0.95)",
+                    padding: "2px 8px",
+                    borderRadius: "4px",
+                    zIndex: 5,
+                    pointerEvents: "none",
+                    border: "1px dashed #F59E0B"
+                  }}>
+                    Bleed Area ({describeIn(bleedIn)} Margin)
+                  </div>
+                )}
 
-                {/* Artwork canvas container — clips artwork strictly to the bleed canvas */}
+                {/* Artwork canvas container — displays full artwork uncropped */}
                 <div style={{
                   position: "absolute",
-                  inset: 0,
+                  left: fileHasBleed ? 0 : guides.cut.left,
+                  top: fileHasBleed ? 0 : guides.cut.top,
+                  width: fileHasBleed ? "100%" : guides.cut.width,
+                  height: fileHasBleed ? "100%" : guides.cut.height,
                   overflow: "hidden",
-                  backgroundColor: "#ffffff"
+                  backgroundColor: "#ffffff",
+                  boxShadow: !fileHasBleed ? "0 0 10px rgba(0,0,0,0.15)" : "none"
                 }}>
-                  {/* Image artwork — contained inside the product frame */}
+                  {/* Image artwork — full bleed or placed inside cut box */}
                   {isImage && (
                     <img
                       src={activeUrl}
@@ -525,7 +556,7 @@ export default function PrintProofModal({
                         inset: 0,
                         width: "100%",
                         height: "100%",
-                        objectFit: "contain",
+                        objectFit: "fill",
                         objectPosition: "center"
                       }}
                     />
@@ -573,7 +604,7 @@ export default function PrintProofModal({
                           style={{
                             width: "100%",
                             height: "100%",
-                            objectFit: "contain",
+                            objectFit: "fill",
                             display: "block"
                           }}
                         />
@@ -611,7 +642,7 @@ export default function PrintProofModal({
                     boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
                     zIndex: 20
                   }}>
-                    CUT &middot; {describeSize(resolvedWidth, resolvedHeight)}
+                    Cut Edge: {describeSize(resolvedWidth, resolvedHeight)}
                   </span>
                 </div>
 
@@ -644,7 +675,7 @@ export default function PrintProofModal({
                     boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
                     zIndex: 20
                   }}>
-                    SAFE AREA &middot; {describeIn(safeInsetIn)} IN
+                    Safe Area ({describeIn(safeInsetIn)} inset)
                   </span>
                 </div>
               </div>
@@ -785,7 +816,7 @@ export default function PrintProofModal({
             <div style={{ marginTop: "1.1rem", padding: "0.85rem 1rem", backgroundColor: "hsl(var(--secondary-hsl) / 0.3)", borderRadius: "var(--radius-sm)", fontSize: "0.85rem" }}>
               <p style={{ fontWeight: 700, marginBottom: "0.2rem" }}>Artwork Details</p>
               <p style={{ color: "hsl(var(--muted-hsl))" }}>
-                File: <strong>{activeFileName}</strong> &bull; Finished Size: <strong>{describeSize(resolvedWidth, resolvedHeight)}</strong> &bull; Bleed Area: <strong>{describeSize(activeMediaW, activeMediaH)}</strong>
+                File: <strong>{activeFileName}</strong> &bull; Finished Size: <strong>{describeSize(resolvedWidth, resolvedHeight)}</strong> &bull; Full Sheet (incl. bleed): <strong>{describeSize(frameW, frameH)}</strong>
               </p>
             </div>
 

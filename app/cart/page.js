@@ -409,6 +409,11 @@ export default function CartPage() {
                           <span style={{ fontWeight: 800, color: item.originalPrice && item.originalPrice > item.price ? "#DC2626" : "hsl(var(--accent-hsl))", fontSize: "1rem" }}>
                             ${(parseFloat(item.price) * item.quantity).toFixed(2)} CAD
                           </span>
+                          {item.embroiderySetupFee && parseFloat(item.embroiderySetupFee) > 0 && (
+                            <span style={{ fontSize: "0.72rem", color: "#7C3AED", fontWeight: 700, marginTop: "0.15rem" }}>
+                              Incl. ${parseFloat(item.embroiderySetupFee).toFixed(2)} Embroidery Setup Fee
+                            </span>
+                          )}
                         </div>
                       </div>
 

@@ -161,8 +161,12 @@ export default function ApparelVisualCustomizer({
   const currentEditingSide = activeSides.includes(selectedSide) ? selectedSide : (activeSides[0] || "front");
   const setCurrentEditingSide = setSelectedSide;
 
+  // Embroidery Setup Fee & Status
+  const embroiderySetupFee = parseFloat(product.embroiderySetupFee || 0);
+  const isEmbroidery = !isNaN(embroiderySetupFee) && embroiderySetupFee > 0;
+
   // Print method and internal production notes
-  const [printMethod, setPrintMethod] = useState("screenprint"); // screenprint, embroidery, dtg, vinyl
+  const [printMethod, setPrintMethod] = useState(isEmbroidery ? "embroidery" : "screenprint"); // screenprint, embroidery, dtf, vinyl
   const [internalNotes, setInternalNotes] = useState("");
 
   // Live calibrations per side (override product.views[side].calibration if calibrated in-studio)
@@ -254,11 +258,37 @@ export default function ApparelVisualCustomizer({
 
   const meetsMoq = totalQuantity >= moq;
 
+  // Volume Tiered Pricing
+  const tieredPricing = useMemo(() => {
+    if (Array.isArray(product.tieredPricing) && product.tieredPricing.length > 0) {
+      return [...product.tieredPricing].sort((a, b) => (Number(a.minQty) || 0) - (Number(b.minQty) || 0));
+    }
+    return null;
+  }, [product.tieredPricing]);
+
+  // Active Tier matching total quantity
+  const activeTier = useMemo(() => {
+    if (!tieredPricing || totalQuantity <= 0) return null;
+    return tieredPricing.find(t => totalQuantity >= Number(t.minQty) && (!t.maxQty || totalQuantity <= Number(t.maxQty))) || null;
+  }, [tieredPricing, totalQuantity]);
+
+  const tierDiscountPercent = activeTier ? (parseFloat(activeTier.discountPercent) || 0) : 0;
+
+  // Next Tier calculation for UX helper tip
+  const nextTier = useMemo(() => {
+    if (!tieredPricing) return null;
+    return tieredPricing.find(t => Number(t.minQty) > totalQuantity && (parseFloat(t.discountPercent) || 0) > tierDiscountPercent) || null;
+  }, [tieredPricing, totalQuantity, tierDiscountPercent]);
+
   // Sale discount resolution
   const saleDiscountPercent = parseFloat(product.saleDiscountPercent);
   const hasSale = !isNaN(saleDiscountPercent) && saleDiscountPercent > 0 && saleDiscountPercent < 100;
 
-  // Compute weighted price including size upcharges, location upcharges, and sale discount
+  // Effective combined discount (whichever offers higher savings: volume tier or sale)
+  const effectiveDiscountPercent = Math.max(tierDiscountPercent, hasSale ? saleDiscountPercent : 0);
+  const hasDiscount = effectiveDiscountPercent > 0;
+
+  // Compute weighted price including size upcharges, location upcharges, tier/sale discount, and embroidery setup fee
   const pricingSummary = useMemo(() => {
     const locationUpcharge = parseFloat(selectedPrintLocation?.priceUpcharge || 0);
     
@@ -274,27 +304,33 @@ export default function ApparelVisualCustomizer({
 
     const averageUnitSizeUpcharge = totalQuantity > 0 ? (totalSizeUpcharges / totalQuantity) : 0;
     const regularUnitPrice = basePrice + locationUpcharge + averageUnitSizeUpcharge;
-    const regularGrandTotal = regularUnitPrice * totalQuantity;
+    const regularGarmentsTotal = regularUnitPrice * totalQuantity;
 
-    const effectiveUnitPrice = hasSale
-      ? Math.round(regularUnitPrice * (1 - saleDiscountPercent / 100) * 100) / 100
+    const effectiveUnitPrice = hasDiscount
+      ? Math.round(regularUnitPrice * (1 - effectiveDiscountPercent / 100) * 100) / 100
       : regularUnitPrice;
-    const grandTotal = hasSale
-      ? Math.round(regularGrandTotal * (1 - saleDiscountPercent / 100) * 100) / 100
-      : regularGrandTotal;
+    const garmentsSubtotal = totalQuantity > 0 ? (effectiveUnitPrice * totalQuantity) : 0;
+    const grandTotal = garmentsSubtotal + (totalQuantity > 0 ? embroiderySetupFee : 0);
 
     return {
       basePrice,
       hasSale,
       saleDiscountPercent: hasSale ? saleDiscountPercent : null,
+      tierDiscountPercent,
+      activeTier,
+      effectiveDiscountPercent,
+      hasDiscount,
       regularUnitPrice,
-      regularGrandTotal,
+      regularGrandTotal: regularGarmentsTotal + (totalQuantity > 0 ? embroiderySetupFee : 0),
       locationUpcharge,
       totalSizeUpcharges,
       effectiveUnitPrice,
+      garmentsSubtotal,
+      embroiderySetupFee,
+      isEmbroidery,
       grandTotal
     };
-  }, [basePrice, selectedPrintLocation, sizeQuantities, availableSizes, totalQuantity, hasSale, saleDiscountPercent]);
+  }, [basePrice, selectedPrintLocation, sizeQuantities, availableSizes, totalQuantity, hasSale, saleDiscountPercent, tierDiscountPercent, activeTier, effectiveDiscountPercent, hasDiscount, embroiderySetupFee, isEmbroidery]);
 
   // Quantity input handler
   const handleQuantityChange = (sizeName, value) => {
@@ -768,11 +804,13 @@ export default function ApparelVisualCustomizer({
         category: product.category || "Custom Apparel",
         categoryId: product.categoryId || "apparel",
         quantity: totalQuantity,
-        price: pricingSummary.effectiveUnitPrice,
+        price: totalQuantity > 0 ? (pricingSummary.grandTotal / totalQuantity) : pricingSummary.effectiveUnitPrice,
         unitPrice: pricingSummary.effectiveUnitPrice,
-        originalPrice: pricingSummary.hasSale ? pricingSummary.regularUnitPrice : undefined,
-        saleDiscountPercent: pricingSummary.hasSale ? pricingSummary.saleDiscountPercent : undefined,
+        originalPrice: pricingSummary.hasDiscount ? pricingSummary.regularUnitPrice : undefined,
+        saleDiscountPercent: pricingSummary.hasDiscount ? pricingSummary.effectiveDiscountPercent : undefined,
         totalPrice: pricingSummary.grandTotal,
+        embroiderySetupFee: pricingSummary.embroiderySetupFee || 0,
+        isEmbroidery: Boolean(pricingSummary.isEmbroidery),
         
         // Dedicated Apparel Breakdown
         isApparel: true,
@@ -781,7 +819,7 @@ export default function ApparelVisualCustomizer({
         color: selectedColor,
         sizeBreakdown: sizeQuantities,
         printLocation: selectedPrintLocation,
-        printMethod: printMethod,
+        printMethod: isEmbroidery ? "embroidery" : (printMethod === "dtg" ? "dtf" : printMethod),
         internalNotes: internalNotes,
         optionSummary: optionSummaryText,
         
@@ -888,23 +926,28 @@ export default function ApparelVisualCustomizer({
             <span style={{ fontSize: "0.75rem", color: "#64748B", textTransform: "uppercase", fontWeight: 700 }}>
               {totalQuantity} {totalQuantity === 1 ? "Unit" : "Units"} • Total
             </span>
-            {pricingSummary.hasSale && (
+            {pricingSummary.hasDiscount && (
               <span style={{ fontSize: "0.68rem", fontWeight: 800, color: "#DC2626", backgroundColor: "#FEE2E2", padding: "0.1rem 0.35rem", borderRadius: "3px" }}>
-                -{pricingSummary.saleDiscountPercent}%
+                -{pricingSummary.effectiveDiscountPercent}%
               </span>
             )}
           </div>
           <div style={{ display: "flex", alignItems: "baseline", justifyContent: "flex-end", gap: "0.4rem" }}>
-            {pricingSummary.hasSale && (
+            {pricingSummary.hasDiscount && (
               <span style={{ fontSize: "0.95rem", textDecoration: "line-through", color: "#94A3B8", fontWeight: 700 }}>
                 ${pricingSummary.regularGrandTotal.toFixed(2)}
               </span>
             )}
-            <span style={{ fontSize: "1.3rem", fontWeight: 900, color: pricingSummary.hasSale ? "#DC2626" : "#2563EB" }}>
+            <span style={{ fontSize: "1.3rem", fontWeight: 900, color: pricingSummary.hasDiscount ? "#DC2626" : "#2563EB" }}>
               ${pricingSummary.grandTotal.toFixed(2)}
             </span>
             <span style={{ fontSize: "0.75rem", color: "#64748B" }}>CAD</span>
           </div>
+          {pricingSummary.isEmbroidery && (
+            <span style={{ fontSize: "0.68rem", color: "#7C3AED", fontWeight: 700, display: "block" }}>
+              Incl. ${pricingSummary.embroiderySetupFee.toFixed(2)} embroidery setup fee
+            </span>
+          )}
         </div>
       </div>
 
@@ -989,9 +1032,11 @@ export default function ApparelVisualCustomizer({
               fontSize: "0.8rem",
               color: "#475569"
             }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.75rem", backgroundColor: "#F8FAFC", borderRadius: "10px", border: "1px solid #E2E8F0" }}>
-                <ShieldCheck size={18} style={{ color: "#10B981", flexShrink: 0 }} />
-                <span>Commercial Grade High-Density Embroidery / DTG Print</span>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.75rem", backgroundColor: isEmbroidery ? "rgba(124, 58, 237, 0.05)" : "#F8FAFC", borderRadius: "10px", border: isEmbroidery ? "1px solid rgba(124, 58, 237, 0.25)" : "1px solid #E2E8F0" }}>
+                <ShieldCheck size={18} style={{ color: isEmbroidery ? "#7C3AED" : "#10B981", flexShrink: 0 }} />
+                <span style={{ fontWeight: isEmbroidery ? 700 : 500, color: isEmbroidery ? "#6D28D9" : "inherit" }}>
+                  {isEmbroidery ? "Commercial Grade High-Density Embroidery" : "Commercial Grade High-Density DTF Print"}
+                </span>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.75rem", backgroundColor: "#F8FAFC", borderRadius: "10px", border: "1px solid #E2E8F0" }}>
                 <Sparkles size={18} style={{ color: "#2563EB", flexShrink: 0 }} />
@@ -1003,6 +1048,30 @@ export default function ApparelVisualCustomizer({
           {/* Right Column: Customization Controls */}
           <div style={{ display: "flex", flexDirection: "column", gap: "1.75rem" }}>
             
+            {/* Embroidery Product Setup Banner */}
+            {isEmbroidery && (
+              <div style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "0.75rem 1rem",
+                backgroundColor: "rgba(124, 58, 237, 0.08)",
+                border: "1.5px solid rgba(124, 58, 237, 0.25)",
+                borderRadius: "10px",
+                color: "#5B21B6",
+                fontSize: "0.85rem",
+                fontWeight: 700
+              }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                  <span style={{ fontSize: "1.1rem" }}>🧵</span>
+                  <span>Commercial Embroidery • High-Density Stitching</span>
+                </div>
+                <span style={{ backgroundColor: "#7C3AED", color: "#FFFFFF", padding: "0.2rem 0.6rem", borderRadius: "99px", fontSize: "0.75rem", fontWeight: 800 }}>
+                  +${embroiderySetupFee.toFixed(2)} Digitizing Fee
+                </span>
+              </div>
+            )}
+
             {/* 1. Colour Selection (Screenshot 2 Match) */}
             <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
@@ -1057,6 +1126,125 @@ export default function ApparelVisualCustomizer({
                 })}
               </div>
             </div>
+
+            {/* Tiered Volume Discounts Display (Non-cluttered UX) */}
+            {tieredPricing && tieredPricing.length > 0 && (
+              <div style={{
+                backgroundColor: "#F8FAFC",
+                border: "1.5px solid #E2E8F0",
+                borderRadius: "12px",
+                padding: "0.85rem 1rem",
+                display: "flex",
+                flexDirection: "column",
+                gap: "0.6rem"
+              }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                    <span style={{ fontSize: "0.95rem" }}>⚡</span>
+                    <span style={{ fontSize: "0.85rem", fontWeight: 800, color: "#0F172A" }}>
+                      Volume Tiered Pricing
+                    </span>
+                  </div>
+                  {activeTier && activeTier.discountPercent > 0 && (
+                    <span style={{
+                      fontSize: "0.72rem",
+                      fontWeight: 800,
+                      color: "#15803D",
+                      backgroundColor: "#DCFCE7",
+                      padding: "0.15rem 0.5rem",
+                      borderRadius: "99px",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.25rem"
+                    }}>
+                      <CheckCircle2 size={12} /> {activeTier.discountPercent}% Tier Discount Active
+                    </span>
+                  )}
+                </div>
+
+                {/* Horizontal Tier Cards */}
+                <div style={{
+                  display: "grid",
+                  gridTemplateColumns: `repeat(${tieredPricing.length}, 1fr)`,
+                  gap: "0.5rem"
+                }}>
+                  {tieredPricing.map((tier, idx) => {
+                    const isCurrentTier = activeTier && activeTier.minQty === tier.minQty;
+                    const disc = parseFloat(tier.discountPercent) || 0;
+                    const estUnit = basePrice * (1 - disc / 100);
+
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          padding: "0.5rem 0.65rem",
+                          borderRadius: "8px",
+                          border: isCurrentTier ? "2px solid #2563EB" : "1px solid #CBD5E1",
+                          backgroundColor: isCurrentTier ? "#EFF6FF" : "#FFFFFF",
+                          textAlign: "center",
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: "0.15rem",
+                          boxShadow: isCurrentTier ? "0 2px 6px rgba(37, 99, 235, 0.15)" : "none",
+                          position: "relative",
+                          transition: "all 0.15s ease"
+                        }}
+                      >
+                        <span style={{ fontSize: "0.75rem", fontWeight: 700, color: isCurrentTier ? "#1E40AF" : "#475569" }}>
+                          {tier.maxQty ? `${tier.minQty}–${tier.maxQty} pcs` : `${tier.minQty}+ pcs`}
+                        </span>
+                        <span style={{ fontSize: "0.95rem", fontWeight: 900, color: isCurrentTier ? "#1E40AF" : "#0F172A" }}>
+                          ${estUnit.toFixed(2)}
+                        </span>
+                        <span style={{
+                          fontSize: "0.68rem",
+                          fontWeight: 800,
+                          color: disc > 0 ? (isCurrentTier ? "#1D4ED8" : "#16A34A") : "#94A3B8"
+                        }}>
+                          {disc > 0 ? `Save ${disc}%` : "Base Price"}
+                        </span>
+                        {isCurrentTier && (
+                          <span style={{
+                            position: "absolute",
+                            top: "-7px",
+                            right: "6px",
+                            fontSize: "0.55rem",
+                            fontWeight: 900,
+                            backgroundColor: "#2563EB",
+                            color: "#FFFFFF",
+                            padding: "0 0.35rem",
+                            borderRadius: "99px",
+                            textTransform: "uppercase"
+                          }}>
+                            Active
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Next Tier Helper Tip */}
+                {nextTier && totalQuantity > 0 && (
+                  <div style={{
+                    fontSize: "0.75rem",
+                    color: "#2563EB",
+                    fontWeight: 600,
+                    backgroundColor: "rgba(37, 99, 235, 0.05)",
+                    padding: "0.3rem 0.6rem",
+                    borderRadius: "6px",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.35rem"
+                  }}>
+                    <span>💡</span>
+                    <span>
+                      Add <strong>{nextTier.minQty - totalQuantity} more</strong> {nextTier.minQty - totalQuantity === 1 ? "garment" : "garments"} to unlock <strong>{nextTier.discountPercent}% OFF</strong>!
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* 2. Size and Quantity Matrix (Screenshot 1 Match) */}
             <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
@@ -1597,7 +1785,7 @@ export default function ApparelVisualCustomizer({
                   <Ruler size={13} />
                   <span>{isTrueToScale ? "True to scale" : "Estimated scale"}</span>
                   <span style={{ opacity: 0.6 }}>·</span>
-                  <span>{printMethod === "screenprint" ? "Screen Print" : printMethod === "embroidery" ? "Embroidery" : printMethod === "dtg" ? "DTG" : "Vinyl"}</span>
+                  <span>{printMethod === "screenprint" ? "Screen Print" : printMethod === "embroidery" ? "Embroidery" : printMethod === "dtf" ? "DTF" : "Vinyl"}</span>
                 </div>
               )}
             </div>

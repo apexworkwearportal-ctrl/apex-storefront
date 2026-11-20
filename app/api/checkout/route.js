@@ -140,6 +140,8 @@ export async function POST(req) {
         selectedOptionMap: i.selectedOptionMap || null,
         price: parseFloat(i.price || 0),
         quantity: parseInt(i.quantity || 1),
+        embroiderySetupFee: parseFloat(i.embroiderySetupFee || 0),
+        isEmbroidery: Boolean(i.isEmbroidery),
         artworkFiles: i.artworkFiles || [],
         artworkUrl: i.artworkUrl || (i.artworkFiles && i.artworkFiles[0] ? i.artworkFiles[0].url : null),
         mockupLayers: i.mockupLayers || null,

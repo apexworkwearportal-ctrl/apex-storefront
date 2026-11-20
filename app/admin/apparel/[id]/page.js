@@ -67,6 +67,12 @@ const DEFAULT_SIZE_CHART_TABLE = [
   { size: "3XL", chest: "56 - 58\"", length: "33\"", sleeve: "23\"" },
 ];
 
+const DEFAULT_TIERED_PRICING = [
+  { minQty: 1, maxQty: 24, discountPercent: 0 },
+  { minQty: 25, maxQty: 49, discountPercent: 20 },
+  { minQty: 50, maxQty: null, discountPercent: 30 },
+];
+
 export default function AdminApparelProductEditPage({ params: paramsPromise }) {
   const params = use(paramsPromise);
   const productId = params.id;
@@ -94,6 +100,8 @@ export default function AdminApparelProductEditPage({ params: paramsPromise }) {
   const [categoryId, setCategoryId] = useState("");
   const [basePrice, setBasePrice] = useState("");
   const [saleDiscountPercent, setSaleDiscountPercent] = useState("");
+  const [embroiderySetupFee, setEmbroiderySetupFee] = useState("");
+  const [tieredPricing, setTieredPricing] = useState(DEFAULT_TIERED_PRICING);
   const [minimumOrderQuantity, setMinimumOrderQuantity] = useState(12);
   const [images, setImages] = useState([]);
 
@@ -180,6 +188,12 @@ export default function AdminApparelProductEditPage({ params: paramsPromise }) {
           setCategoryId(data.categoryId || "");
           setBasePrice(data.pricing?.startingPrice || data.pricing?.basePrice || data.basePrice || "28.00");
           setSaleDiscountPercent(data.saleDiscountPercent !== undefined && data.saleDiscountPercent !== null ? String(data.saleDiscountPercent) : "");
+          setEmbroiderySetupFee(data.embroiderySetupFee !== undefined && data.embroiderySetupFee !== null ? String(data.embroiderySetupFee) : "");
+          if (Array.isArray(data.tieredPricing) && data.tieredPricing.length > 0) {
+            setTieredPricing(data.tieredPricing);
+          } else {
+            setTieredPricing(DEFAULT_TIERED_PRICING);
+          }
           setMinimumOrderQuantity(data.minimumOrderQuantity || 12);
           setImages(data.images || []);
           
@@ -602,6 +616,8 @@ export default function AdminApparelProductEditPage({ params: paramsPromise }) {
         },
         basePrice: parseFloat(basePrice) || 0,
         saleDiscountPercent: saleDiscountPercent !== "" && !isNaN(parseFloat(saleDiscountPercent)) && parseFloat(saleDiscountPercent) > 0 && parseFloat(saleDiscountPercent) < 100 ? parseFloat(saleDiscountPercent) : null,
+        embroiderySetupFee: embroiderySetupFee !== "" && !isNaN(parseFloat(embroiderySetupFee)) ? parseFloat(embroiderySetupFee) : 0,
+        tieredPricing: Array.isArray(tieredPricing) ? tieredPricing : DEFAULT_TIERED_PRICING,
         minimumOrderQuantity: parseInt(minimumOrderQuantity) || 12,
         images: images.length > 0 ? images : (garmentViews.front?.image ? [garmentViews.front.image] : []),
         
@@ -1441,6 +1457,159 @@ export default function AdminApparelProductEditPage({ params: paramsPromise }) {
                 Remove Sale
               </button>
             )}
+          </div>
+
+          {/* Embroidery Setup & Digitizing Fee Card */}
+          <div className="card" style={{ display: "flex", flexDirection: "column", gap: "1rem", border: (parseFloat(embroiderySetupFee) > 0) ? "1px solid #7C3AED" : "1px solid hsl(var(--border-hsl))", backgroundColor: (parseFloat(embroiderySetupFee) > 0) ? "rgba(124, 58, 237, 0.02)" : "transparent" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <span style={{ fontSize: "1.1rem" }}>🧵</span>
+                <h2 style={{ fontSize: "1.2rem", fontWeight: 700, margin: 0, color: (parseFloat(embroiderySetupFee) > 0) ? "#7C3AED" : "inherit" }}>Embroidery Setup Fee</h2>
+              </div>
+              {parseFloat(embroiderySetupFee) > 0 && (
+                <span style={{ fontSize: "0.72rem", fontWeight: 800, padding: "0.15rem 0.55rem", borderRadius: "99px", backgroundColor: "#7C3AED", color: "white" }}>
+                  EMBROIDERY PRODUCT (+${parseFloat(embroiderySetupFee).toFixed(2)})
+                </span>
+              )}
+            </div>
+
+            <div>
+              <label className="label">
+                Setup & Digitizing Fee (CAD)
+              </label>
+              <div style={{ position: "relative" }}>
+                <span style={{ position: "absolute", left: "0.75rem", top: "50%", transform: "translateY(-50%)", color: "hsl(var(--muted-hsl))", fontWeight: 700 }}>$</span>
+                <input
+                  type="number"
+                  step="0.50"
+                  min="0"
+                  className="input"
+                  placeholder="e.g. 45.00 — leave 0 or empty for DTF print products"
+                  value={embroiderySetupFee}
+                  onChange={(e) => setEmbroiderySetupFee(e.target.value)}
+                  style={{
+                    paddingLeft: "1.75rem",
+                    fontWeight: 700,
+                    borderColor: (parseFloat(embroiderySetupFee) > 0) ? "#7C3AED" : undefined
+                  }}
+                />
+              </div>
+              <span style={{ fontSize: "0.75rem", color: "hsl(var(--muted-hsl))", display: "block", marginTop: "0.35rem" }}>
+                If set (&gt; $0), this garment displays as an <strong>Embroidery</strong> product and charges this one-time setup fee in the customer&apos;s order total. If empty or 0, it displays as <strong>DTF Print</strong> with no setup charge.
+              </span>
+            </div>
+          </div>
+
+          {/* Tiered Volume Pricing Card */}
+          <div className="card" style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "0.5rem" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <span style={{ fontSize: "1.1rem" }}>📊</span>
+                <div>
+                  <h2 style={{ fontSize: "1.2rem", fontWeight: 700, margin: 0 }}>Volume Tiered Pricing</h2>
+                  <p style={{ fontSize: "0.75rem", color: "hsl(var(--muted-hsl))", margin: 0 }}>
+                    Automatically discounts the garment unit price based on total quantity ordered across all sizes.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setTieredPricing([
+                  { minQty: 1, maxQty: 24, discountPercent: 0 },
+                  { minQty: 25, maxQty: 49, discountPercent: 20 },
+                  { minQty: 50, maxQty: null, discountPercent: 30 }
+                ])}
+                className="btn btn-outline"
+                style={{ fontSize: "0.75rem", padding: "0.25rem 0.65rem" }}
+              >
+                Reset to Standard Tiers
+              </button>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "100px 100px 110px 1fr 40px", gap: "0.5rem", fontSize: "0.75rem", fontWeight: 700, color: "hsl(var(--muted-hsl))", padding: "0 0.5rem" }}>
+                <span>Min Qty</span>
+                <span>Max Qty</span>
+                <span>Discount %</span>
+                <span>Est. Unit Price</span>
+                <span></span>
+              </div>
+
+              {tieredPricing.map((tier, idx) => {
+                const baseNum = parseFloat(basePrice || 0);
+                const estPrice = baseNum > 0 ? (baseNum * (1 - (tier.discountPercent || 0) / 100)).toFixed(2) : "—";
+                return (
+                  <div key={idx} style={{ display: "grid", gridTemplateColumns: "100px 100px 110px 1fr 40px", gap: "0.5rem", alignItems: "center", padding: "0.5rem", backgroundColor: "hsl(var(--secondary-hsl) / 0.2)", borderRadius: "var(--radius-sm)", border: "1px solid hsl(var(--border-hsl))" }}>
+                    <input
+                      type="number"
+                      min="1"
+                      className="input"
+                      value={tier.minQty}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value) || 1;
+                        setTieredPricing(prev => prev.map((t, i) => i === idx ? { ...t, minQty: val } : t));
+                      }}
+                      style={{ padding: "0.35rem 0.5rem", fontSize: "0.85rem", fontWeight: 700 }}
+                    />
+                    <input
+                      type="number"
+                      min={tier.minQty}
+                      className="input"
+                      placeholder="Unlimited (+)"
+                      value={tier.maxQty ?? ""}
+                      onChange={(e) => {
+                        const val = e.target.value === "" ? null : (parseInt(e.target.value) || null);
+                        setTieredPricing(prev => prev.map((t, i) => i === idx ? { ...t, maxQty: val } : t));
+                      }}
+                      style={{ padding: "0.35rem 0.5rem", fontSize: "0.85rem" }}
+                    />
+                    <div style={{ position: "relative" }}>
+                      <input
+                        type="number"
+                        min="0"
+                        max="90"
+                        step="1"
+                        className="input"
+                        value={tier.discountPercent}
+                        onChange={(e) => {
+                          const val = Math.max(0, Math.min(90, parseFloat(e.target.value) || 0));
+                          setTieredPricing(prev => prev.map((t, i) => i === idx ? { ...t, discountPercent: val } : t));
+                        }}
+                        style={{ padding: "0.35rem 1.4rem 0.35rem 0.5rem", fontSize: "0.85rem", fontWeight: 700, color: tier.discountPercent > 0 ? "#16A34A" : "inherit" }}
+                      />
+                      <span style={{ position: "absolute", right: "0.5rem", top: "50%", transform: "translateY(-50%)", fontSize: "0.75rem", color: "hsl(var(--muted-hsl))", fontWeight: 700 }}>%</span>
+                    </div>
+                    <div style={{ fontSize: "0.85rem", fontWeight: 700, color: tier.discountPercent > 0 ? "#16A34A" : "hsl(var(--muted-hsl))" }}>
+                      ${estPrice} CAD {tier.discountPercent > 0 && <span style={{ fontSize: "0.7rem", backgroundColor: "#DCFCE7", color: "#166534", padding: "0.1rem 0.35rem", borderRadius: "3px" }}>-{tier.discountPercent}%</span>}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setTieredPricing(prev => prev.filter((_, i) => i !== idx))}
+                      disabled={tieredPricing.length <= 1}
+                      style={{ color: "hsl(var(--destructive-hsl))", background: "none", border: "none", cursor: "pointer", opacity: tieredPricing.length <= 1 ? 0.3 : 1 }}
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                );
+              })}
+
+              <button
+                type="button"
+                onClick={() => {
+                  const last = tieredPricing[tieredPricing.length - 1];
+                  const nextMin = last && last.maxQty ? last.maxQty + 1 : (last ? (last.minQty + 50) : 50);
+                  setTieredPricing(prev => [
+                    ...prev,
+                    { minQty: nextMin, maxQty: null, discountPercent: Math.min(60, ((last?.discountPercent || 0) + 10)) }
+                  ]);
+                }}
+                className="btn btn-outline"
+                style={{ alignSelf: "flex-start", marginTop: "0.25rem", fontSize: "0.75rem", display: "flex", alignItems: "center", gap: "0.3rem" }}
+              >
+                <Plus size={13} /> Add Volume Tier
+              </button>
+            </div>
           </div>
 
           {/* Dedicated Garment Angle Views & Calibration */}

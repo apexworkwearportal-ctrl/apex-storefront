@@ -62,6 +62,16 @@ function AdminOrdersContent() {
   const [savingTracking, setSavingTracking] = useState(false);
   const [trackingSuccessMsg, setTrackingSuccessMsg] = useState("");
 
+  // Abandoned Checkouts recovery & delete states
+  const [recoveryModalOrder, setRecoveryModalOrder] = useState(null);
+  const [recoveryTemplate, setRecoveryTemplate] = useState("discount_10");
+  const [recoveryDiscountCode, setRecoveryDiscountCode] = useState("SAVE10");
+  const [recoverySubject, setRecoverySubject] = useState("Take 10% Off Your Pending Order - Apex Workwear");
+  const [recoveryCustomMessage, setRecoveryCustomMessage] = useState("");
+  const [sendingRecovery, setSendingRecovery] = useState(false);
+  const [recoveryStatusMsg, setRecoveryStatusMsg] = useState("");
+  const [deletingOrderId, setDeletingOrderId] = useState(null);
+
   // Editable destination address fields
   const [editAddress, setEditAddress] = useState({
     ShipAddr: "",
@@ -425,6 +435,82 @@ function AdminOrdersContent() {
       alert(`Error approving proof: ${err.message}`);
     } finally {
       setApprovingProof(false);
+    }
+  };
+
+  const handleDeleteAbandonedOrder = async (order) => {
+    if (!order?.id) return;
+    const confirmDelete = window.confirm(`Permanently delete abandoned checkout #${order.id.slice(0, 8)}? This action cannot be undone.`);
+    if (!confirmDelete) return;
+
+    setDeletingOrderId(order.id);
+    try {
+      const res = await fetch("/api/admin/orders/delete-abandoned", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orderId: order.id,
+          isPendingCollection: Boolean(order.isPendingCollection)
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Failed to delete order");
+      }
+
+      setOrders(prev => prev.filter(o => o.id !== order.id));
+      if (selectedOrder?.id === order.id) {
+        setSelectedOrder(null);
+      }
+      alert("Abandoned checkout successfully deleted.");
+    } catch (err) {
+      console.error("Delete abandoned order error:", err);
+      alert(`Could not delete order: ${err.message}`);
+    } finally {
+      setDeletingOrderId(null);
+    }
+  };
+
+  const handleSendRecoveryEmail = async () => {
+    if (!recoveryModalOrder) return;
+    setSendingRecovery(true);
+    setRecoveryStatusMsg("");
+    try {
+      const res = await fetch("/api/admin/orders/send-recovery-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orderId: recoveryModalOrder.id,
+          isPendingCollection: Boolean(recoveryModalOrder.isPendingCollection),
+          templateId: recoveryTemplate,
+          discountCode: recoveryDiscountCode,
+          customSubject: recoverySubject,
+          customMessage: recoveryCustomMessage
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Failed to send recovery email");
+      }
+
+      const sentTime = new Date().toISOString();
+      setOrders(prev => prev.map(o => o.id === recoveryModalOrder.id ? { ...o, recoveryEmailSentAt: sentTime, recoveryEmailTemplate: recoveryTemplate } : o));
+      if (selectedOrder?.id === recoveryModalOrder.id) {
+        setSelectedOrder(prev => prev ? ({ ...prev, recoveryEmailSentAt: sentTime, recoveryEmailTemplate: recoveryTemplate }) : null);
+      }
+
+      setRecoveryStatusMsg("Recovery offer email sent successfully!");
+      setTimeout(() => {
+        setRecoveryModalOrder(null);
+        setRecoveryStatusMsg("");
+      }, 1500);
+    } catch (err) {
+      console.error("Send recovery email error:", err);
+      setRecoveryStatusMsg(`Failed: ${err.message}`);
+    } finally {
+      setSendingRecovery(false);
     }
   };
 
@@ -896,13 +982,43 @@ function AdminOrdersContent() {
                       </td>
 
                       <td style={{ padding: "1.25rem 1.5rem" }}>
-                        <button
-                          onClick={() => setSelectedOrder(order)}
-                          className="btn btn-outline"
-                          style={{ padding: "0.4rem 0.75rem", fontSize: "0.8rem", display: "inline-flex", alignItems: "center", gap: "0.25rem" }}
-                        >
-                          <Eye size={14} /> View
-                        </button>
+                        <div style={{ display: "flex", alignItems: "center", gap: "0.35rem", flexWrap: "wrap" }}>
+                          <button
+                            onClick={() => setSelectedOrder(order)}
+                            className="btn btn-outline"
+                            style={{ padding: "0.35rem 0.65rem", fontSize: "0.75rem", display: "inline-flex", alignItems: "center", gap: "0.25rem" }}
+                          >
+                            <Eye size={13} /> View
+                          </button>
+                          {!isPaidOrder(order) && (
+                            <>
+                              <button
+                                onClick={() => {
+                                  setRecoveryModalOrder(order);
+                                  setRecoveryTemplate("discount_10");
+                                  setRecoveryDiscountCode("SAVE10");
+                                  setRecoverySubject("Take 10% Off Your Pending Order - Apex Workwear");
+                                  setRecoveryCustomMessage("");
+                                  setRecoveryStatusMsg("");
+                                }}
+                                title="Send Recovery Offer Email"
+                                className="btn btn-outline"
+                                style={{ padding: "0.35rem 0.6rem", fontSize: "0.75rem", display: "inline-flex", alignItems: "center", gap: "0.25rem", color: "#0284C7", borderColor: "#BAE6FD" }}
+                              >
+                                <Mail size={13} /> Email Offer
+                              </button>
+                              <button
+                                onClick={() => handleDeleteAbandonedOrder(order)}
+                                disabled={deletingOrderId === order.id}
+                                title="Delete Abandoned Checkout"
+                                className="btn btn-outline"
+                                style={{ padding: "0.35rem 0.5rem", fontSize: "0.75rem", display: "inline-flex", alignItems: "center", color: "#DC2626", borderColor: "#FECACA" }}
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            </>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -961,6 +1077,41 @@ function AdminOrdersContent() {
                       >
                         Copy Payment Link
                       </button>
+                    </div>
+                  )}
+
+                  {/* Recovery Email & Delete Actions */}
+                  <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem", flexWrap: "wrap", alignItems: "center" }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRecoveryModalOrder(selectedOrder);
+                        setRecoveryTemplate("discount_10");
+                        setRecoveryDiscountCode("SAVE10");
+                        setRecoverySubject("Take 10% Off Your Pending Order - Apex Workwear");
+                        setRecoveryCustomMessage("");
+                        setRecoveryStatusMsg("");
+                      }}
+                      className="btn btn-primary"
+                      style={{ padding: "0.4rem 0.85rem", fontSize: "0.75rem", display: "inline-flex", alignItems: "center", gap: "0.35rem", backgroundColor: "#0284C7", borderColor: "#0369A1", color: "white" }}
+                    >
+                      <Mail size={13} /> Send Recovery Offer Email
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteAbandonedOrder(selectedOrder)}
+                      disabled={deletingOrderId === selectedOrder.id}
+                      className="btn btn-outline"
+                      style={{ padding: "0.4rem 0.85rem", fontSize: "0.75rem", display: "inline-flex", alignItems: "center", gap: "0.35rem", color: "#DC2626", borderColor: "#FCA5A5" }}
+                    >
+                      <Trash2 size={13} /> {deletingOrderId === selectedOrder.id ? "Deleting..." : "Delete Abandoned Checkout"}
+                    </button>
+                  </div>
+
+                  {selectedOrder.recoveryEmailSentAt && (
+                    <div style={{ fontSize: "0.72rem", color: "#065F46", backgroundColor: "#D1FAE5", border: "1px solid #A7F3D0", padding: "0.3rem 0.6rem", borderRadius: "4px", display: "inline-flex", alignItems: "center", gap: "0.3rem", marginTop: "0.25rem" }}>
+                      <CheckCircle2 size={12} /> Recovery email sent on {new Date(selectedOrder.recoveryEmailSentAt).toLocaleDateString()} ({selectedOrder.recoveryEmailTemplate || "offer"})
                     </div>
                   )}
                 </div>
@@ -1806,6 +1957,171 @@ function AdminOrdersContent() {
                   >
                     {sendingCustomEmail ? <Loader2 size={16} className="animate-spin" /> : <Mail size={16} />}
                     {sendingCustomEmail ? "Sending..." : "Send Email"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Abandoned Checkout Recovery Offer Modal */}
+          {recoveryModalOrder && (
+            <div style={{
+              position: "fixed",
+              inset: 0,
+              backgroundColor: "rgba(0, 0, 0, 0.65)",
+              zIndex: 99999,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "1rem"
+            }}>
+              <div style={{
+                backgroundColor: "hsl(var(--card-hsl))",
+                border: "1px solid hsl(var(--border-hsl))",
+                borderRadius: "var(--radius-lg, 12px)",
+                maxWidth: "600px",
+                width: "100%",
+                padding: "1.5rem",
+                boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.3)",
+                display: "flex",
+                flexDirection: "column",
+                gap: "1.1rem"
+              }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid hsl(var(--border-hsl))", paddingBottom: "0.75rem" }}>
+                  <h3 style={{ margin: 0, fontSize: "1.15rem", fontWeight: 800, display: "flex", alignItems: "center", gap: "0.5rem", color: "#0F172A" }}>
+                    <Mail size={18} style={{ color: "#0284C7" }} /> Abandoned Checkout Recovery
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => setRecoveryModalOrder(null)}
+                    style={{ background: "none", border: "none", fontSize: "1.2rem", cursor: "pointer", color: "hsl(var(--muted-hsl))" }}
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <div style={{ padding: "0.75rem", backgroundColor: "#F8FAFC", borderRadius: "8px", border: "1px solid #E2E8F0", fontSize: "0.82rem", color: "#475569" }}>
+                  <div>Sending to: <strong style={{ color: "#0F172A" }}>{recoveryModalOrder.shippingAddress?.ShipEmail || recoveryModalOrder.shippingAddress?.email || recoveryModalOrder.userEmail || "Customer"}</strong></div>
+                  <div>Customer: <strong style={{ color: "#0F172A" }}>{recoveryModalOrder.shippingAddress?.ShipFName} {recoveryModalOrder.shippingAddress?.ShipLName || ""}</strong></div>
+                  <div>Checkout ID: <code style={{ backgroundColor: "#E2E8F0", padding: "0.1rem 0.3rem", borderRadius: "3px" }}>#{recoveryModalOrder.id.slice(0, 10)}</code></div>
+                </div>
+
+                {/* Pre-made Template Selector */}
+                <div>
+                  <label className="label" style={{ fontSize: "0.82rem", fontWeight: 700, marginBottom: "0.4rem" }}>
+                    Select Pre-Made Offer Template
+                  </label>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "0.5rem" }}>
+                    {[
+                      { id: "discount_10", label: "10% Discount", icon: "🏷️", code: "SAVE10", subject: "Take 10% Off Your Pending Order - Apex Workwear" },
+                      { id: "free_shipping", label: "Free Shipping", icon: "🚚", code: "FREESHIP", subject: "Free Standard Shipping on Your Order - Apex Workwear" },
+                      { id: "support", label: "Order Assistance", icon: "💬", code: "", subject: "Can we help you with your order? - Apex Workwear" },
+                    ].map(tpl => {
+                      const isSel = recoveryTemplate === tpl.id;
+                      return (
+                        <button
+                          key={tpl.id}
+                          type="button"
+                          onClick={() => {
+                            setRecoveryTemplate(tpl.id);
+                            setRecoveryDiscountCode(tpl.code);
+                            setRecoverySubject(tpl.subject);
+                          }}
+                          style={{
+                            padding: "0.6rem 0.5rem",
+                            borderRadius: "8px",
+                            border: isSel ? "2px solid #0284C7" : "1px solid #CBD5E1",
+                            backgroundColor: isSel ? "#EFF6FF" : "#FFFFFF",
+                            textAlign: "center",
+                            cursor: "pointer",
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: "center",
+                            gap: "0.2rem"
+                          }}
+                        >
+                          <span style={{ fontSize: "1.2rem" }}>{tpl.icon}</span>
+                          <span style={{ fontSize: "0.78rem", fontWeight: 700, color: isSel ? "#0369A1" : "#1E293B" }}>{tpl.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Promo Code Input (if applicable) */}
+                {recoveryTemplate !== "support" && (
+                  <div>
+                    <label className="label" style={{ fontSize: "0.8rem", marginBottom: "0.25rem" }}>Promo Code Included in Email</label>
+                    <input
+                      type="text"
+                      className="input"
+                      value={recoveryDiscountCode}
+                      onChange={(e) => setRecoveryDiscountCode(e.target.value.toUpperCase())}
+                      placeholder="e.g. SAVE10"
+                      style={{ width: "100%", fontSize: "0.88rem", fontWeight: 800, letterSpacing: "1px" }}
+                    />
+                  </div>
+                )}
+
+                {/* Subject Line */}
+                <div>
+                  <label className="label" style={{ fontSize: "0.8rem", marginBottom: "0.25rem" }}>Subject Line</label>
+                  <input
+                    type="text"
+                    className="input"
+                    value={recoverySubject}
+                    onChange={(e) => setRecoverySubject(e.target.value)}
+                    placeholder="Subject line"
+                    style={{ width: "100%", fontSize: "0.88rem" }}
+                  />
+                </div>
+
+                {/* Optional Custom Note */}
+                <div>
+                  <label className="label" style={{ fontSize: "0.8rem", marginBottom: "0.25rem" }}>
+                    Optional Custom Note from Admin (Appended inside branded body)
+                  </label>
+                  <textarea
+                    className="input"
+                    rows={3}
+                    value={recoveryCustomMessage}
+                    onChange={(e) => setRecoveryCustomMessage(e.target.value)}
+                    placeholder="e.g. Hi Ash, we checked your card artwork and the resolution looks sharp! Let us know if you need help finalizing."
+                    style={{ width: "100%", fontSize: "0.85rem", resize: "vertical" }}
+                  />
+                </div>
+
+                {recoveryStatusMsg && (
+                  <div style={{
+                    padding: "0.6rem 0.85rem",
+                    borderRadius: "6px",
+                    fontSize: "0.85rem",
+                    fontWeight: 600,
+                    backgroundColor: recoveryStatusMsg.includes("success") ? "#D1FAE5" : "#FEE2E2",
+                    color: recoveryStatusMsg.includes("success") ? "#065F46" : "#991B1B"
+                  }}>
+                    {recoveryStatusMsg}
+                  </div>
+                )}
+
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem", marginTop: "0.3rem" }}>
+                  <button
+                    type="button"
+                    onClick={() => setRecoveryModalOrder(null)}
+                    className="btn btn-outline"
+                    disabled={sendingRecovery}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSendRecoveryEmail}
+                    className="btn btn-primary"
+                    disabled={sendingRecovery}
+                    style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem", backgroundColor: "#0284C7", borderColor: "#0369A1", color: "white" }}
+                  >
+                    {sendingRecovery ? <Loader2 size={16} className="animate-spin" /> : <Mail size={16} />}
+                    {sendingRecovery ? "Delivering..." : "Send Recovery Email"}
                   </button>
                 </div>
               </div>
