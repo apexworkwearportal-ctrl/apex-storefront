@@ -9,9 +9,10 @@ import { useCart } from "@/lib/cart-context";
 import { useAuth } from "@/lib/auth-context";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, ShoppingBag, Loader2, Sparkles, FileCheck, Eye, FileText, CheckCircle2, Layers, ShieldCheck } from "lucide-react";
+import { ArrowLeft, ShoppingBag, Loader2, Sparkles, FileCheck, Eye, FileText, CheckCircle2, Layers, ShieldCheck, Calculator } from "lucide-react";
 import { motion } from "framer-motion";
 import PrintProofModal from "@/components/PrintProofModal";
+import HowPriceWasCalculatedModal from "@/components/HowPriceWasCalculatedModal";
 import { calculateCustomPrintPrice } from "@/lib/custom-print-pricing";
 
 function FormattedDescription({ content, style }) {
@@ -73,6 +74,7 @@ export default function ProductDetailPage({ params: paramsPromise }) {
   const [uploadError, setUploadError] = useState("");
   const [proofModalOpen, setProofModalOpen] = useState(false);
   const [proofApproved, setProofApproved] = useState(false);
+  const [calculationModalOpen, setCalculationModalOpen] = useState(false);
   const [proofDetails, setProofDetails] = useState(null);
 
   // Compute selection validation states
@@ -169,6 +171,10 @@ export default function ProductDetailPage({ params: paramsPromise }) {
       []
     ).find(o => o.id === selectedSidesId);
 
+    // Cover style (Self-Cover vs Separate Cover for booklet/multipage items)
+    const selectedCoverId = selectedOptions["Cover Style"] || selectedOptions["Cover"] || selectedOptions["coverStyle"];
+    const hasSeparateCover = selectedCoverId === "separate_cover" || (typeof selectedCoverId === "string" && selectedCoverId.toLowerCase().includes("separate"));
+
     // 4. Extract Print Mode
     const selectedModeId = selectedOptions["Print Mode"] || selectedOptions["printMode"] || selectedOptions["Mode"];
     const modeOpt = (optionGroups["Print Mode"] || optionGroups["printMode"] || optionGroups["Mode"] || []).find(o => o.id === selectedModeId);
@@ -176,7 +182,7 @@ export default function ProductDetailPage({ params: paramsPromise }) {
     // 5. Additional options upcharges (if any)
     let additionalUpcharges = 0;
     Object.entries(selectedOptions).forEach(([groupName, selectedId]) => {
-      if (["Quantity", "quantity", "Qty", "Size", "size", "Sides / Pages", "Pages", "Sides", "sides", "pages", "Print Mode", "printMode", "Mode"].includes(groupName)) {
+      if (["Quantity", "quantity", "Qty", "Size", "size", "Sides / Pages", "Pages", "Sides", "sides", "pages", "Cover Style", "Cover", "coverStyle", "Print Mode", "printMode", "Mode"].includes(groupName)) {
         return;
       }
       const choices = optionGroups[groupName] || [];
@@ -188,10 +194,15 @@ export default function ProductDetailPage({ params: paramsPromise }) {
 
     const basePrice = parseFloat(product.basePrice !== undefined ? product.basePrice : (product.pricing?.startingPrice || 0));
 
+    const isPagesType = product?.sidesPagesType === "pages" || 
+      (sidesOpt && (sidesOpt.type === "pages" || (sidesOpt.name || "").toLowerCase().includes("page")));
+
     const result = calculateCustomPrintPrice({
       quantity,
       size: sizeOpt,
       sidesPages: sidesOpt,
+      sidesPagesType: isPagesType ? "pages" : "sides",
+      hasSeparateCover,
       printMode: modeOpt,
       basePrice,
       settings: customPrintSettings,
@@ -365,6 +376,14 @@ export default function ProductDetailPage({ params: paramsPromise }) {
             name: s.name,
             value: parseFloat(s.value) || 1
           }));
+
+          // When product is configured with Pages, ask the customer if they want a separate cover
+          if (isPagesType) {
+            customGroups["Cover Style"] = [
+              { id: "self_cover", name: "Self-Cover (Same paper as inside)" },
+              { id: "separate_cover", name: "Separate Cover (Heavier Cardstock)" }
+            ];
+          }
 
           // 4. Print Mode Choices
           const modesList = Array.isArray(data.printModeOptions) && data.printModeOptions.length > 0
@@ -897,6 +916,31 @@ export default function ProductDetailPage({ params: paramsPromise }) {
                       })()}
                     </div>
                   )}
+                  {product?.isCustom && effectivePriceData?.breakdown?.steps && (
+                    <div style={{ marginTop: "0.4rem" }}>
+                      <button
+                        type="button"
+                        onClick={() => setCalculationModalOpen(true)}
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "0.35rem",
+                          fontSize: "0.82rem",
+                          fontWeight: 600,
+                          color: "#2563EB",
+                          backgroundColor: "transparent",
+                          border: "none",
+                          padding: 0,
+                          cursor: "pointer",
+                          textDecoration: "underline",
+                          textUnderlineOffset: "3px"
+                        }}
+                      >
+                        <Calculator size={13} />
+                        How this price was calculated
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -1351,6 +1395,13 @@ export default function ProductDetailPage({ params: paramsPromise }) {
         finishedHeightIn={selectedSizeDimensions.h}
         onApprove={handleProofApproval}
         onApproveProof={handleProofApproval}
+      />
+
+      {/* How This Price Was Calculated Modal */}
+      <HowPriceWasCalculatedModal
+        isOpen={calculationModalOpen}
+        onClose={() => setCalculationModalOpen(false)}
+        breakdown={effectivePriceData?.breakdown}
       />
 
       <Footer />

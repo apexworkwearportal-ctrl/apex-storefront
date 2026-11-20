@@ -8,6 +8,8 @@ import {
   Save, Loader2, Plus, Trash2, CheckCircle2, DollarSign, Percent,
   Settings2, Calculator, Sliders, Play, TrendingUp, Tag, Printer, RefreshCw
 } from "lucide-react";
+import { calculateCustomPrintPrice } from "@/lib/custom-print-pricing";
+import HowPriceWasCalculatedModal from "@/components/HowPriceWasCalculatedModal";
 
 // ─── Calculator Tab ─────────────────────────────────────────────────────────
 function CalculatorTab({ sitewiseSettings }) {
@@ -579,10 +581,13 @@ function CustomPrintCostingTab() {
   // Interactive Live Calculation Test Inputs
   const [testQty, setTestQty] = useState(500);
   const [testImposition, setTestImposition] = useState(2);
-  const [testCostPerM, setTestCostPerM] = useState(40);
+  const [testCostPerM, setTestCostPerM] = useState(67.50);
   const [testSides, setTestSides] = useState(2);
   const [testMode, setTestMode] = useState("color");
-  const [testBasePrice, setTestBasePrice] = useState(10);
+  const [testBasePrice, setTestBasePrice] = useState(70);
+  const [testFormulaType, setTestFormulaType] = useState("sides"); // "sides" | "pages"
+  const [testSeparateCover, setTestSeparateCover] = useState(false);
+  const [showBreakdownModal, setShowBreakdownModal] = useState(false);
 
   useEffect(() => {
     fetch("/api/admin/custom-print-settings")
@@ -626,21 +631,23 @@ function CustomPrintCostingTab() {
     }
   };
 
-  const qtyNum = Math.max(1, parseInt(testQty) || 1);
-  const impNum = Math.max(1, parseFloat(testImposition) || 1);
-  const costPerMNum = Math.max(0, parseFloat(testCostPerM) || 0);
-  const sidesNum = Math.max(1, parseFloat(testSides) || 1);
-  const basePriceNum = Math.max(0, parseFloat(testBasePrice) || 0);
-  const activeClickCharge = testMode === "color" ? (parseFloat(colorClickCharge) || 0.08) : (parseFloat(grayscaleClickCharge) || 0.02);
-  const activeMultiplier = Math.max(1, parseFloat(markupMultiplier) || 2.0);
+  const activeClickCharge = testMode === "color" ? (parseFloat(colorClickCharge) || 0.05) : (parseFloat(grayscaleClickCharge) || 0.02);
+  const activeMultiplier = Math.max(1, parseFloat(markupMultiplier) || 3.0);
 
-  const sheetsNeeded = (qtyNum / impNum)
-  const clicks = sheetsNeeded * sidesNum;
-  const paperCost = ( (costPerMNum / 1000)) * sheetsNeeded;
-  const clickCost = clicks * activeClickCharge;
-  const totalCost = paperCost + clickCost;
-  const finalPrice = basePriceNum + (totalCost * activeMultiplier);
-  const unitPrice = finalPrice / qtyNum;
+  const simResult = calculateCustomPrintPrice({
+    quantity: testQty,
+    size: { name: '100lb Gloss Text', imposition: testImposition, costPerM: testCostPerM },
+    sidesPages: testSides,
+    sidesPagesType: testFormulaType,
+    hasSeparateCover: testSeparateCover,
+    printMode: testMode,
+    basePrice: testBasePrice,
+    settings: {
+      colorClickCharge: activeClickCharge,
+      grayscaleClickCharge: parseFloat(grayscaleClickCharge) || 0.02,
+      markupMultiplier: activeMultiplier
+    }
+  });
 
   if (loading) {
     return (
@@ -755,6 +762,14 @@ function CustomPrintCostingTab() {
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem" }}>
             <div>
+              <label style={{ fontSize: "0.7rem", fontWeight: 700, color: "#166534" }}>Formula Type</label>
+              <select className="input" value={testFormulaType} onChange={e => setTestFormulaType(e.target.value)} style={{ fontSize: "0.85rem", height: "36px" }}>
+                <option value="sides">Flat Product (Sides)</option>
+                <option value="pages">Booklet / Multipage (Pages)</option>
+              </select>
+            </div>
+
+            <div>
               <label style={{ fontSize: "0.7rem", fontWeight: 700, color: "#166534" }}>Test Qty</label>
               <input type="number" className="input" value={testQty} onChange={e => setTestQty(e.target.value)} style={{ fontSize: "0.85rem", height: "36px" }} />
             </div>
@@ -770,20 +785,30 @@ function CustomPrintCostingTab() {
             </div>
 
             <div>
-              <label style={{ fontSize: "0.7rem", fontWeight: 700, color: "#166534" }}>Sides / Pages</label>
+              <label style={{ fontSize: "0.7rem", fontWeight: 700, color: "#166534" }}>{testFormulaType === "pages" ? "Total Pages" : "Sides (1 or 2)"}</label>
               <input type="number" className="input" value={testSides} onChange={e => setTestSides(e.target.value)} style={{ fontSize: "0.85rem", height: "36px" }} />
             </div>
+
+            {testFormulaType === "pages" && (
+              <div>
+                <label style={{ fontSize: "0.7rem", fontWeight: 700, color: "#166534" }}>Cover Style</label>
+                <select className="input" value={testSeparateCover ? "separate" : "self"} onChange={e => setTestSeparateCover(e.target.value === "separate")} style={{ fontSize: "0.85rem", height: "36px" }}>
+                  <option value="self">Self-Cover</option>
+                  <option value="separate">Separate Cover</option>
+                </select>
+              </div>
+            )}
 
             <div>
               <label style={{ fontSize: "0.7rem", fontWeight: 700, color: "#166534" }}>Print Mode</label>
               <select className="input" value={testMode} onChange={e => setTestMode(e.target.value)} style={{ fontSize: "0.85rem", height: "36px" }}>
-                <option value="color">Colour (${parseFloat(colorClickCharge || 0.08).toFixed(3)})</option>
+                <option value="color">Colour (${parseFloat(colorClickCharge || 0.05).toFixed(3)})</option>
                 <option value="bw">B&W (${parseFloat(grayscaleClickCharge || 0.02).toFixed(3)})</option>
               </select>
             </div>
 
             <div>
-              <label style={{ fontSize: "0.7rem", fontWeight: 700, color: "#166534" }}>Base Price ($)</label>
+              <label style={{ fontSize: "0.7rem", fontWeight: 700, color: "#166534" }}>Setup Fee / Base Price ($)</label>
               <input type="number" step="0.01" className="input" value={testBasePrice} onChange={e => setTestBasePrice(e.target.value)} style={{ fontSize: "0.85rem", height: "36px" }} />
             </div>
           </div>
@@ -798,32 +823,76 @@ function CustomPrintCostingTab() {
             flexDirection: "column",
             gap: "0.6rem"
           }}>
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.85rem" }}>
-              <span style={{ color: "#64748B" }}>Clicks ({qtyNum} ÷ {impNum}):</span>
-              <strong style={{ color: "#0F172A" }}>{clicks.toFixed(2)} Clicks</strong>
-            </div>
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.85rem" }}>
-              <span style={{ color: "#64748B" }}>Click Cost ({clicks.toFixed(2)} × ${activeClickCharge.toFixed(3)}):</span>
-              <strong style={{ color: "#0F172A" }}>${clickCost.toFixed(2)}</strong>
-            </div>
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.85rem" }}>
-              <span style={{ color: "#64748B" }}>Paper Cost ({sidesNum} × ${costPerMNum}/M ÷ 1000 × {clicks.toFixed(2)}):</span>
-              <strong style={{ color: "#0F172A" }}>${paperCost.toFixed(2)}</strong>
-            </div>
+            {simResult.isPages ? (
+              <>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.85rem" }}>
+                  <span style={{ color: "#64748B" }}>Sheets per booklet:</span>
+                  <strong style={{ color: "#0F172A" }}>{simResult.sheetsPerBooklet} sh ({simResult.insideSheetsTotal} total)</strong>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.85rem" }}>
+                  <span style={{ color: "#64748B" }}>Inside Clicks Cost:</span>
+                  <strong style={{ color: "#0F172A" }}>${simResult.clickCost.toFixed(2)}</strong>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.85rem" }}>
+                  <span style={{ color: "#64748B" }}>Paper Cost:</span>
+                  <strong style={{ color: "#0F172A" }}>${simResult.paperCost.toFixed(2)}</strong>
+                </div>
+              </>
+            ) : (
+              <>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.85rem" }}>
+                  <span style={{ color: "#64748B" }}>Sheets Needed ({simResult.quantity} ÷ {simResult.imposition}):</span>
+                  <strong style={{ color: "#0F172A" }}>{simResult.sheetsNeeded} Sheets</strong>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.85rem" }}>
+                  <span style={{ color: "#64748B" }}>Clicks ({simResult.sheetsNeeded} × {simResult.sides}):</span>
+                  <strong style={{ color: "#0F172A" }}>{simResult.clicks} Clicks (${simResult.clickCost.toFixed(2)})</strong>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.85rem" }}>
+                  <span style={{ color: "#64748B" }}>Paper Cost:</span>
+                  <strong style={{ color: "#0F172A" }}>${simResult.paperCost.toFixed(2)}</strong>
+                </div>
+              </>
+            )}
+
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.85rem", borderTop: "1px dashed #CBD5E1", paddingTop: "0.4rem" }}>
               <span style={{ color: "#EA580C", fontWeight: 700 }}>Total Job Cost:</span>
-              <strong style={{ color: "#EA580C" }}>${totalCost.toFixed(2)}</strong>
+              <strong style={{ color: "#EA580C" }}>${simResult.totalCost.toFixed(2)}</strong>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: "1.15rem", fontWeight: 900, borderTop: "1.5px solid #2563EB", paddingTop: "0.5rem" }}>
               <span style={{ color: "#2563EB" }}>Customer Price:</span>
-              <span style={{ color: "#2563EB" }}>${finalPrice.toFixed(2)} CAD</span>
+              <span style={{ color: "#2563EB" }}>${simResult.finalPrice.toFixed(2)} CAD</span>
             </div>
-            <span style={{ fontSize: "0.75rem", color: "#166534", fontWeight: 700, textAlign: "right" }}>
-              ${unitPrice.toFixed(2)} / unit • Multiplier: {activeMultiplier}x
-            </span>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ fontSize: "0.75rem", color: "#166534", fontWeight: 700 }}>
+                ${simResult.unitPrice.toFixed(2)} / unit • Markup: {simResult.markupMultiplier}x
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowBreakdownModal(true)}
+                style={{
+                  fontSize: "0.75rem",
+                  fontWeight: 700,
+                  color: "#2563EB",
+                  backgroundColor: "#EFF6FF",
+                  border: "1px solid #BFDBFE",
+                  borderRadius: "5px",
+                  padding: "0.25rem 0.6rem",
+                  cursor: "pointer"
+                }}
+              >
+                View Steps Modal
+              </button>
+            </div>
           </div>
         </div>
       </div>
+
+      <HowPriceWasCalculatedModal
+        isOpen={showBreakdownModal}
+        onClose={() => setShowBreakdownModal(false)}
+        breakdown={simResult}
+      />
     </div>
   );
 }

@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Upload, Trash2, Plus, Save, Loader2, Printer, Calculator, CheckCircle2, Layers } from "lucide-react";
 import { calculateCustomPrintPrice } from "@/lib/custom-print-pricing";
+import HowPriceWasCalculatedModal from "@/components/HowPriceWasCalculatedModal";
 
 export default function AdminNewProductPage() {
   const { user } = useAuth();
@@ -74,6 +75,8 @@ export default function AdminNewProductPage() {
   const [simSizeIdx, setSimSizeIdx] = useState(0);
   const [simSidesIdx, setSimSidesIdx] = useState(1); // Default 2 sided
   const [simModeIdx, setSimModeIdx] = useState(0); // Default Color
+  const [simSeparateCover, setSimSeparateCover] = useState(false);
+  const [showSimCalcModal, setShowSimCalcModal] = useState(false);
 
   // Product Markup Overrides
   const [useCustomMarkup, setUseCustomMarkup] = useState(false);
@@ -336,6 +339,8 @@ export default function AdminNewProductPage() {
     quantity: simQty,
     size: activeSimSize,
     sidesPages: activeSimSides,
+    sidesPagesType,
+    hasSeparateCover: simSeparateCover,
     printMode: activeSimMode,
     basePrice: parseFloat(basePrice) || 0,
     settings: globalPrintSettings
@@ -967,6 +972,16 @@ export default function AdminNewProductPage() {
                   ))}
                 </select>
               </div>
+
+              {sidesPagesType === "pages" && (
+                <div>
+                  <label style={{ fontSize: "0.7rem", fontWeight: 700, color: "#166534" }}>Test Cover</label>
+                  <select className="input" value={simSeparateCover ? "separate" : "self"} onChange={e => setSimSeparateCover(e.target.value === "separate")} style={{ fontSize: "0.85rem", height: "36px" }}>
+                    <option value="self">Self-Cover</option>
+                    <option value="separate">Separate Cover</option>
+                  </select>
+                </div>
+              )}
             </div>
 
             {/* Real-Time Live Math Breakdown Cards */}
@@ -979,23 +994,47 @@ export default function AdminNewProductPage() {
               gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))",
               gap: "1rem"
             }}>
-              <div>
-                <span style={{ fontSize: "0.7rem", color: "#64748B", fontWeight: 700, display: "block" }}>1. Press Clicks</span>
-                <span style={{ fontSize: "1.1rem", fontWeight: 900, color: "#0F172A" }}>{liveSimulation.clicks} Clicks</span>
-                <span style={{ fontSize: "0.68rem", color: "#64748B", display: "block" }}>{simQty} qty ÷ {liveSimulation.imposition} imposition</span>
-              </div>
+              {liveSimulation.isPages ? (
+                <>
+                  <div>
+                    <span style={{ fontSize: "0.7rem", color: "#64748B", fontWeight: 700, display: "block" }}>1. Booklet Sheets</span>
+                    <span style={{ fontSize: "1.1rem", fontWeight: 900, color: "#0F172A" }}>{liveSimulation.sheetsPerBooklet} sh/booklet</span>
+                    <span style={{ fontSize: "0.68rem", color: "#64748B", display: "block" }}>{liveSimulation.insideSheetsTotal} total sheets</span>
+                  </div>
 
-              <div>
-                <span style={{ fontSize: "0.7rem", color: "#64748B", fontWeight: 700, display: "block" }}>2. Click Cost</span>
-                <span style={{ fontSize: "1.1rem", fontWeight: 900, color: "#0F172A" }}>${liveSimulation.clickCost.toFixed(2)}</span>
-                <span style={{ fontSize: "0.68rem", color: "#64748B", display: "block" }}>{liveSimulation.clicks} × ${liveSimulation.clickCharge.toFixed(3)}</span>
-              </div>
+                  <div>
+                    <span style={{ fontSize: "0.7rem", color: "#64748B", fontWeight: 700, display: "block" }}>2. Inside Clicks</span>
+                    <span style={{ fontSize: "1.1rem", fontWeight: 900, color: "#0F172A" }}>{liveSimulation.insideClicks} Clicks</span>
+                    <span style={{ fontSize: "0.68rem", color: "#64748B", display: "block" }}>${liveSimulation.clickCost.toFixed(2)} click cost</span>
+                  </div>
 
-              <div>
-                <span style={{ fontSize: "0.7rem", color: "#64748B", fontWeight: 700, display: "block" }}>3. Paper Cost</span>
-                <span style={{ fontSize: "1.1rem", fontWeight: 900, color: "#0F172A" }}>${liveSimulation.paperCost.toFixed(2)}</span>
-                <span style={{ fontSize: "0.68rem", color: "#64748B", display: "block" }}>({liveSimulation.sidesCount} sides × ${liveSimulation.paperCostPerM}/M ÷ 1000) × {liveSimulation.clicks}</span>
-              </div>
+                  <div>
+                    <span style={{ fontSize: "0.7rem", color: "#64748B", fontWeight: 700, display: "block" }}>3. Paper Cost</span>
+                    <span style={{ fontSize: "1.1rem", fontWeight: 900, color: "#0F172A" }}>${liveSimulation.paperCost.toFixed(2)}</span>
+                    <span style={{ fontSize: "0.68rem", color: "#64748B", display: "block" }}>{liveSimulation.hasSeparateCover ? "Inside + Cover Paper" : "Self-Cover Paper"}</span>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div>
+                    <span style={{ fontSize: "0.7rem", color: "#64748B", fontWeight: 700, display: "block" }}>1. Press Clicks</span>
+                    <span style={{ fontSize: "1.1rem", fontWeight: 900, color: "#0F172A" }}>{liveSimulation.clicks} Clicks</span>
+                    <span style={{ fontSize: "0.68rem", color: "#64748B", display: "block" }}>{liveSimulation.sheetsNeeded} sh × {liveSimulation.sides} sides</span>
+                  </div>
+
+                  <div>
+                    <span style={{ fontSize: "0.7rem", color: "#64748B", fontWeight: 700, display: "block" }}>2. Click Cost</span>
+                    <span style={{ fontSize: "1.1rem", fontWeight: 900, color: "#0F172A" }}>${liveSimulation.clickCost.toFixed(2)}</span>
+                    <span style={{ fontSize: "0.68rem", color: "#64748B", display: "block" }}>{liveSimulation.clicks} × ${liveSimulation.clickCharge.toFixed(2)}</span>
+                  </div>
+
+                  <div>
+                    <span style={{ fontSize: "0.7rem", color: "#64748B", fontWeight: 700, display: "block" }}>3. Paper Cost</span>
+                    <span style={{ fontSize: "1.1rem", fontWeight: 900, color: "#0F172A" }}>${liveSimulation.paperCost.toFixed(2)}</span>
+                    <span style={{ fontSize: "0.68rem", color: "#64748B", display: "block" }}>{liveSimulation.sheetsNeeded} sh × ${(liveSimulation.paperCostPerM/1000).toFixed(2)}</span>
+                  </div>
+                </>
+              )}
 
               <div>
                 <span style={{ fontSize: "0.7rem", color: "#64748B", fontWeight: 700, display: "block" }}>4. Total Job Cost</span>
@@ -1009,6 +1048,29 @@ export default function AdminNewProductPage() {
                 <span style={{ fontSize: "0.72rem", color: "#166534", fontWeight: 700, display: "block" }}>
                   ${liveSimulation.unitPrice.toFixed(2)}/unit • {liveSimulation.markupMultiplier}x Multiplier + ${parseFloat(basePrice || 0).toFixed(2)} Base
                 </span>
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "flex-end", gridColumn: "1 / -1", marginTop: "0.25rem" }}>
+                <button
+                  type="button"
+                  onClick={() => setShowSimCalcModal(true)}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "0.35rem",
+                    fontSize: "0.78rem",
+                    fontWeight: 700,
+                    color: "#2563EB",
+                    backgroundColor: "#EFF6FF",
+                    border: "1px solid #BFDBFE",
+                    borderRadius: "6px",
+                    padding: "0.35rem 0.75rem",
+                    cursor: "pointer"
+                  }}
+                >
+                  <Calculator size={14} />
+                  View Step-by-Step Breakdown Modal
+                </button>
               </div>
             </div>
           </div>
@@ -1163,6 +1225,13 @@ export default function AdminNewProductPage() {
           </div>
         </div>
       </form>
+
+      {/* How This Price Was Calculated Modal */}
+      <HowPriceWasCalculatedModal
+        isOpen={showSimCalcModal}
+        onClose={() => setShowSimCalcModal(false)}
+        breakdown={liveSimulation}
+      />
     </div>
   );
 }
