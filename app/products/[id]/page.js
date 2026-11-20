@@ -12,7 +12,7 @@ import Link from "next/link";
 import { ArrowLeft, ShoppingBag, Loader2, Sparkles, FileCheck, Eye, FileText, CheckCircle2, Layers, ShieldCheck } from "lucide-react";
 import { motion } from "framer-motion";
 import PrintProofModal from "@/components/PrintProofModal";
-import { calculateCustomPrintPrice } from "@/lib/custom-print-pricing";
+import { calculateCustomPrintPrice, resolveExtraChoices, getDefaultChoiceIndex } from "@/lib/custom-print-pricing";
 
 function FormattedDescription({ content, style }) {
   if (!content) return null;
@@ -173,18 +173,15 @@ export default function ProductDetailPage({ params: paramsPromise }) {
     const selectedModeId = selectedOptions["Print Mode"] || selectedOptions["printMode"] || selectedOptions["Mode"];
     const modeOpt = (optionGroups["Print Mode"] || optionGroups["printMode"] || optionGroups["Mode"] || []).find(o => o.id === selectedModeId);
 
-    // 5. Additional options upcharges (if any)
-    let additionalUpcharges = 0;
+    // 5. Additional option groups: flat / percent add-ons, inner paper, cover
+    const standardGroups = ["Quantity", "quantity", "Qty", "Size", "size", "Sides / Pages", "Pages", "Sides", "sides", "pages", "Print Mode", "printMode", "Mode"];
+    const selectedExtras = [];
     Object.entries(selectedOptions).forEach(([groupName, selectedId]) => {
-      if (["Quantity", "quantity", "Qty", "Size", "size", "Sides / Pages", "Pages", "Sides", "sides", "pages", "Print Mode", "printMode", "Mode"].includes(groupName)) {
-        return;
-      }
-      const choices = optionGroups[groupName] || [];
-      const choice = choices.find(c => c.id === selectedId);
-      if (choice) {
-        additionalUpcharges += parseFloat(choice.priceUpcharge || 0);
-      }
+      if (standardGroups.includes(groupName)) return;
+      const choice = (optionGroups[groupName] || []).find(c => c.id === selectedId);
+      if (choice) selectedExtras.push({ kind: choice.kind || "flat", choice });
     });
+    const extras = resolveExtraChoices(selectedExtras);
 
     const basePrice = parseFloat(product.basePrice !== undefined ? product.basePrice : (product.pricing?.startingPrice || 0));
 
@@ -196,7 +193,10 @@ export default function ProductDetailPage({ params: paramsPromise }) {
       printMode: modeOpt,
       basePrice,
       settings: customPrintSettings,
-      additionalUpcharges
+      innerPaperCostPerM: extras.innerPaperCostPerM,
+      coverStock: extras.coverStock,
+      percentUpcharge: extras.percentUpcharge,
+      additionalUpcharges: extras.additionalUpcharges
     });
 
     return {
@@ -384,10 +384,17 @@ export default function ProductDetailPage({ params: paramsPromise }) {
           // 5. Additional custom option groups (e.g. Finishing, Coating)
           (data.options || []).forEach(group => {
             if (group.name && group.choices?.length > 0) {
+              const kind = group.kind || "flat";
+              // Cover groups only make sense for booklets (pages type)
+              if (kind === "cover" && !isPagesType) return;
               customGroups[group.name] = group.choices.map(choice => ({
                 id: `${group.name}:${choice.name}`,
                 name: choice.name,
-                priceUpcharge: parseFloat(choice.priceUpcharge || 0)
+                kind,
+                priceUpcharge: parseFloat(choice.priceUpcharge || 0),
+                percent: parseFloat(choice.percent || 0),
+                costPerM: choice.costPerM === "" || choice.costPerM === undefined || choice.costPerM === null ? null : parseFloat(choice.costPerM),
+                isDefault: !!choice.isDefault
               }));
             }
           });
@@ -403,7 +410,8 @@ export default function ProductDetailPage({ params: paramsPromise }) {
                 const preferred = opts.find(o => o.id === "500") || opts.find(o => o.id !== "custom") || opts[0];
                 defaultSelections[gName] = preferred.id.toString();
               } else {
-                defaultSelections[gName] = opts[0].id.toString();
+                const defIdx = getDefaultChoiceIndex({ choices: opts });
+                defaultSelections[gName] = opts[defIdx].id.toString();
               }
             }
           });
