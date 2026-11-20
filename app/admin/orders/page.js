@@ -879,9 +879,23 @@ function AdminOrdersContent() {
                               textTransform: "uppercase",
                               display: "block",
                               marginTop: "2px",
-                              color: order.orderType === "print" ? "#2563EB" : "#D97706"
+                              color: order.orderType === "apparel" ? "#D97706" : "#2563EB"
                             }}>
-                              {order.orderType === "print" ? "🖨️ Print" : "👕 Apparel"}
+                              {order.orderType === "apparel" ? "👕 Apparel" : order.orderType === "custom_print" ? "🖨️ Custom Print" : "🖨️ Print"}
+                            </span>
+                          )}
+                          {(order.promoCode?.code || parseFloat(order.totals?.discount || 0) > 0) && (
+                            <span style={{
+                              fontSize: "0.65rem",
+                              fontWeight: 800,
+                              backgroundColor: "#DCFCE7",
+                              color: "#166534",
+                              padding: "0.15rem 0.4rem",
+                              borderRadius: "4px",
+                              display: "inline-block",
+                              marginTop: "2px"
+                            }}>
+                              🏷️ {order.promoCode?.code || "DISCOUNT"} (-${parseFloat(order.totals?.discount || order.promoCode?.discountAmount || 0).toFixed(2)})
                             </span>
                           )}
                         </div>
@@ -1799,7 +1813,7 @@ function AdminOrdersContent() {
                       )}
 
                       {/* Custom Apparel Sizing Breakdown & Details */}
-                      {item.isApparel && (
+                      {Boolean(item.isApparel && (item.sizeBreakdown || item.printLocation || item.color)) && (
                         <div style={{ marginTop: "0.5rem", padding: "0.6rem 0.75rem", backgroundColor: "#F8FAFC", borderRadius: "6px", border: "1px solid #E2E8F0", display: "flex", flexDirection: "column", gap: "0.4rem" }}>
                           {item.color && (
                             <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.8rem" }}>
@@ -1829,7 +1843,7 @@ function AdminOrdersContent() {
                       )}
 
                       {/* Mockup Preview for Custom Apparel */}
-                      {item.isApparel && (
+                      {Boolean(item.isApparel && (item.garmentViews || item.apparelViews)) && (
                         <div style={{ marginTop: "0.5rem" }}>
                           <AdminApparelMockupRender item={item} />
                         </div>
@@ -1845,6 +1859,12 @@ function AdminOrdersContent() {
                   <span>Subtotal:</span>
                   <span>${parseFloat(selectedOrder.totals?.subtotal || 0).toFixed(2)} CAD</span>
                 </div>
+                {(selectedOrder.promoCode || parseFloat(selectedOrder.totals?.discount || 0) > 0) && (
+                  <div style={{ display: "flex", justifyContent: "space-between", color: "#16A34A", fontWeight: 700 }}>
+                    <span>Discount ({selectedOrder.promoCode?.code || "Promo Code"}):</span>
+                    <span>-${parseFloat(selectedOrder.totals?.discount || selectedOrder.promoCode?.discountAmount || 0).toFixed(2)} CAD</span>
+                  </div>
+                )}
                 <div style={{ display: "flex", justifyContent: "space-between" }}>
                   <span>Shipping:</span>
                   <span>${parseFloat(selectedOrder.totals?.shipping || 0).toFixed(2)} CAD</span>

@@ -134,6 +134,7 @@ export async function POST(req) {
         productId: i.productId,
         name: i.name,
         isCustom: Boolean(i.isCustom),
+        isApparel: Boolean(i.isApparel || i.apparelViews || i.garmentViews || i.selectedSizes || i.embroiderySetupFee > 0 || i.isEmbroidery),
         images: i.images || [],
         categoryId: i.categoryId || null,
         optionSummary: i.optionSummary || "",

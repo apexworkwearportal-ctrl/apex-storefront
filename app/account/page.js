@@ -1156,6 +1156,40 @@ export default function AccountDashboard() {
                                 </div>
                               </div>
                             ))}
+
+                            {/* Order Financial Breakdown */}
+                            <div style={{
+                              marginTop: "0.5rem",
+                              paddingTop: "0.75rem",
+                              borderTop: "1px solid hsl(var(--border-hsl))",
+                              display: "flex",
+                              flexDirection: "column",
+                              gap: "0.3rem",
+                              fontSize: "0.85rem"
+                            }}>
+                              <div style={{ display: "flex", justifyContent: "space-between", color: "hsl(var(--muted-hsl))" }}>
+                                <span>Subtotal</span>
+                                <span>${parseFloat(order.totals?.subtotal || order.subtotal || 0).toFixed(2)} CAD</span>
+                              </div>
+                              {(order.promoCode || parseFloat(order.totals?.discount || 0) > 0) && (
+                                <div style={{ display: "flex", justifyContent: "space-between", color: "#16A34A", fontWeight: 700 }}>
+                                  <span>Promo Discount ({order.promoCode?.code || "PROMO"})</span>
+                                  <span>-${parseFloat(order.totals?.discount || order.promoCode?.discountAmount || 0).toFixed(2)} CAD</span>
+                                </div>
+                              )}
+                              <div style={{ display: "flex", justifyContent: "space-between", color: "hsl(var(--muted-hsl))" }}>
+                                <span>{order.isPickup ? "Fulfillment (Pickup)" : "Shipping"}</span>
+                                <span>{order.isPickup ? "FREE" : `$${parseFloat(order.totals?.shipping || 0).toFixed(2)} CAD`}</span>
+                              </div>
+                              <div style={{ display: "flex", justifyContent: "space-between", color: "hsl(var(--muted-hsl))" }}>
+                                <span>Estimated Tax</span>
+                                <span>${parseFloat(order.totals?.tax || 0).toFixed(2)} CAD</span>
+                              </div>
+                              <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 900, fontSize: "0.95rem", color: "hsl(var(--primary-hsl))", paddingTop: "0.25rem", borderTop: "1px dashed hsl(var(--border-hsl))" }}>
+                                <span>Total Paid</span>
+                                <span>${parseFloat(order.totals?.grandTotal || order.grandTotal || 0).toFixed(2)} CAD</span>
+                              </div>
+                            </div>
                           </div>
                         </div>
                       );

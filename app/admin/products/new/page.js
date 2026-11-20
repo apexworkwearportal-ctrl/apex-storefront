@@ -43,6 +43,9 @@ export default function AdminNewProductPage() {
     { id: "1_sided", name: "1 Sided", value: 1 },
     { id: "2_sided", name: "2 Sided", value: 2 }
   ]);
+  const [coverPaperOptions, setCoverPaperOptions] = useState([
+    { id: "cov_1", name: "100lb Gloss Cover", imposition: 1, costPerM: 125.25 }
+  ]);
 
   const [printModeOptions, setPrintModeOptions] = useState([
     { id: "color", name: "Colour", type: "color" },
@@ -330,17 +333,43 @@ export default function AdminNewProductPage() {
     }));
   };
 
+  // Cover Paper Options Handlers (for Booklets / Multipage)
+  const addCoverPaperRow = () => {
+    setCoverPaperOptions(prev => [
+      ...prev,
+      { id: `cov_${Date.now()}`, name: "100lb Gloss Cover", imposition: 1, costPerM: 125.25 }
+    ]);
+  };
+
+  const removeCoverPaperRow = (idx) => {
+    setCoverPaperOptions(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  const handleCoverPaperChange = (idx, field, value) => {
+    setCoverPaperOptions(prev => prev.map((c, i) => {
+      if (i === idx) {
+        return {
+          ...c,
+          [field]: field === "imposition" || field === "costPerM" ? (parseFloat(value) || 0) : value
+        };
+      }
+      return c;
+    }));
+  };
+
   // Run Real-Time Calculation for Live Simulator
   const activeSimSize = customPrintSizes[simSizeIdx] || customPrintSizes[0] || { name: '8.5" x 11"', imposition: 2, costPerM: 40 };
   const activeSimSides = sidesPagesOptions[simSidesIdx] || sidesPagesOptions[0] || { name: "1 Sided", value: 1 };
   const activeSimMode = printModeOptions[simModeIdx] || printModeOptions[0] || { name: "Colour", type: "color" };
 
+  const activeCoverPaper = coverPaperOptions[0] || { name: "100lb Gloss Cover", imposition: 1, costPerM: 125.25 };
   const liveSimulation = calculateCustomPrintPrice({
     quantity: simQty,
     size: activeSimSize,
     sidesPages: activeSimSides,
     sidesPagesType,
     hasSeparateCover: simSeparateCover,
+    coverPaper: activeCoverPaper,
     printMode: activeSimMode,
     basePrice: parseFloat(basePrice) || 0,
     settings: globalPrintSettings
@@ -406,6 +435,7 @@ export default function AdminNewProductPage() {
         quantityOptions,
         sidesPagesType,
         sidesPagesOptions,
+        coverPaperOptions,
         printModeOptions,
         options: optionGroups,
         useCustomMarkup,
@@ -869,6 +899,97 @@ export default function AdminNewProductPage() {
                   </div>
                 ))}
               </div>
+
+              {sidesPagesType === "pages" && (
+                <div style={{ marginTop: "1rem", borderTop: "1px dashed #E2E8F0", paddingTop: "1rem" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem" }}>
+                    <div>
+                      <h4 style={{ fontSize: "0.95rem", fontWeight: 800, margin: 0, color: "#1E293B" }}>
+                        Cover Paper Stock Matrix (Optional / Separate Covers)
+                      </h4>
+                      <p style={{ fontSize: "0.75rem", color: "#64748B", margin: "0.2rem 0 0" }}>
+                        Add available cover stocks. Customer will only see the paper type name.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={addCoverPaperRow}
+                      className="btn btn-outline"
+                      style={{ padding: "0.35rem 0.75rem", fontSize: "0.78rem", display: "flex", alignItems: "center", gap: "0.25rem" }}
+                    >
+                      <Plus size={13} /> Add Cover Stock
+                    </button>
+                  </div>
+
+                  {coverPaperOptions.length === 0 ? (
+                    <div style={{ padding: "0.75rem", backgroundColor: "#F8FAFC", borderRadius: "6px", border: "1px dashed #CBD5E1", fontSize: "0.8rem", color: "#64748B", textAlign: "center" }}>
+                      No separate cover stocks configured. Click <strong>+ Add Cover Stock</strong> to offer heavier cover cardstocks.
+                    </div>
+                  ) : (
+                    <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "2fr 1.2fr 1.4fr auto", gap: "0.75rem", padding: "0 0.5rem", fontSize: "0.72rem", fontWeight: 800, color: "#64748B" }}>
+                        <span>PAPER TYPE (CUSTOMER SEES)</span>
+                        <span>IMPOSITION</span>
+                        <span>PAPER COST / M ($ CAD)</span>
+                        <span></span>
+                      </div>
+                      {coverPaperOptions.map((cov, idx) => (
+                        <div
+                          key={cov.id || idx}
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: "2fr 1.2fr 1.4fr auto",
+                            gap: "0.75rem",
+                            alignItems: "center",
+                            backgroundColor: "#F8FAFC",
+                            padding: "0.65rem 0.75rem",
+                            borderRadius: "8px",
+                            border: "1px solid #E2E8F0"
+                          }}
+                        >
+                          <input
+                            type="text"
+                            className="input"
+                            value={cov.name}
+                            onChange={(e) => handleCoverPaperChange(idx, "name", e.target.value)}
+                            placeholder="e.g. 100lb Gloss Cover"
+                            style={{ fontWeight: 700, padding: "0.4rem 0.6rem", fontSize: "0.82rem" }}
+                          />
+                          <input
+                            type="number"
+                            min="1"
+                            className="input"
+                            value={cov.imposition}
+                            onChange={(e) => handleCoverPaperChange(idx, "imposition", e.target.value)}
+                            placeholder="1"
+                            style={{ padding: "0.4rem 0.6rem", fontSize: "0.82rem" }}
+                          />
+                          <div style={{ position: "relative" }}>
+                            <span style={{ position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)", color: "#64748B", fontWeight: 700, fontSize: "0.82rem" }}>$</span>
+                            <input
+                              type="number"
+                              step="0.01"
+                              className="input"
+                              value={cov.costPerM}
+                              onChange={(e) => handleCoverPaperChange(idx, "costPerM", e.target.value)}
+                              placeholder="125.25"
+                              style={{ paddingLeft: "1.65rem", paddingRight: "0.5rem", paddingTop: "0.4rem", paddingBottom: "0.4rem", fontSize: "0.82rem" }}
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => removeCoverPaperRow(idx)}
+                            style={{ background: "none", border: "none", color: "#EF4444", cursor: "pointer", padding: "0.25rem" }}
+                            title="Remove cover stock"
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Print Mode Card */}

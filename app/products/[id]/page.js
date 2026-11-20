@@ -173,7 +173,14 @@ export default function ProductDetailPage({ params: paramsPromise }) {
 
     // Cover style (Self-Cover vs Separate Cover for booklet/multipage items)
     const selectedCoverId = selectedOptions["Cover Style"] || selectedOptions["Cover"] || selectedOptions["coverStyle"];
-    const hasSeparateCover = selectedCoverId === "separate_cover" || (typeof selectedCoverId === "string" && selectedCoverId.toLowerCase().includes("separate"));
+    const coverChoices = optionGroups["Cover"] || optionGroups["Cover Style"] || [];
+    const selectedCoverChoice = coverChoices.find(c => c.id === selectedCoverId);
+
+    const hasSeparateCover = selectedCoverChoice
+      ? !selectedCoverChoice.isSelfCover && selectedCoverChoice.id !== "self_cover"
+      : Boolean(selectedCoverId && selectedCoverId !== "self_cover" && !String(selectedCoverId).toLowerCase().includes("self"));
+
+    const coverPaper = hasSeparateCover ? selectedCoverChoice : null;
 
     // 4. Extract Print Mode
     const selectedModeId = selectedOptions["Print Mode"] || selectedOptions["printMode"] || selectedOptions["Mode"];
@@ -203,6 +210,7 @@ export default function ProductDetailPage({ params: paramsPromise }) {
       sidesPages: sidesOpt,
       sidesPagesType: isPagesType ? "pages" : "sides",
       hasSeparateCover,
+      coverPaper,
       printMode: modeOpt,
       basePrice,
       settings: customPrintSettings,
@@ -262,7 +270,8 @@ export default function ProductDetailPage({ params: paramsPromise }) {
       quantity: 1, // 1 ordered job bundle
       artworkFiles: artworkFiles,
       proofDetails: proofDetails,
-      isCustom: !!product.isCustom
+      isCustom: !!product.isCustom,
+      isApparel: false
     };
 
     addToCart(cartItem);
@@ -379,9 +388,19 @@ export default function ProductDetailPage({ params: paramsPromise }) {
 
           // When product is configured with Pages, ask the customer if they want a separate cover
           if (isPagesType) {
-            customGroups["Cover Style"] = [
-              { id: "self_cover", name: "Self-Cover (Same paper as inside)" },
-              { id: "separate_cover", name: "Separate Cover (Heavier Cardstock)" }
+            const adminCoverOptions = Array.isArray(data.coverPaperOptions) && data.coverPaperOptions.length > 0
+              ? data.coverPaperOptions
+              : [{ id: "cov_1", name: "100lb Gloss Cover", imposition: 1, costPerM: 125.25 }];
+
+            customGroups["Cover"] = [
+              { id: "self_cover", name: "Self-Cover (Same paper as inside)", isSelfCover: true },
+              ...adminCoverOptions.map(cov => ({
+                id: cov.id || cov.name,
+                name: cov.name,
+                imposition: parseFloat(cov.imposition) || 1,
+                costPerM: parseFloat(cov.costPerM) || 0,
+                isSeparateCover: true
+              }))
             ];
           }
 
