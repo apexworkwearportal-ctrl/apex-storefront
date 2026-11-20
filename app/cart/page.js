@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { getLineTotal, getLineOriginalTotal, getCartSubtotal, getTaxRate, computeTotals } from "@/lib/cart-pricing";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { useCart } from "@/lib/cart-context";
@@ -216,16 +217,18 @@ export default function CartPage() {
 
   // Math totals
   const isPickup = fulfillmentMethod === "pickup";
-  const subtotal = cart.reduce((acc, item) => acc + (parseFloat(item.price) * item.quantity), 0);
+  const subtotal = getCartSubtotal(cart);
   const discountAmount = appliedPromo ? parseFloat(appliedPromo.discountAmount || 0) : 0;
-  const discountedSubtotal = Math.max(0, subtotal - discountAmount);
-  const shipping = isPickup ? 0 : (selectedRate ? parseFloat(selectedRate.price) : 0);
-  
+  const shippingRaw = isPickup ? 0 : (selectedRate ? parseFloat(selectedRate.price) : 0);
+
   // For pickup, facility is in Ontario (13% HST). For shipping, use destination province.
   const effectiveProvince = isPickup ? "ON" : state;
-  const taxRate = effectiveProvince ? (["ON", "ONTARIO"].includes(effectiveProvince.toUpperCase().trim()) ? 0.13 : (["NS", "NOVA SCOTIA", "NB", "NEW BRUNSWICK", "NL", "NEWFOUNDLAND", "PE", "PRINCE EDWARD ISLAND"].includes(effectiveProvince.toUpperCase().trim()) ? 0.15 : 0.05)) : 0.13;
-  const tax = (discountedSubtotal + shipping) * taxRate;
-  const grandTotal = discountedSubtotal + shipping + tax;
+  const taxRate = effectiveProvince ? getTaxRate(effectiveProvince) : 0.13;
+  const totals = computeTotals({ subtotal, discount: discountAmount, shipping: shippingRaw, taxRate });
+  const discountedSubtotal = totals.discountedSubtotal;
+  const shipping = totals.shipping;
+  const tax = totals.tax;
+  const grandTotal = totals.grandTotal;
 
   const handleCheckout = async () => {
     if (cart.some(item => !item.artworkFiles || item.artworkFiles.length === 0)) {
@@ -394,10 +397,10 @@ export default function CartPage() {
                           )}
                         </div>
                         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
-                          {item.originalPrice && item.originalPrice > item.price && (
+                          {getLineOriginalTotal(item) !== null && (
                             <div style={{ display: "flex", alignItems: "center", gap: "0.35rem", marginBottom: "0.15rem" }}>
                               <span style={{ fontSize: "0.75rem", textDecoration: "line-through", color: "hsl(var(--muted-hsl))" }}>
-                                ${(parseFloat(item.originalPrice) * item.quantity).toFixed(2)}
+                                ${getLineOriginalTotal(item).toFixed(2)}
                               </span>
                               {item.saleDiscountPercent && (
                                 <span style={{ fontSize: "0.65rem", fontWeight: 800, color: "#DC2626", backgroundColor: "#FEE2E2", padding: "0.1rem 0.35rem", borderRadius: "3px" }}>
@@ -406,9 +409,14 @@ export default function CartPage() {
                               )}
                             </div>
                           )}
-                          <span style={{ fontWeight: 800, color: item.originalPrice && item.originalPrice > item.price ? "#DC2626" : "hsl(var(--accent-hsl))", fontSize: "1rem" }}>
-                            ${(parseFloat(item.price) * item.quantity).toFixed(2)} CAD
+                          <span style={{ fontWeight: 800, color: getLineOriginalTotal(item) !== null ? "#DC2626" : "hsl(var(--accent-hsl))", fontSize: "1rem" }}>
+                            ${getLineTotal(item).toFixed(2)} CAD
                           </span>
+                          {parseFloat(item.setupFee) > 0 && (
+                            <span style={{ fontSize: "0.72rem", color: "hsl(var(--muted-hsl))", marginTop: "0.15rem" }}>
+                              Includes ${parseFloat(item.setupFee).toFixed(2)} one-time embroidery setup
+                            </span>
+                          )}
                         </div>
                       </div>
 

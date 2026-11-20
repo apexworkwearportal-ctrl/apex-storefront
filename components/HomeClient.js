@@ -681,7 +681,7 @@ export default function HomeClient({ categories, featuredProducts = [] }) {
             Print & Apparel Products for Every GTA Business
           </h2>
           <p style={{ color: "hsl(var(--muted-hsl))", fontSize: "0.85rem", lineHeight: "1.8", marginBottom: "1rem" }}>
-            At Apex Workwear, we supply print and apparel products to businesses across the Greater Toronto Area. Our catalogue covers business cards, letterhead, and NCR forms for everyday office use, flyers, brochures, and postcards for marketing campaigns, coroplast yard signs, vinyl banners, and aluminum signage for storefronts and job sites, and labels, stickers, and packaging for product lines. We also produce custom apparel, including t-shirts, hoodies, and hats, with embroidery, DTG, and screen printing available.
+            At Apex Workwear, we supply print and apparel products to businesses across the Greater Toronto Area. Our catalogue covers business cards, letterhead, and NCR forms for everyday office use, flyers, brochures, and postcards for marketing campaigns, coroplast yard signs, vinyl banners, and aluminum signage for storefronts and job sites, and labels, stickers, and packaging for product lines. We also produce custom apparel, including t-shirts, hoodies, and hats, with embroidery, DTF, and screen printing available.
           </p>
           <p style={{ color: "hsl(var(--primary-hsl))", fontSize: "0.85rem", fontWeight: 700 }}>
             Configure your specifications, see wholesale pricing instantly, and check out online. No quote requests. No waiting for a callback.
@@ -753,7 +753,7 @@ export default function HomeClient({ categories, featuredProducts = [] }) {
 
           <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
             {[
-              { q: "What types of products do you offer?", a: "We offer 60+ print products, including business cards, flyers, signage, labels, and packaging, plus custom apparel like t-shirts, hoodies, and hats with embroidery, DTG, or screen printing available." },
+              { q: "What types of products do you offer?", a: "We offer 60+ print products, including business cards, flyers, signage, labels, and packaging, plus custom apparel like t-shirts, hoodies, and hats with embroidery, DTF, or screen printing available." },
               { q: "Is there a minimum order?", a: "No. Most products have zero order minimums. Order one piece or several thousand." },
               { q: "How does online configuration work?", a: "Choose your product, select size, material, and quantity, then upload your artwork. Pricing updates instantly as you configure. No quote request needed." },
               { q: "Do you offer bulk or wholesale pricing?", a: "Yes. Our pricing is mapped directly to wholesale trade rates, so larger orders get better per unit pricing automatically." },
