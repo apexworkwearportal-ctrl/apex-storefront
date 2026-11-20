@@ -404,6 +404,7 @@ export default function AdminProductEditPage({ params: paramsPromise }) {
     quantity: simQty,
     size: activeSimSize,
     sidesPages: activeSimSides,
+    sidesPagesType,
     printMode: activeSimMode,
     basePrice: parseFloat(priceOverride) || 0,
     settings: globalPrintSettings
@@ -838,7 +839,7 @@ export default function AdminProductEditPage({ params: paramsPromise }) {
                         2. {sidesPagesType === "pages" ? "Pages" : "Sides"}
                       </h3>
                       <span style={{ fontSize: "0.75rem", color: "#64748B" }}>
-                        {sidesPagesType === "pages" ? "Auto-multiplies in paper calculation & shown as dropdown to customer" : "Multiplied in Paper Cost"}
+                        {sidesPagesType === "pages" ? "Converted to sheets via imposition & shown as dropdown to customer" : "Multiplies clicks (not paper cost)"}
                       </span>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>

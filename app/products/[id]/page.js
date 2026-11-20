@@ -192,6 +192,7 @@ export default function ProductDetailPage({ params: paramsPromise }) {
       quantity,
       size: sizeOpt,
       sidesPages: sidesOpt,
+      sidesPagesType: product.sidesPagesType || null,
       printMode: modeOpt,
       basePrice,
       settings: customPrintSettings,
