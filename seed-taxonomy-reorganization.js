@@ -107,9 +107,9 @@ const PARENTS = [
     id: "apparel-promotional-wear",
     name: "Apparel & Promotional Wear",
     displayOrder: 7,
-    description: "Custom t-shirts, hoodies, headwear, and embroidered apparel for teams, staff, and merch runs. Screen printing and DTF both available, no setup fees on DTF orders.",
+    description: "Custom t-shirts, hoodies, headwear, and embroidered apparel for teams, staff, and merch runs. Screen printing and DTG both available, no setup fees on DTG orders.",
     faqs: [
-      { q: "What's the difference between screen printing and DTF?", a: "Screen printing is more cost effective at higher volumes, DTF has no setup fees and suits smaller or highly detailed runs." },
+      { q: "What's the difference between screen printing and DTG?", a: "Screen printing is more cost effective at higher volumes, DTG has no setup fees and suits smaller or highly detailed runs." },
       { q: "Is there a minimum order on t-shirts?", a: "Configure your quantity, low minimums apply." },
       { q: "Do you offer embroidery on hoodies?", a: "Yes, available as an alternative to printed logos." }
     ]
@@ -154,7 +154,7 @@ const SUBCATEGORIES = [
   { id: "sub-calendars-specialty-prints", parentId: "cards-invitations-calendars", name: "Calendars & Specialty Prints", displayOrder: 3, description: "Wall calendars, canvas prints, and short-run digital sheets for specialty and promotional use.", related: ["Greeting Cards & Invitations", "Posters & Large Format Prints", "Presentation Folders"] },
 
   // 7. Apparel & Promotional Wear
-  { id: "sub-t-shirts", parentId: "apparel-promotional-wear", name: "T-Shirts", displayOrder: 1, description: "Screen printed or DTF t-shirts in bulk or single runs, with dozens of colours and blank brands available.", related: ["Hoodies & Sweatshirts", "Embroidered Apparel", "Headwear"] },
+  { id: "sub-t-shirts", parentId: "apparel-promotional-wear", name: "T-Shirts", displayOrder: 1, description: "Screen printed or DTG t-shirts in bulk or single runs, with dozens of colours and blank brands available.", related: ["Hoodies & Sweatshirts", "Embroidered Apparel", "Headwear"] },
   { id: "sub-hoodies-sweatshirts", parentId: "apparel-promotional-wear", name: "Hoodies & Sweatshirts", displayOrder: 2, description: "Pullover and zip-up hoodies with embroidered or printed logos, built for teams and staff.", related: ["T-Shirts", "Embroidered Apparel", "Headwear"] },
   { id: "sub-headwear", parentId: "apparel-promotional-wear", name: "Headwear", displayOrder: 3, description: "Embroidered hats and caps with low minimums and fast turnaround.", related: ["T-Shirts", "Hoodies & Sweatshirts", "Embroidered Apparel"] },
   { id: "sub-embroidered-apparel", parentId: "apparel-promotional-wear", name: "Embroidered Apparel", displayOrder: 4, description: "Precision logo embroidery on polos and other apparel, popular for corporate uniforms.", related: ["Hoodies & Sweatshirts", "Headwear", "T-Shirts"] }

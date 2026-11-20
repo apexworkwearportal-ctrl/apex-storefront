@@ -634,9 +634,9 @@ function CustomPrintCostingTab() {
   const activeClickCharge = testMode === "color" ? (parseFloat(colorClickCharge) || 0.08) : (parseFloat(grayscaleClickCharge) || 0.02);
   const activeMultiplier = Math.max(1, parseFloat(markupMultiplier) || 2.0);
 
-  const sheetsNeeded = Math.ceil(qtyNum / impNum)
+  const sheetsNeeded = (qtyNum / impNum)
   const clicks = sheetsNeeded * sidesNum;
-  const paperCost = sheetsNeeded * (costPerMNum / 1000);
+  const paperCost = ( (costPerMNum / 1000)) * sheetsNeeded;
   const clickCost = clicks * activeClickCharge;
   const totalCost = paperCost + clickCost;
   const finalPrice = basePriceNum + (totalCost * activeMultiplier);
@@ -807,7 +807,7 @@ function CustomPrintCostingTab() {
               <strong style={{ color: "#0F172A" }}>${clickCost.toFixed(2)}</strong>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.85rem" }}>
-              <span style={{ color: "#64748B" }}>Paper Cost (${costPerMNum}/M ÷ 1000 × {sheetsNeeded} sheets):</span>
+              <span style={{ color: "#64748B" }}>Paper Cost ({sidesNum} × ${costPerMNum}/M ÷ 1000 × {clicks.toFixed(2)}):</span>
               <strong style={{ color: "#0F172A" }}>${paperCost.toFixed(2)}</strong>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.85rem", borderTop: "1px dashed #CBD5E1", paddingTop: "0.4rem" }}>

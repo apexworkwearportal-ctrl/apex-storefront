@@ -3,7 +3,6 @@ import { adminDb } from "@/lib/firebase-admin";
 import { FieldValue } from "firebase-admin/firestore";
 import { sendOrderConfirmationEmail } from "@/lib/emails";
 import { splitOrderIfNeeded } from "@/lib/order-splitter";
-import { getLineTotal, getCartSubtotal, getTaxRate, computeTotals, round2 } from "@/lib/cart-pricing";
 
 async function recordPromoUsage(order) {
   if (!order.promoCode || !order.promoCode.code || !adminDb) return;
@@ -114,26 +113,15 @@ export async function POST(req) {
       await saveAddressToUserIfNeeded(userId, shippingAddress);
     }
 
-    // 1. Calculate Totals (every component rounded to cents; grand total = sum of parts)
-    const subtotalNum = getCartSubtotal(items);
-    const discountRequested = promoCode && promoCode.discountAmount ? parseFloat(promoCode.discountAmount) : 0;
-    const taxRate = getTaxRate(shippingAddress.ShipState || "ON");
-    const computed = computeTotals({
-      subtotal: subtotalNum,
-      discount: discountRequested,
-      shipping: parseFloat(effectiveShippingRate.price || 0),
-      taxRate
-    });
-    const subtotal = computed.subtotal;
-    const discountAmount = computed.discount;
-    const discountedSubtotal = computed.discountedSubtotal;
-    const shipping = computed.shipping;
-    const tax = computed.tax;
-    const grandTotal = computed.grandTotal;
+    // 1. Calculate Totals
+    const subtotal = items.reduce((acc, item) => acc + (parseFloat(item.price) * parseInt(item.quantity)), 0);
+    const discountAmount = promoCode && promoCode.discountAmount ? parseFloat(promoCode.discountAmount) : 0;
+    const discountedSubtotal = Math.max(0, subtotal - discountAmount);
 
-    if (!(grandTotal > 0)) {
-      return Response.json({ error: "Order total must be greater than $0.00." }, { status: 400 });
-    }
+    const shipping = parseFloat(effectiveShippingRate.price || 0);
+    const taxRate = calculateTaxRate(shippingAddress.ShipState || "ON");
+    const tax = (discountedSubtotal + shipping) * taxRate;
+    const grandTotal = discountedSubtotal + shipping + tax;
 
     const orderData = {
       userId: userId || "guest",
@@ -152,11 +140,6 @@ export async function POST(req) {
         selectedOptionMap: i.selectedOptionMap || null,
         price: parseFloat(i.price || 0),
         quantity: parseInt(i.quantity || 1),
-        lineTotal: getLineTotal(i),
-        setupFee: parseFloat(i.setupFee || 0) || 0,
-        isApparel: Boolean(i.isApparel),
-        printMethod: i.printMethod || null,
-        sizeBreakdown: i.sizeBreakdown || null,
         artworkFiles: i.artworkFiles || [],
         artworkUrl: i.artworkUrl || (i.artworkFiles && i.artworkFiles[0] ? i.artworkFiles[0].url : null),
         mockupLayers: i.mockupLayers || null,
@@ -175,7 +158,7 @@ export async function POST(req) {
         ShipState: shippingAddress.ShipState,
         ShipZip: shippingAddress.ShipZip,
         ShipCountry: shippingAddress.ShipCountry,
-        ShipMethod: effectiveShippingRate.serviceName,
+        ShipMethod: selectedShippingRate.serviceName,
       },
       promoCode: promoCode ? {
         id: promoCode.id || null,

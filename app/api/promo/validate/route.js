@@ -1,5 +1,4 @@
 import { adminDb } from "@/lib/firebase-admin";
-import { getLineTotal } from "@/lib/cart-pricing";
 
 export async function POST(req) {
   try {
@@ -118,7 +117,7 @@ export async function POST(req) {
 
     if (scope === "site") {
       eligibleItems = items;
-      eligibleSubtotal = items.reduce((acc, i) => acc + (getLineTotal(i)), 0);
+      eligibleSubtotal = items.reduce((acc, i) => acc + (parseFloat(i.price || 0) * (parseInt(i.quantity) || 1)), 0);
     } else if (scope === "category") {
       const allowedCategories = (promo.applicableCategoryIds || []).map(String);
 
@@ -146,7 +145,7 @@ export async function POST(req) {
         const itemCatId = String(item.categoryId || productCategoryMap[String(item.productId)] || "");
         if (itemCatId && allowedCategories.includes(itemCatId)) {
           eligibleItems.push(item);
-          eligibleSubtotal += getLineTotal(item);
+          eligibleSubtotal += parseFloat(item.price || 0) * (parseInt(item.quantity) || 1);
         }
       }
 
@@ -163,7 +162,7 @@ export async function POST(req) {
         const pIdStr = String(item.productId);
         if (allowedProducts.includes(pIdStr)) {
           eligibleItems.push(item);
-          eligibleSubtotal += getLineTotal(item);
+          eligibleSubtotal += parseFloat(item.price || 0) * (parseInt(item.quantity) || 1);
         }
       }
 
