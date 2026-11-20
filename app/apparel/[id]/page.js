@@ -291,9 +291,13 @@ export default function ApparelDetailPage({ params: paramsPromise }) {
               <Sparkles size={22} />
             </div>
             <div>
-              <h4 style={{ fontSize: "0.95rem", fontWeight: 800, color: "#0F172A", margin: "0 0 0.25rem" }}>High-Density Embroidery</h4>
+              <h4 style={{ fontSize: "0.95rem", fontWeight: 800, color: "#0F172A", margin: "0 0 0.25rem" }}>
+                {product?.isEmbroidery ? "High-Density Embroidery" : "Full-Color DTF Printing"}
+              </h4>
               <p style={{ fontSize: "0.82rem", color: "#64748B", margin: 0, lineHeight: 1.45 }}>
-                Ultra-precise digitized stitching for chest logos, sleeve patches, and back embroidery.
+                {product?.isEmbroidery
+                  ? "Ultra-precise digitized stitching for chest logos, sleeve patches, and back embroidery."
+                  : "Vibrant, full-color DTF transfers with sharp detail and a soft, flexible feel that holds up wash after wash."}
               </p>
             </div>
           </div>

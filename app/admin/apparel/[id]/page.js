@@ -94,6 +94,8 @@ export default function AdminApparelProductEditPage({ params: paramsPromise }) {
   const [categoryId, setCategoryId] = useState("");
   const [basePrice, setBasePrice] = useState("");
   const [saleDiscountPercent, setSaleDiscountPercent] = useState("");
+  const [isEmbroidery, setIsEmbroidery] = useState(false);
+  const [embroiderySetupCost, setEmbroiderySetupCost] = useState("");
   const [minimumOrderQuantity, setMinimumOrderQuantity] = useState(12);
   const [images, setImages] = useState([]);
 
@@ -179,6 +181,8 @@ export default function AdminApparelProductEditPage({ params: paramsPromise }) {
           setIsVisible(data.isVisible !== undefined ? data.isVisible : true);
           setCategoryId(data.categoryId || "");
           setBasePrice(data.pricing?.startingPrice || data.pricing?.basePrice || data.basePrice || "28.00");
+          setIsEmbroidery(!!data.isEmbroidery);
+          setEmbroiderySetupCost(data.embroiderySetupCost ? String(data.embroiderySetupCost) : "");
           setSaleDiscountPercent(data.saleDiscountPercent !== undefined && data.saleDiscountPercent !== null ? String(data.saleDiscountPercent) : "");
           setMinimumOrderQuantity(data.minimumOrderQuantity || 12);
           setImages(data.images || []);
@@ -601,6 +605,8 @@ export default function AdminApparelProductEditPage({ params: paramsPromise }) {
           basePrice: parseFloat(basePrice) || 0,
         },
         basePrice: parseFloat(basePrice) || 0,
+        isEmbroidery: !!isEmbroidery,
+        embroiderySetupCost: isEmbroidery ? Math.max(0, parseFloat(embroiderySetupCost) || 0) : 0,
         saleDiscountPercent: saleDiscountPercent !== "" && !isNaN(parseFloat(saleDiscountPercent)) && parseFloat(saleDiscountPercent) > 0 && parseFloat(saleDiscountPercent) < 100 ? parseFloat(saleDiscountPercent) : null,
         minimumOrderQuantity: parseInt(minimumOrderQuantity) || 12,
         images: images.length > 0 ? images : (garmentViews.front?.image ? [garmentViews.front.image] : []),
@@ -748,6 +754,29 @@ export default function AdminApparelProductEditPage({ params: paramsPromise }) {
                   onChange={(e) => setMinimumOrderQuantity(e.target.value)} 
                   required 
                 />
+              </div>'
+              <div style={{ gridColumn: "1 / -1", padding: "0.85rem 1rem", border: "1px solid hsl(var(--border-hsl))", borderRadius: "var(--radius-md)", backgroundColor: "#F8FAFC" }}>
+                <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontWeight: 700, cursor: "pointer" }}>
+                  <input type="checkbox" checked={isEmbroidery} onChange={(e) => setIsEmbroidery(e.target.checked)} />
+                  Embroidery product, add setup
+                </label>
+                {isEmbroidery && (
+                  <div style={{ marginTop: "0.75rem", maxWidth: "260px" }}>
+                    <label className="label">Embroidery Setup Cost ($, one-time per order)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      className="input"
+                      value={embroiderySetupCost}
+                      onChange={(e) => setEmbroiderySetupCost(e.target.value)}
+                      placeholder="e.g. 50.00"
+                    />
+                    <p style={{ fontSize: "0.72rem", color: "#64748B", margin: "0.25rem 0 0" }}>
+                      Added once to the order total (not per garment, not reduced by sale discounts). Embroidery wording is shown on the product page.
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
           </div>

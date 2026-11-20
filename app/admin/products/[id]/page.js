@@ -7,7 +7,8 @@ import { doc, getDoc, updateDoc, collection, getDocs } from "firebase/firestore"
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Upload, Trash2, Eye, EyeOff, Save, Loader2, AlertCircle, Plus, Printer, Calculator, CheckCircle2, Layers } from "lucide-react";
-import { calculateCustomPrintPrice } from "@/lib/custom-print-pricing";
+import { calculateCustomPrintPrice, getDefaultExtras } from "@/lib/custom-print-pricing";
+import AdminOptionGroupsEditor from "@/components/admin/AdminOptionGroupsEditor";
 
 export default function AdminProductEditPage({ params: paramsPromise }) {
   const params = use(paramsPromise);
@@ -404,7 +405,9 @@ export default function AdminProductEditPage({ params: paramsPromise }) {
     quantity: simQty,
     size: activeSimSize,
     sidesPages: activeSimSides,
+    sidesPagesType,
     printMode: activeSimMode,
+    ...getDefaultExtras(optionGroups),
     basePrice: parseFloat(priceOverride) || 0,
     settings: globalPrintSettings
   });
@@ -838,7 +841,7 @@ export default function AdminProductEditPage({ params: paramsPromise }) {
                         2. {sidesPagesType === "pages" ? "Pages" : "Sides"}
                       </h3>
                       <span style={{ fontSize: "0.75rem", color: "#64748B" }}>
-                        {sidesPagesType === "pages" ? "Auto-multiplies in paper calculation & shown as dropdown to customer" : "Multiplied in Paper Cost"}
+                        {sidesPagesType === "pages" ? "Converted to sheets via imposition & shown as dropdown to customer" : "Multiplies clicks (not paper cost)"}
                       </span>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
@@ -1137,78 +1140,7 @@ export default function AdminProductEditPage({ params: paramsPromise }) {
                 </div>
               </div>
 
-              {/* Optional Additional Custom Options */}
-              <div className="card">
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.25rem" }}>
-                  <div>
-                    <h2 style={{ fontSize: "1.1rem", fontWeight: 800, margin: 0 }}>Additional Custom Options (Optional)</h2>
-                    <p style={{ fontSize: "0.8rem", color: "hsl(var(--muted-hsl))", margin: "0.2rem 0 0" }}>
-                      Configure extra selectors (e.g. Folding, Lamination, Round Corners).
-                    </p>
-                  </div>
-                  <button type="button" onClick={addOptionGroup} className="btn btn-outline" style={{ padding: "0.4rem 0.85rem", fontSize: "0.8rem", display: "flex", alignItems: "center", gap: "0.25rem" }}>
-                    <Plus size={14} /> Add Option Group
-                  </button>
-                </div>
-
-                {optionGroups.length === 0 ? (
-                  <div style={{ textAlign: "center", padding: "1.5rem", border: "1px dashed hsl(var(--border-hsl))", borderRadius: "var(--radius-md)", color: "hsl(var(--muted-hsl))", fontSize: "0.85rem" }}>
-                    No extra options. Only the standard Custom Print engine variants (Sizes, Sides, Print Mode) will be used.
-                  </div>
-                ) : (
-                  <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
-                    {optionGroups.map((group, gIdx) => (
-                      <div key={gIdx} className="card" style={{ padding: "1rem", backgroundColor: "#F8FAFC", position: "relative" }}>
-                        <button
-                          type="button"
-                          onClick={() => removeOptionGroup(gIdx)}
-                          style={{ position: "absolute", top: "0.75rem", right: "0.75rem", background: "none", border: "none", color: "#EF4444", cursor: "pointer" }}
-                        >
-                          <Trash2 size={15} />
-                        </button>
-
-                        <div style={{ maxWidth: "75%", marginBottom: "0.75rem" }}>
-                          <label className="label">Option Group Name</label>
-                          <input className="input" value={group.name} onChange={(e) => handleGroupNameChange(gIdx, e.target.value)} required />
-                        </div>
-
-                        <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                          {group.choices.map((choice, cIdx) => (
-                            <div key={cIdx} style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
-                              <input
-                                className="input"
-                                value={choice.name}
-                                onChange={(e) => handleChoiceChange(gIdx, cIdx, "name", e.target.value)}
-                                placeholder="Choice name (e.g. Gloss Lamination, Half Fold)"
-                                style={{ flex: 2 }}
-                                required
-                              />
-                              <div style={{ display: "flex", alignItems: "center", gap: "0.35rem", flex: 1 }}>
-                                <span style={{ fontSize: "0.8rem", fontWeight: 700 }}>+$</span>
-                                <input
-                                  type="number"
-                                  step="0.01"
-                                  className="input"
-                                  value={choice.priceUpcharge}
-                                  onChange={(e) => handleChoiceChange(gIdx, cIdx, "priceUpcharge", e.target.value)}
-                                />
-                              </div>
-                              {group.choices.length > 1 && (
-                                <button type="button" onClick={() => removeChoice(gIdx, cIdx)} style={{ background: "none", border: "none", color: "#EF4444", cursor: "pointer" }}>
-                                  <Trash2 size={14} />
-                                </button>
-                              )}
-                            </div>
-                          ))}
-                          <button type="button" onClick={() => addChoice(gIdx)} className="btn btn-outline" style={{ padding: "0.3rem 0.65rem", fontSize: "0.75rem", width: "fit-content", marginTop: "0.25rem", display: "flex", alignItems: "center", gap: "0.25rem" }}>
-                            <Plus size={12} /> Add Choice Row
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+              <AdminOptionGroupsEditor groups={optionGroups} setGroups={setOptionGroups} />
             </>
           )}
 

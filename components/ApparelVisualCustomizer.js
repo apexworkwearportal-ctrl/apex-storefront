@@ -162,7 +162,7 @@ export default function ApparelVisualCustomizer({
   const setCurrentEditingSide = setSelectedSide;
 
   // Print method and internal production notes
-  const [printMethod, setPrintMethod] = useState("screenprint"); // screenprint, embroidery, dtg, vinyl
+  const [printMethod, setPrintMethod] = useState(product?.isEmbroidery ? "embroidery" : "dtf"); // embroidery, dtf, screenprint, vinyl
   const [internalNotes, setInternalNotes] = useState("");
 
   // Live calibrations per side (override product.views[side].calibration if calibrated in-studio)
@@ -278,23 +278,30 @@ export default function ApparelVisualCustomizer({
 
     const effectiveUnitPrice = hasSale
       ? Math.round(regularUnitPrice * (1 - saleDiscountPercent / 100) * 100) / 100
-      : regularUnitPrice;
-    const grandTotal = hasSale
+      : Math.round(regularUnitPrice * 100) / 100;
+    const goodsTotal = hasSale
       ? Math.round(regularGrandTotal * (1 - saleDiscountPercent / 100) * 100) / 100
-      : regularGrandTotal;
+      : Math.round(regularGrandTotal * 100) / 100;
+
+    // One-time embroidery setup fee: flat per order, not per garment, not discounted by sale
+    const setupFee = product?.isEmbroidery ? Math.max(0, parseFloat(product.embroiderySetupCost) || 0) : 0;
+    const grandTotal = Math.round((goodsTotal + setupFee) * 100) / 100;
+    const originalGrandTotal = Math.round((regularGrandTotal + setupFee) * 100) / 100;
 
     return {
       basePrice,
       hasSale,
       saleDiscountPercent: hasSale ? saleDiscountPercent : null,
       regularUnitPrice,
-      regularGrandTotal,
+      regularGrandTotal: originalGrandTotal,
       locationUpcharge,
       totalSizeUpcharges,
       effectiveUnitPrice,
+      setupFee,
+      goodsTotal,
       grandTotal
     };
-  }, [basePrice, selectedPrintLocation, sizeQuantities, availableSizes, totalQuantity, hasSale, saleDiscountPercent]);
+  }, [basePrice, selectedPrintLocation, sizeQuantities, availableSizes, totalQuantity, hasSale, saleDiscountPercent, product?.isEmbroidery, product?.embroiderySetupCost]);
 
   // Quantity input handler
   const handleQuantityChange = (sizeName, value) => {
@@ -773,6 +780,9 @@ export default function ApparelVisualCustomizer({
         originalPrice: pricingSummary.hasSale ? pricingSummary.regularUnitPrice : undefined,
         saleDiscountPercent: pricingSummary.hasSale ? pricingSummary.saleDiscountPercent : undefined,
         totalPrice: pricingSummary.grandTotal,
+        originalTotal: pricingSummary.hasSale ? pricingSummary.regularGrandTotal : undefined,
+        setupFee: pricingSummary.setupFee || undefined,
+        isEmbroidery: !!product?.isEmbroidery,
         
         // Dedicated Apparel Breakdown
         isApparel: true,
@@ -905,6 +915,11 @@ export default function ApparelVisualCustomizer({
             </span>
             <span style={{ fontSize: "0.75rem", color: "#64748B" }}>CAD</span>
           </div>
+          {pricingSummary.setupFee > 0 && (
+            <div style={{ fontSize: "0.72rem", color: "#64748B", marginTop: "0.15rem" }}>
+              Includes ${pricingSummary.setupFee.toFixed(2)} one-time embroidery setup
+            </div>
+          )}
         </div>
       </div>
 
@@ -991,7 +1006,7 @@ export default function ApparelVisualCustomizer({
             }}>
               <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.75rem", backgroundColor: "#F8FAFC", borderRadius: "10px", border: "1px solid #E2E8F0" }}>
                 <ShieldCheck size={18} style={{ color: "#10B981", flexShrink: 0 }} />
-                <span>Commercial Grade High-Density Embroidery / DTG Print</span>
+                <span>{product?.isEmbroidery ? "Commercial Grade High-Density Embroidery" : "Commercial Grade DTF Print"}</span>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.75rem", backgroundColor: "#F8FAFC", borderRadius: "10px", border: "1px solid #E2E8F0" }}>
                 <Sparkles size={18} style={{ color: "#2563EB", flexShrink: 0 }} />
@@ -1597,7 +1612,7 @@ export default function ApparelVisualCustomizer({
                   <Ruler size={13} />
                   <span>{isTrueToScale ? "True to scale" : "Estimated scale"}</span>
                   <span style={{ opacity: 0.6 }}>·</span>
-                  <span>{printMethod === "screenprint" ? "Screen Print" : printMethod === "embroidery" ? "Embroidery" : printMethod === "dtg" ? "DTG" : "Vinyl"}</span>
+                  <span>{printMethod === "screenprint" ? "Screen Print" : printMethod === "embroidery" ? "Embroidery" : printMethod === "dtf" ? "DTF" : "Vinyl"}</span>
                 </div>
               )}
             </div>
