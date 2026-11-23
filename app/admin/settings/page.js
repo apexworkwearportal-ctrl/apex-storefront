@@ -548,8 +548,6 @@ export default function AdminSettingsPage() {
           </div>
         </div>
 
-        {/* Custom Apparel Shipping Classes Manager */}
-        <ApparelShippingManager />
 
         {/* SinaLite Fulfillment Submission Mode Card */}
         <div className="card" style={{ padding: "1.75rem", backgroundColor: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: "12px", display: "flex", flexDirection: "column", gap: "1.25rem" }}>
