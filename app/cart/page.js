@@ -180,19 +180,39 @@ export default function CartPage() {
     setPromoSuccess("");
 
     try {
+      // Lightweight items for promo validation: only send fields needed for validation
+      const sanitizedItems = cart.map(item => ({
+        productId: item.productId,
+        name: item.name,
+        price: parseFloat(item.price) || 0,
+        quantity: parseInt(item.quantity) || 1,
+        categoryId: item.categoryId || item.category || null,
+        category: item.category || null,
+        isApparel: Boolean(item.isApparel),
+        isCustom: Boolean(item.isCustom)
+      }));
+
       const res = await fetch("/api/promo/validate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           code: promoCodeInput.trim(),
-          items: cart,
+          items: sanitizedItems,
           subtotal: subtotal,
           email: email || user?.email || "",
           userId: user ? user.uid : null,
         }),
       });
 
-      const data = await res.json();
+      let data;
+      const contentType = res.headers.get("content-type") || "";
+      if (contentType.includes("application/json")) {
+        data = await res.json();
+      } else {
+        const text = await res.text();
+        throw new Error(text || `Promo validation failed (HTTP ${res.status})`);
+      }
+
       if (!res.ok || !data.valid) {
         throw new Error(data.error || "Invalid promo code");
       }
@@ -200,7 +220,7 @@ export default function CartPage() {
       setAppliedPromo(data.promo);
       setPromoSuccess(data.message || `Promo code "${data.promo.code}" applied!`);
     } catch (err) {
-      setPromoError(err.message);
+      setPromoError(err.message || "Failed to apply promo code");
       setAppliedPromo(null);
     } finally {
       setPromoLoading(false);
@@ -253,11 +273,37 @@ export default function CartPage() {
 
     try {
       const activeRate = isPickup ? { serviceName: "Store Pickup (Free)", price: 0 } : selectedRate;
+      
+      // Sanitize cart items before sending to ensure no oversized base64 data URLs
+      const sanitizedCheckoutItems = cart.map(item => {
+        const cleanImages = (item.images || []).map(img => {
+          if (typeof img === "string" && img.startsWith("data:image/")) {
+            return item.artworkFiles?.[0]?.url || "";
+          }
+          return img;
+        }).filter(Boolean);
+
+        const cleanMockupSnapshots = item.mockupSnapshots ? Object.fromEntries(
+          Object.entries(item.mockupSnapshots).map(([k, v]) => [
+            k,
+            (typeof v === "string" && v.startsWith("data:image/"))
+              ? (item.artworkFiles?.[0]?.url || "")
+              : v
+          ])
+        ) : null;
+
+        return {
+          ...item,
+          images: cleanImages.length > 0 ? cleanImages : [item.artworkFiles?.[0]?.url || ""].filter(Boolean),
+          mockupSnapshots: cleanMockupSnapshots
+        };
+      });
+
       const res = await fetch("/api/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          items: cart,
+          items: sanitizedCheckoutItems,
           isPickup,
           fulfillmentMethod,
           shippingAddress: {
@@ -279,7 +325,15 @@ export default function CartPage() {
         }),
       });
 
-      const data = await res.json();
+      let data;
+      const contentType = res.headers.get("content-type") || "";
+      if (contentType.includes("application/json")) {
+        data = await res.json();
+      } else {
+        const text = await res.text();
+        throw new Error(text || `Checkout failed (HTTP ${res.status})`);
+      }
+
       if (!res.ok) {
         throw new Error(data.error || "Failed to initialize checkout.");
       }

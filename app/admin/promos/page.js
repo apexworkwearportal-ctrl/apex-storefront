@@ -78,17 +78,25 @@ export default function AdminPromosPage() {
       if (!res.ok) throw new Error(data.error || "Failed to load promo codes");
       setPromos(data.promos || []);
 
-      // 2. Fetch Categories
-      const catSnap = await getDocs(collection(db, "categories"));
+      // 2. Fetch Categories (both standard categories and apparel categories)
+      const [catSnap, apparelCatSnap] = await Promise.all([
+        getDocs(collection(db, "categories")).catch(() => ({ docs: [], forEach: () => {} })),
+        getDocs(collection(db, "apparel_categories")).catch(() => ({ docs: [], forEach: () => {} }))
+      ]);
       const catList = [];
-      catSnap.forEach(d => catList.push({ id: d.id, ...d.data() }));
+      catSnap.forEach(d => catList.push({ id: d.id, ...d.data(), type: "print" }));
+      apparelCatSnap.forEach(d => catList.push({ id: d.id, ...d.data(), name: `${d.data().name || "Apparel"} (Apparel)`, type: "apparel" }));
       catList.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
       setCategories(catList);
 
-      // 3. Fetch Products
-      const prodSnap = await getDocs(collection(db, "products"));
+      // 3. Fetch Products (both standard products and apparel products)
+      const [prodSnap, apparelProdSnap] = await Promise.all([
+        getDocs(collection(db, "products")).catch(() => ({ docs: [], forEach: () => {} })),
+        getDocs(collection(db, "apparel_products")).catch(() => ({ docs: [], forEach: () => {} }))
+      ]);
       const prodList = [];
-      prodSnap.forEach(d => prodList.push({ id: d.id, ...d.data() }));
+      prodSnap.forEach(d => prodList.push({ id: d.id, ...d.data(), isApparel: false }));
+      apparelProdSnap.forEach(d => prodList.push({ id: d.id, ...d.data(), name: `${d.data().name || "Custom Apparel"} (Apparel)`, isApparel: true }));
       prodList.sort((a, b) => (a.name || a.sinalite?.name || "").localeCompare(b.name || b.sinalite?.name || ""));
       setProducts(prodList);
     } catch (err) {

@@ -687,7 +687,7 @@ export default function ApparelVisualCustomizer({
     }
   };
 
-  // High-accuracy canvas composite snapshot generator for cart submission
+  // High-accuracy composite snapshot generator for cart submission (uploaded to cloud, never bulky base64)
   const generateSideMockupSnapshot = async (sideKey) => {
     const viewData = views[sideKey] || Object.values(views)[0];
     const colorView = selectedColor?.views?.[sideKey];
@@ -696,61 +696,101 @@ export default function ApparelVisualCustomizer({
     const sideCalib = (colorView?.calibration?.isCalibrated ? colorView.calibration : null) || liveCalibrations[sideKey] || viewData?.calibration || null;
 
     if (!garmentImgSrc) return "";
+    // If no logos on this side, return raw garment image URL directly
+    if (sideLogos.length === 0) return garmentImgSrc;
 
     return new Promise((resolve) => {
       const garmentImg = new Image();
       garmentImg.crossOrigin = "anonymous";
       garmentImg.onload = async () => {
-        const canvas = document.createElement("canvas");
-        const exportW = garmentImg.naturalWidth || 1400;
-        const exportH = garmentImg.naturalHeight || 1400;
-        canvas.width = exportW;
-        canvas.height = exportH;
-        const ctx = canvas.getContext("2d");
-        ctx.drawImage(garmentImg, 0, 0, exportW, exportH);
+        try {
+          const canvas = document.createElement("canvas");
+          // Scale to reasonable composite dimensions (max 900px) so memory and uploads are lightning fast
+          const maxDim = 900;
+          const naturalW = garmentImg.naturalWidth || 900;
+          const naturalH = garmentImg.naturalHeight || 900;
+          const scale = Math.min(1, maxDim / Math.max(naturalW, naturalH));
+          const exportW = Math.round(naturalW * scale);
+          const exportH = Math.round(naturalH * scale);
 
-        for (const logo of sideLogos) {
-          try {
-            const logoImg = new Image();
-            logoImg.crossOrigin = "anonymous";
-            await new Promise((res, rej) => {
-              logoImg.onload = res;
-              logoImg.onerror = rej;
-              logoImg.src = logo.imageUrl;
-            });
+          canvas.width = exportW;
+          canvas.height = exportH;
+          const ctx = canvas.getContext("2d");
+          ctx.drawImage(garmentImg, 0, 0, exportW, exportH);
 
-            const ex = computeLayout({
-              canvasW: exportW,
-              image: sideCalib,
-              fallbackApparelWidthIn,
-              fallbackApparelHeightIn,
-              logoWidthIn: logo.widthIn,
-              logoHeightIn: logo.heightIn,
-              placement: {
-                positionX: logo.positionX,
-                positionY: logo.positionY,
-                offsetXIn: logo.offsetXIn,
-                offsetYIn: logo.offsetYIn
+          for (const logo of sideLogos) {
+            try {
+              const logoImg = new Image();
+              logoImg.crossOrigin = "anonymous";
+              await new Promise((res, rej) => {
+                logoImg.onload = res;
+                logoImg.onerror = rej;
+                logoImg.src = logo.imageUrl;
+              });
+
+              const ex = computeLayout({
+                canvasW: exportW,
+                image: sideCalib,
+                fallbackApparelWidthIn,
+                fallbackApparelHeightIn,
+                logoWidthIn: logo.widthIn,
+                logoHeightIn: logo.heightIn,
+                placement: {
+                  positionX: logo.positionX,
+                  positionY: logo.positionY,
+                  offsetXIn: logo.offsetXIn,
+                  offsetYIn: logo.offsetYIn
+                }
+              });
+
+              const angle = ((logo.rotationDeg || 0) * Math.PI) / 180;
+              ctx.save();
+              if (angle) {
+                ctx.translate(ex.logoLeft + ex.logoW / 2, ex.logoTop + ex.logoH / 2);
+                ctx.rotate(angle);
+                ctx.translate(-(ex.logoLeft + ex.logoW / 2), -(ex.logoTop + ex.logoH / 2));
               }
-            });
-
-            const angle = ((logo.rotationDeg || 0) * Math.PI) / 180;
-            ctx.save();
-            if (angle) {
-              ctx.translate(ex.logoLeft + ex.logoW / 2, ex.logoTop + ex.logoH / 2);
-              ctx.rotate(angle);
-              ctx.translate(-(ex.logoLeft + ex.logoW / 2), -(ex.logoTop + ex.logoH / 2));
+              ctx.drawImage(logoImg, ex.logoLeft, ex.logoTop, ex.logoW, ex.logoH);
+              ctx.restore();
+            } catch (e) {
+              console.error("Failed to draw logo on snapshot:", e);
             }
-            ctx.drawImage(logoImg, ex.logoLeft, ex.logoTop, ex.logoW, ex.logoH);
-            ctx.restore();
-          } catch (e) {
-            console.error("Failed to draw logo on snapshot:", e);
           }
-        }
 
-        resolve(canvas.toDataURL("image/png", 0.9));
+          // Try uploading snapshot to Cloudinary via /api/upload
+          canvas.toBlob(async (blob) => {
+            if (!blob) {
+              resolve(garmentImgSrc);
+              return;
+            }
+
+            try {
+              const formData = new FormData();
+              formData.append("file", blob, `mockup-${sideKey}-${Date.now()}.jpg`);
+              const upRes = await fetch("/api/upload", {
+                method: "POST",
+                body: formData,
+              });
+              if (upRes.ok) {
+                const upData = await upRes.json();
+                if (upData.url) {
+                  resolve(upData.url);
+                  return;
+                }
+              }
+            } catch (upErr) {
+              console.warn("Could not upload composite snapshot to cloud:", upErr);
+            }
+
+            // Fallback to garment image src if cloud upload failed - NEVER return multi-megabyte base64
+            resolve(garmentImgSrc);
+          }, "image/jpeg", 0.85);
+        } catch (canvasErr) {
+          console.error("Canvas composite snapshot error:", canvasErr);
+          resolve(garmentImgSrc);
+        }
       };
-      garmentImg.onerror = () => resolve("");
+      garmentImg.onerror = () => resolve(garmentImgSrc);
       garmentImg.src = garmentImgSrc;
     });
   };
@@ -800,7 +840,7 @@ export default function ApparelVisualCustomizer({
       const cartPayload = {
         productId: product.id,
         name: product.name || "Custom Branded Apparel",
-        images: [primaryImage, ...Object.values(mockupSnapshots)].filter(Boolean),
+        images: [primaryImage, ...Object.values(mockupSnapshots)].filter(img => img && typeof img === "string" && !img.startsWith("data:image/")),
         category: product.category || "Custom Apparel",
         categoryId: product.categoryId || "apparel",
         quantity: totalQuantity,

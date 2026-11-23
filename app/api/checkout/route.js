@@ -130,26 +130,36 @@ export async function POST(req) {
       isPickup: pickupOrder,
       fulfillmentMethod: pickupOrder ? "pickup" : "shipping",
       pickupAddress: pickupOrder ? "1515 Britannia Rd E, Unit 14-15, Mississauga, ON L4W 4K1" : null,
-      items: items.map(i => ({
-        productId: i.productId,
-        name: i.name,
-        isCustom: Boolean(i.isCustom),
-        isApparel: Boolean(i.isApparel || i.apparelViews || i.garmentViews || i.selectedSizes || i.embroiderySetupFee > 0 || i.isEmbroidery),
-        images: i.images || [],
-        categoryId: i.categoryId || null,
-        optionSummary: i.optionSummary || "",
-        selectedOptionMap: i.selectedOptionMap || null,
-        price: parseFloat(i.price || 0),
-        quantity: parseInt(i.quantity || 1),
-        embroiderySetupFee: parseFloat(i.embroiderySetupFee || 0),
-        isEmbroidery: Boolean(i.isEmbroidery),
-        artworkFiles: i.artworkFiles || [],
-        artworkUrl: i.artworkUrl || (i.artworkFiles && i.artworkFiles[0] ? i.artworkFiles[0].url : null),
-        mockupLayers: i.mockupLayers || null,
-        garmentViews: i.garmentViews || i.apparelViews || null,
-        selectedSide: i.selectedSide || "front",
-        logoUrl: i.logoUrl || null,
-      })),
+      items: items.map(i => {
+        const cleanImages = (i.images || []).filter(img => typeof img === "string" && !img.startsWith("data:image/"));
+        const cleanArtworkFiles = (i.artworkFiles || []).map(af => ({
+          ...af,
+          url: (typeof af.url === "string" && !af.url.startsWith("data:image/")) ? af.url : (af.thumbnail || "")
+        }));
+        const rawArtworkUrl = i.artworkUrl || (cleanArtworkFiles[0] ? cleanArtworkFiles[0].url : null);
+        const cleanArtworkUrl = (typeof rawArtworkUrl === "string" && !rawArtworkUrl.startsWith("data:image/")) ? rawArtworkUrl : (cleanImages[0] || null);
+
+        return {
+          productId: i.productId,
+          name: i.name,
+          isCustom: Boolean(i.isCustom),
+          isApparel: Boolean(i.isApparel || i.apparelViews || i.garmentViews || i.selectedSizes || i.embroiderySetupFee > 0 || i.isEmbroidery),
+          images: cleanImages,
+          categoryId: i.categoryId || null,
+          optionSummary: i.optionSummary || "",
+          selectedOptionMap: i.selectedOptionMap || null,
+          price: parseFloat(i.price || 0),
+          quantity: parseInt(i.quantity || 1),
+          embroiderySetupFee: parseFloat(i.embroiderySetupFee || 0),
+          isEmbroidery: Boolean(i.isEmbroidery),
+          artworkFiles: cleanArtworkFiles,
+          artworkUrl: cleanArtworkUrl,
+          mockupLayers: i.mockupLayers || null,
+          garmentViews: i.garmentViews || i.apparelViews || null,
+          selectedSide: i.selectedSide || "front",
+          logoUrl: i.logoUrl || null,
+        };
+      }),
       shippingAddress: {
         ShipFName: shippingAddress.ShipFName,
         ShipLName: shippingAddress.ShipLName,

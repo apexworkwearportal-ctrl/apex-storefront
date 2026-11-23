@@ -119,9 +119,9 @@ export async function POST(req) {
       eligibleItems = items;
       eligibleSubtotal = items.reduce((acc, i) => acc + (parseFloat(i.price || 0) * (parseInt(i.quantity) || 1)), 0);
     } else if (scope === "category") {
-      const allowedCategories = (promo.applicableCategoryIds || []).map(String);
+      const allowedCategories = (promo.applicableCategoryIds || []).map(c => String(c).toLowerCase().trim());
 
-      // If cart items don't have categoryId cached, look up from products collection
+      // If cart items don't have categoryId cached, look up from products and apparel_products collections
       const uncachedProductIds = items
         .filter(i => !i.categoryId)
         .map(i => String(i.productId));
@@ -134,6 +134,12 @@ export async function POST(req) {
             if (pDoc.exists) {
               const pData = pDoc.data();
               productCategoryMap[pid] = String(pData.categoryId || pData.category || "");
+            } else {
+              const aDoc = await adminDb.collection("apparel_products").doc(pid).get();
+              if (aDoc.exists) {
+                const aData = aDoc.data();
+                productCategoryMap[pid] = String(aData.categoryId || aData.category || "");
+              }
             }
           } catch (e) {
             console.warn("Could not lookup product category:", pid, e.message);
@@ -142,8 +148,15 @@ export async function POST(req) {
       }
 
       for (const item of items) {
-        const itemCatId = String(item.categoryId || productCategoryMap[String(item.productId)] || "");
-        if (itemCatId && allowedCategories.includes(itemCatId)) {
+        const itemCatId = String(item.categoryId || productCategoryMap[String(item.productId)] || "").toLowerCase().trim();
+        const itemCatName = String(item.category || "").toLowerCase().trim();
+        const isApparelItem = Boolean(item.isApparel);
+
+        const isMatch = (itemCatId && allowedCategories.includes(itemCatId)) ||
+          (itemCatName && allowedCategories.includes(itemCatName)) ||
+          (isApparelItem && allowedCategories.some(c => c === "apparel" || c.includes("apparel")));
+
+        if (isMatch) {
           eligibleItems.push(item);
           eligibleSubtotal += parseFloat(item.price || 0) * (parseInt(item.quantity) || 1);
         }
