@@ -48,7 +48,7 @@ function AdminCategoriesContent() {
   const [markupType, setMarkupType] = useState("percentage"); // "percentage" or "tiers"
   const [markupPercent, setMarkupPercent] = useState(30);
   const [setupCharge, setSetupCharge] = useState(0);
-  const [fulfillmentOption, setFulfillmentOption] = useState("both"); // "both" | "shipping_only" | "pickup_only"
+  const [fulfillmentOption, setFulfillmentOption] = useState("shipping_only"); // "both" | "shipping_only" | "pickup_only"
   const [quantityTiers, setQuantityTiers] = useState([
     { minQty: 1, maxQty: 25, markupPercent: 45 },
     { minQty: 26, maxQty: 100, markupPercent: 35 },
@@ -69,7 +69,7 @@ function AdminCategoriesContent() {
   const [newMarkupType, setNewMarkupType] = useState("percentage");
   const [newMarkupPercent, setNewMarkupPercent] = useState(30);
   const [newSetupCharge, setNewSetupCharge] = useState(0);
-  const [newFulfillmentOption, setNewFulfillmentOption] = useState("both"); // "both" | "shipping_only" | "pickup_only"
+  const [newFulfillmentOption, setNewFulfillmentOption] = useState("shipping_only"); // "both" | "shipping_only" | "pickup_only"
   const [newQuantityTiers, setNewQuantityTiers] = useState([
     { minQty: 1, maxQty: 25, markupPercent: 45 },
     { minQty: 26, maxQty: 100, markupPercent: 35 },
@@ -150,7 +150,7 @@ function AdminCategoriesContent() {
     setMarkupType(cat.markupType || "percentage");
     setMarkupPercent(cat.markupPercent !== undefined ? cat.markupPercent : 30);
     setSetupCharge(cat.setupCharge || 0);
-    setFulfillmentOption(cat.fulfillmentOption || "both");
+    setFulfillmentOption(cat.fulfillmentOption || "shipping_only");
     setQuantityTiers(cat.quantityTiers || [
       { minQty: 1, maxQty: 25, markupPercent: 45 },
       { minQty: 26, maxQty: 100, markupPercent: 35 },
@@ -211,7 +211,7 @@ function AdminCategoriesContent() {
         markupType,
         markupPercent: parseFloat(markupPercent) || 0,
         setupCharge: parseFloat(setupCharge) || 0,
-        fulfillmentOption: fulfillmentOption || "both",
+        fulfillmentOption: fulfillmentOption || "shipping_only",
         quantityTiers: quantityTiers || []
       });
       
@@ -259,7 +259,7 @@ function AdminCategoriesContent() {
         markupType: newMarkupType,
         markupPercent: parseFloat(newMarkupPercent) || 0,
         setupCharge: parseFloat(newSetupCharge) || 0,
-        fulfillmentOption: newFulfillmentOption || "both",
+        fulfillmentOption: newFulfillmentOption || "shipping_only",
         quantityTiers: newQuantityTiers || []
       });
 
@@ -277,6 +277,7 @@ function AdminCategoriesContent() {
       setNewMarkupType("percentage");
       setNewMarkupPercent(30);
       setNewSetupCharge(0);
+      setNewFulfillmentOption("shipping_only");
       setNewFulfillmentOption("both");
       setShowCreateForm(false);
 

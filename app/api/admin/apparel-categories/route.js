@@ -1,13 +1,13 @@
 import { adminDb } from "@/lib/firebase-admin";
 
 const DEFAULT_APPAREL_TAXONOMIES = [
-  { name: "T-Shirts", slug: "t-shirts", description: "Crewneck, v-neck, heavy cotton, and moisture-wicking tees", displayOrder: 1, isVisible: true },
-  { name: "Hoodies & Sweatshirts", slug: "hoodies-sweatshirts", description: "Fleece pullovers, full-zip hooded jackets, and crewneck sweaters", displayOrder: 2, isVisible: true },
-  { name: "Headwear & Caps", slug: "headwear-caps", description: "Structured snapbacks, dad hats, beanies, and trucker caps", displayOrder: 3, isVisible: true },
-  { name: "Jackets & Outerwear", slug: "jackets-outerwear", description: "Windbreakers, softshells, workwear coats, and insulated outerwear", displayOrder: 4, isVisible: true },
-  { name: "Polo Shirts", slug: "polo-shirts", description: "Pique knit and performance golf polos for professional uniforms", displayOrder: 5, isVisible: true },
-  { name: "Safety Vests & High-Vis", slug: "safety-vests", description: "CSA/ANSI compliant high-visibility safety wear and construction gear", displayOrder: 6, isVisible: true },
-  { name: "Bags & Accessories", slug: "bags-accessories", description: "Custom tote bags, backpacks, aprons, and branded merchandise", displayOrder: 7, isVisible: true },
+  { name: "T-Shirts", slug: "t-shirts", description: "Crewneck, v-neck, heavy cotton, and moisture-wicking tees", displayOrder: 1, isVisible: true, fulfillmentOption: "shipping_only" },
+  { name: "Hoodies & Sweatshirts", slug: "hoodies-sweatshirts", description: "Fleece pullovers, full-zip hooded jackets, and crewneck sweaters", displayOrder: 2, isVisible: true, fulfillmentOption: "shipping_only" },
+  { name: "Headwear & Caps", slug: "headwear-caps", description: "Structured snapbacks, dad hats, beanies, and trucker caps", displayOrder: 3, isVisible: true, fulfillmentOption: "shipping_only" },
+  { name: "Jackets & Outerwear", slug: "jackets-outerwear", description: "Windbreakers, softshells, workwear coats, and insulated outerwear", displayOrder: 4, isVisible: true, fulfillmentOption: "shipping_only" },
+  { name: "Polo Shirts", slug: "polo-shirts", description: "Pique knit and performance golf polos for professional uniforms", displayOrder: 5, isVisible: true, fulfillmentOption: "shipping_only" },
+  { name: "Safety Vests & High-Vis", slug: "safety-vests", description: "CSA/ANSI compliant high-visibility safety wear and construction gear", displayOrder: 6, isVisible: true, fulfillmentOption: "shipping_only" },
+  { name: "Bags & Accessories", slug: "bags-accessories", description: "Custom tote bags, backpacks, aprons, and branded merchandise", displayOrder: 7, isVisible: true, fulfillmentOption: "shipping_only" },
 ];
 
 export async function GET(req) {
@@ -90,7 +90,7 @@ export async function POST(req) {
       displayOrder: Number(category.displayOrder) || 1,
       isVisible: category.isVisible !== false,
       saleDiscountPercent: Number(category.saleDiscountPercent) > 0 ? Number(category.saleDiscountPercent) : null,
-      fulfillmentOption: category.fulfillmentOption || "both",
+      fulfillmentOption: category.fulfillmentOption || "shipping_only",
       updatedAt: new Date().toISOString()
     };
 

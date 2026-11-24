@@ -270,7 +270,7 @@ export default function ProductDetailPage({ params: paramsPromise }) {
       quantity: 1, // 1 ordered job bundle
       artworkFiles: artworkFiles,
       proofDetails: proofDetails,
-      fulfillmentOption: product.fulfillmentOption || "both",
+      fulfillmentOption: product.fulfillmentOption || "shipping_only",
       isCustom: !!product.isCustom,
       isApparel: false
     };

@@ -61,7 +61,7 @@ export default function AdminApparelCategoriesPage() {
   const [newDisplayOrder, setNewDisplayOrder] = useState(1);
   const [newHeroImage, setNewHeroImage] = useState("");
   const [newSaleDiscount, setNewSaleDiscount] = useState("");
-  const [newFulfillmentOption, setNewFulfillmentOption] = useState("both"); // "both" | "shipping_only" | "pickup_only"
+  const [newFulfillmentOption, setNewFulfillmentOption] = useState("shipping_only"); // "both" | "shipping_only" | "pickup_only"
 
   // Edit state
   const [editingCategory, setEditingCategory] = useState(null);
@@ -158,7 +158,7 @@ export default function AdminApparelCategoriesPage() {
         displayOrder: Number(newDisplayOrder) || 1,
         isVisible: true,
         saleDiscountPercent: Number(newSaleDiscount) > 0 ? Number(newSaleDiscount) : null,
-        fulfillmentOption: newFulfillmentOption || "both",
+        fulfillmentOption: newFulfillmentOption || "shipping_only",
       };
 
       const res = await fetch("/api/admin/apparel-categories", {
@@ -204,7 +204,7 @@ export default function AdminApparelCategoriesPage() {
         displayOrder: Number(editingCategory.displayOrder) || 1,
         isVisible: editingCategory.isVisible !== false,
         saleDiscountPercent: Number(editingCategory.saleDiscountPercent) > 0 ? Number(editingCategory.saleDiscountPercent) : null,
-        fulfillmentOption: editingCategory.fulfillmentOption || "both",
+        fulfillmentOption: editingCategory.fulfillmentOption || "shipping_only",
       };
 
       const res = await fetch("/api/admin/apparel-categories", {
@@ -910,7 +910,7 @@ export default function AdminApparelCategoriesPage() {
                   Category Fulfillment Eligibility
                 </label>
                 <select
-                  value={editingCategory.fulfillmentOption || "both"}
+                  value={editingCategory.fulfillmentOption || "shipping_only"}
                   onChange={(e) => setEditingCategory({ ...editingCategory, fulfillmentOption: e.target.value })}
                   style={{
                     width: "100%",

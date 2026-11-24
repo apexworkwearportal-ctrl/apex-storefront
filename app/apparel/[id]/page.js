@@ -128,7 +128,7 @@ export default function ApparelDetailPage({ params: paramsPromise }) {
       originalPrice: mockupCartPayload.originalPrice || (hasSale ? (mockupCartPayload.regularUnitPrice || basePrice) : undefined),
       saleDiscountPercent: mockupCartPayload.saleDiscountPercent || (hasSale ? saleDiscount : undefined),
       ...mockupCartPayload,
-      fulfillmentOption: product.fulfillmentOption || "both",
+      fulfillmentOption: product.fulfillmentOption || "shipping_only",
       isApparel: true,
       isCustom: true
     });
