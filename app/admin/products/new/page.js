@@ -29,6 +29,7 @@ export default function AdminNewProductPage() {
   const [categoryId, setCategoryId] = useState("");
   const [basePrice, setBasePrice] = useState("10.00");
   const [images, setImages] = useState([]);
+  const [fulfillmentOption, setFulfillmentOption] = useState("both"); // "both" | "shipping_only" | "pickup_only"
 
   // Auto-added Custom Print Variants
   const [customPrintSizes, setCustomPrintSizes] = useState([
@@ -440,6 +441,7 @@ export default function AdminNewProductPage() {
         options: optionGroups,
         useCustomMarkup,
         markupPercent: parseFloat(markupPercent) || 0,
+        fulfillmentOption: fulfillmentOption || "both",
         needsAttention,
         createdAt: new Date()
       };
@@ -537,6 +539,21 @@ export default function AdminNewProductPage() {
               </div>
 
               <div>
+                <label className="label">Fulfillment Eligibility</label>
+                <select
+                  className="input"
+                  value={fulfillmentOption}
+                  onChange={(e) => setFulfillmentOption(e.target.value)}
+                >
+                  <option value="both">📦 Both Courier Delivery & In-Store Pickup</option>
+                  <option value="shipping_only">🚚 Courier Delivery Only</option>
+                  <option value="pickup_only">🏬 In-Store Pickup Only</option>
+                </select>
+              </div>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
+              <div>
                 <label className="label">Base Price ($ CAD)*</label>
                 <input
                   type="number"
@@ -549,6 +566,11 @@ export default function AdminNewProductPage() {
                 />
                 <span style={{ fontSize: "0.72rem", color: "hsl(var(--muted-hsl))", marginTop: "0.25rem", display: "block" }}>
                   Fixed starting setup cost added to final calculation
+                </span>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", paddingTop: "1.2rem" }}>
+                <span style={{ fontSize: "0.78rem", color: "hsl(var(--muted-hsl))" }}>
+                  Fulfillment options are enforced automatically during customer checkout.
                 </span>
               </div>
             </div>

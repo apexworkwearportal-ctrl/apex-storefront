@@ -48,6 +48,7 @@ function AdminCategoriesContent() {
   const [markupType, setMarkupType] = useState("percentage"); // "percentage" or "tiers"
   const [markupPercent, setMarkupPercent] = useState(30);
   const [setupCharge, setSetupCharge] = useState(0);
+  const [fulfillmentOption, setFulfillmentOption] = useState("both"); // "both" | "shipping_only" | "pickup_only"
   const [quantityTiers, setQuantityTiers] = useState([
     { minQty: 1, maxQty: 25, markupPercent: 45 },
     { minQty: 26, maxQty: 100, markupPercent: 35 },
@@ -68,6 +69,7 @@ function AdminCategoriesContent() {
   const [newMarkupType, setNewMarkupType] = useState("percentage");
   const [newMarkupPercent, setNewMarkupPercent] = useState(30);
   const [newSetupCharge, setNewSetupCharge] = useState(0);
+  const [newFulfillmentOption, setNewFulfillmentOption] = useState("both"); // "both" | "shipping_only" | "pickup_only"
   const [newQuantityTiers, setNewQuantityTiers] = useState([
     { minQty: 1, maxQty: 25, markupPercent: 45 },
     { minQty: 26, maxQty: 100, markupPercent: 35 },
@@ -148,6 +150,7 @@ function AdminCategoriesContent() {
     setMarkupType(cat.markupType || "percentage");
     setMarkupPercent(cat.markupPercent !== undefined ? cat.markupPercent : 30);
     setSetupCharge(cat.setupCharge || 0);
+    setFulfillmentOption(cat.fulfillmentOption || "both");
     setQuantityTiers(cat.quantityTiers || [
       { minQty: 1, maxQty: 25, markupPercent: 45 },
       { minQty: 26, maxQty: 100, markupPercent: 35 },
@@ -208,6 +211,7 @@ function AdminCategoriesContent() {
         markupType,
         markupPercent: parseFloat(markupPercent) || 0,
         setupCharge: parseFloat(setupCharge) || 0,
+        fulfillmentOption: fulfillmentOption || "both",
         quantityTiers: quantityTiers || []
       });
       
@@ -255,6 +259,7 @@ function AdminCategoriesContent() {
         markupType: newMarkupType,
         markupPercent: parseFloat(newMarkupPercent) || 0,
         setupCharge: parseFloat(newSetupCharge) || 0,
+        fulfillmentOption: newFulfillmentOption || "both",
         quantityTiers: newQuantityTiers || []
       });
 
@@ -272,6 +277,7 @@ function AdminCategoriesContent() {
       setNewMarkupType("percentage");
       setNewMarkupPercent(30);
       setNewSetupCharge(0);
+      setNewFulfillmentOption("both");
       setShowCreateForm(false);
 
       await fetchCategories();
@@ -445,6 +451,18 @@ function AdminCategoriesContent() {
                     <option key={c.id} value={c.id}>{c.name}</option>
                   ))}
                 </select>
+              </div>
+
+              <div>
+                <label className="label">Category Fulfillment Eligibility</label>
+                <select className="input" value={newFulfillmentOption} onChange={(e) => setNewFulfillmentOption(e.target.value)}>
+                  <option value="both">📦 Both Courier Delivery & In-Store Pickup</option>
+                  <option value="shipping_only">🚚 Courier Delivery Only</option>
+                  <option value="pickup_only">🏬 In-Store Pickup Only</option>
+                </select>
+                <span style={{ fontSize: "0.72rem", color: "hsl(var(--muted-hsl))", marginTop: "0.25rem", display: "block" }}>
+                  Sets default checkout fulfillment availability for products filed under this category.
+                </span>
               </div>
               
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
@@ -726,6 +744,18 @@ function AdminCategoriesContent() {
                         <label htmlFor="showOnHome" style={{ fontWeight: 600, fontSize: "0.9rem", cursor: "pointer", userSelect: "none" }}>
                           Show on Home Page
                         </label>
+                      </div>
+
+                      <div>
+                        <label className="label">Category Fulfillment Eligibility</label>
+                        <select className="input" value={fulfillmentOption} onChange={(e) => setFulfillmentOption(e.target.value)}>
+                          <option value="both">📦 Both Courier Delivery & In-Store Pickup</option>
+                          <option value="shipping_only">🚚 Courier Delivery Only</option>
+                          <option value="pickup_only">🏬 In-Store Pickup Only</option>
+                        </select>
+                        <span style={{ fontSize: "0.72rem", color: "hsl(var(--muted-hsl))", marginTop: "0.25rem", display: "block" }}>
+                          Sets default checkout fulfillment availability for products filed under this category.
+                        </span>
                       </div>
 
                       {/* Category Markup Rule Box */}

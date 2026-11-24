@@ -90,6 +90,7 @@ export async function POST(req) {
       displayOrder: Number(category.displayOrder) || 1,
       isVisible: category.isVisible !== false,
       saleDiscountPercent: Number(category.saleDiscountPercent) > 0 ? Number(category.saleDiscountPercent) : null,
+      fulfillmentOption: category.fulfillmentOption || "both",
       updatedAt: new Date().toISOString()
     };
 

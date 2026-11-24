@@ -61,6 +61,7 @@ export default function AdminApparelCategoriesPage() {
   const [newDisplayOrder, setNewDisplayOrder] = useState(1);
   const [newHeroImage, setNewHeroImage] = useState("");
   const [newSaleDiscount, setNewSaleDiscount] = useState("");
+  const [newFulfillmentOption, setNewFulfillmentOption] = useState("both"); // "both" | "shipping_only" | "pickup_only"
 
   // Edit state
   const [editingCategory, setEditingCategory] = useState(null);
@@ -157,6 +158,7 @@ export default function AdminApparelCategoriesPage() {
         displayOrder: Number(newDisplayOrder) || 1,
         isVisible: true,
         saleDiscountPercent: Number(newSaleDiscount) > 0 ? Number(newSaleDiscount) : null,
+        fulfillmentOption: newFulfillmentOption || "both",
       };
 
       const res = await fetch("/api/admin/apparel-categories", {
@@ -176,6 +178,7 @@ export default function AdminApparelCategoriesPage() {
       setNewDescription("");
       setNewHeroImage("");
       setNewSaleDiscount("");
+      setNewFulfillmentOption("both");
       setNewDisplayOrder(categories.length + 2);
       await fetchCategories();
       setTimeout(() => setSuccess(""), 4000);
@@ -201,6 +204,7 @@ export default function AdminApparelCategoriesPage() {
         displayOrder: Number(editingCategory.displayOrder) || 1,
         isVisible: editingCategory.isVisible !== false,
         saleDiscountPercent: Number(editingCategory.saleDiscountPercent) > 0 ? Number(editingCategory.saleDiscountPercent) : null,
+        fulfillmentOption: editingCategory.fulfillmentOption || "both",
       };
 
       const res = await fetch("/api/admin/apparel-categories", {
@@ -700,6 +704,27 @@ export default function AdminApparelCategoriesPage() {
 
               <div>
                 <label style={{ display: "block", fontSize: "0.85rem", fontWeight: 700, color: "#334155", marginBottom: "0.35rem" }}>
+                  Category Fulfillment Eligibility
+                </label>
+                <select
+                  value={newFulfillmentOption}
+                  onChange={(e) => setNewFulfillmentOption(e.target.value)}
+                  style={{
+                    width: "100%",
+                    padding: "0.6rem 0.85rem",
+                    borderRadius: "6px",
+                    border: "1px solid #CBD5E1",
+                    fontSize: "0.9rem"
+                  }}
+                >
+                  <option value="both">📦 Both Courier Delivery & In-Store Pickup</option>
+                  <option value="shipping_only">🚚 Courier Delivery Only</option>
+                  <option value="pickup_only">🏬 In-Store Pickup Only</option>
+                </select>
+              </div>
+
+              <div>
+                <label style={{ display: "block", fontSize: "0.85rem", fontWeight: 700, color: "#334155", marginBottom: "0.35rem" }}>
                   Hero / Thumbnail Image
                 </label>
                 <div style={{ display: "flex", gap: "0.75rem", alignItems: "center" }}>
@@ -878,6 +903,27 @@ export default function AdminApparelCategoriesPage() {
                     }}
                   />
                 </div>
+              </div>
+
+              <div>
+                <label style={{ display: "block", fontSize: "0.85rem", fontWeight: 700, color: "#334155", marginBottom: "0.35rem" }}>
+                  Category Fulfillment Eligibility
+                </label>
+                <select
+                  value={editingCategory.fulfillmentOption || "both"}
+                  onChange={(e) => setEditingCategory({ ...editingCategory, fulfillmentOption: e.target.value })}
+                  style={{
+                    width: "100%",
+                    padding: "0.6rem 0.85rem",
+                    borderRadius: "6px",
+                    border: "1px solid #CBD5E1",
+                    fontSize: "0.9rem"
+                  }}
+                >
+                  <option value="both">📦 Both Courier Delivery & In-Store Pickup</option>
+                  <option value="shipping_only">🚚 Courier Delivery Only</option>
+                  <option value="pickup_only">🏬 In-Store Pickup Only</option>
+                </select>
               </div>
 
               <div>

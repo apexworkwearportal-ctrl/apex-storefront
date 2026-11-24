@@ -38,6 +38,7 @@ export default function AdminProductEditPage({ params: paramsPromise }) {
   const [name, setName] = useState("");
   const [sku, setSku] = useState("");
   const [categoryId, setCategoryId] = useState("");
+  const [fulfillmentOption, setFulfillmentOption] = useState("both"); // "both" | "shipping_only" | "pickup_only"
   const [optionGroups, setOptionGroups] = useState([]);
   const [optionGroupsCount, setOptionGroupsCount] = useState(0);
 
@@ -134,6 +135,7 @@ export default function AdminProductEditPage({ params: paramsPromise }) {
           setUseCustomMarkup(data.useCustomMarkup || false);
           setMarkupPercent(data.markupPercent !== undefined ? data.markupPercent : 35);
           setSaleDiscountPercent(data.saleDiscountPercent !== undefined && data.saleDiscountPercent !== null ? String(data.saleDiscountPercent) : "");
+          setFulfillmentOption(data.fulfillmentOption || "both");
           
           if (data.isCustom) {
             setName(data.name || "");
@@ -497,6 +499,7 @@ export default function AdminProductEditPage({ params: paramsPromise }) {
           useCustomMarkup,
           markupPercent: parseFloat(markupPercent) || 0,
           saleDiscountPercent: saleDiscountPercent !== "" ? (parseFloat(saleDiscountPercent) || null) : null,
+          fulfillmentOption: fulfillmentOption || "both",
           needsAttention,
         };
 
@@ -516,6 +519,7 @@ export default function AdminProductEditPage({ params: paramsPromise }) {
           useCustomMarkup,
           markupPercent: parseFloat(markupPercent) || 0,
           saleDiscountPercent: saleDiscountPercent !== "" ? (parseFloat(saleDiscountPercent) || null) : null,
+          fulfillmentOption: fulfillmentOption || "both",
           needsAttention,
           "pricing.startingPriceOverride": priceVal,
         };
@@ -1519,6 +1523,23 @@ export default function AdminProductEditPage({ params: paramsPromise }) {
                 </select>
                 <span style={{ fontSize: "0.75rem", color: "hsl(var(--muted-hsl))", display: "block", marginTop: "0.25rem" }}>
                   Choose which category this product is filed under.
+                </span>
+              </div>
+
+              {/* Fulfillment Option */}
+              <div>
+                <label className="label">Fulfillment Eligibility</label>
+                <select
+                  className="input"
+                  value={fulfillmentOption}
+                  onChange={(e) => setFulfillmentOption(e.target.value)}
+                >
+                  <option value="both">📦 Both Courier Delivery & In-Store Pickup</option>
+                  <option value="shipping_only">🚚 Courier Delivery Only</option>
+                  <option value="pickup_only">🏬 In-Store Pickup Only</option>
+                </select>
+                <span style={{ fontSize: "0.75rem", color: "hsl(var(--muted-hsl))", display: "block", marginTop: "0.25rem" }}>
+                  Restricts customer fulfillment options at checkout for this product.
                 </span>
               </div>
 

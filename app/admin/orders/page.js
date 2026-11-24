@@ -654,22 +654,54 @@ function AdminOrdersContent() {
     return true;
   };
 
+  const getOrderType = (order) => {
+    if (!order) return "print";
+    if (
+      order.orderType === "apparel" ||
+      order.isApparel ||
+      (order.items && order.items.some(i => i.isApparel || i.category === "apparel" || i.categoryId === "apparel" || i.apparelViews || i.garmentViews || i.embroiderySetupFee > 0 || i.isEmbroidery))
+    ) {
+      return "apparel";
+    }
+    if (
+      order.orderType === "custom_print" ||
+      order.isCustom ||
+      (order.items && order.items.some(i => i.isCustom))
+    ) {
+      return "custom_print";
+    }
+    return "print"; // standard SinaLite print
+  };
+
+  const isCompletedOrInactive = (o) => {
+    if (!o) return false;
+    const s = String(o.status || "").toLowerCase();
+    return s === "completed" || s === "shipped" || s === "ready_to_pickup" || s === "ready_for_pickup" || s === "cancelled";
+  };
+
+  const isSinaliteEligibleOrder = (o) => {
+    if (!o || !isPaidOrder(o)) return false;
+    if (o.sinaliteOrderId) return false;
+    if (isCompletedOrInactive(o)) return false;
+    const type = getOrderType(o);
+    return type === "print";
+  };
+
   const paidOrders = orders.filter(isPaidOrder);
   const abandonedOrders = orders.filter(o => !isPaidOrder(o));
 
   // Filter paid orders by active tab
   const proofOrders = paidOrders.filter(o => 
-    o.sinaliteReviewURL || 
-    (o.items && o.items.some(i => i.artworkFiles && i.artworkFiles.length > 0)) ||
-    o.sinaliteProofStatus
+    !isCompletedOrInactive(o) &&
+    (o.sinaliteReviewURL || 
+     o.sinaliteProofStatus ||
+     (o.items && o.items.some(i => (i.artworkFiles && i.artworkFiles.length > 0) || i.reviewURL || i.reviewFILE)))
   );
 
-  const unsubmittedOrders = paidOrders.filter(o => 
-    !o.sinaliteOrderId && o.status !== "completed" && o.status !== "shipped"
-  );
+  const unsubmittedOrders = paidOrders.filter(isSinaliteEligibleOrder);
 
   const completedOrders = paidOrders.filter(o => 
-    o.status === "completed" || o.status === "shipped" || o.sinaliteTrackingNumber
+    isCompletedOrInactive(o) || o.sinaliteTrackingNumber
   );
 
   let displayedOrders = paidOrders;
@@ -872,18 +904,75 @@ function AdminOrdersContent() {
                               SinaLite #{order.sinaliteOrderId}
                             </span>
                           )}
-                          {order.orderType && (
-                            <span style={{
-                              fontSize: "0.65rem",
-                              fontWeight: 800,
-                              textTransform: "uppercase",
-                              display: "block",
-                              marginTop: "2px",
-                              color: order.orderType === "apparel" ? "#D97706" : "#2563EB"
-                            }}>
-                              {order.orderType === "apparel" ? "👕 Apparel" : order.orderType === "custom_print" ? "🖨️ Custom Print" : "🖨️ Print"}
-                            </span>
-                          )}
+                          <div style={{ display: "flex", gap: "0.25rem", flexWrap: "wrap", marginTop: "3px" }}>
+                            {(() => {
+                              const oType = getOrderType(order);
+                              if (oType === "apparel") {
+                                return (
+                                  <span style={{
+                                    fontSize: "0.65rem",
+                                    fontWeight: 800,
+                                    backgroundColor: "#FEF3C7",
+                                    color: "#92400E",
+                                    border: "1px solid #FCD34D",
+                                    padding: "0.15rem 0.45rem",
+                                    borderRadius: "4px",
+                                    display: "inline-flex",
+                                    alignItems: "center"
+                                  }}>
+                                    👕 APPAREL (WORKSHOP)
+                                  </span>
+                                );
+                              }
+                              if (oType === "custom_print") {
+                                return (
+                                  <span style={{
+                                    fontSize: "0.65rem",
+                                    fontWeight: 800,
+                                    backgroundColor: "#EDE9FE",
+                                    color: "#5B21B6",
+                                    border: "1px solid #DDD6FE",
+                                    padding: "0.15rem 0.45rem",
+                                    borderRadius: "4px",
+                                    display: "inline-flex",
+                                    alignItems: "center"
+                                  }}>
+                                    🖨️ CUSTOM PRINT (IN-HOUSE)
+                                  </span>
+                                );
+                              }
+                              return (
+                                <span style={{
+                                  fontSize: "0.65rem",
+                                  fontWeight: 800,
+                                  backgroundColor: "#E0F2FE",
+                                  color: "#0369A1",
+                                  border: "1px solid #BAE6FD",
+                                  padding: "0.15rem 0.45rem",
+                                  borderRadius: "4px",
+                                  display: "inline-flex",
+                                  alignItems: "center"
+                                }}>
+                                  ⚡ SINALITE PRINT
+                                </span>
+                              );
+                            })()}
+                            {order.isPickup && (
+                              <span style={{
+                                fontSize: "0.65rem",
+                                fontWeight: 800,
+                                backgroundColor: "#ECFDF5",
+                                color: "#047857",
+                                border: "1px solid #A7F3D0",
+                                padding: "0.15rem 0.45rem",
+                                borderRadius: "4px",
+                                display: "inline-flex",
+                                alignItems: "center"
+                              }}>
+                                🏪 STORE PICKUP
+                              </span>
+                            )}
+                          </div>
                           {(order.promoCode?.code || parseFloat(order.totals?.discount || 0) > 0) && (
                             <span style={{
                               fontSize: "0.65rem",
@@ -1147,16 +1236,22 @@ function AdminOrdersContent() {
                   </div>
                 ) : (
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px dashed #E2E8F0", paddingTop: "0.35rem" }}>
-                    <span style={{ fontSize: "0.75rem", color: "#64748B", textTransform: "uppercase", fontWeight: 700 }}>Order Type / Status</span>
+                    <span style={{ fontSize: "0.75rem", color: "#64748B", textTransform: "uppercase", fontWeight: 700 }}>Order Type / Fulfillment</span>
                     <span style={{ fontWeight: 700, fontSize: "0.8rem", color: !isPaidOrder(selectedOrder) ? "#D97706" : "#2563EB" }}>
-                      {!isPaidOrder(selectedOrder) ? "Unpaid (Awaiting Payment)" : (selectedOrder.orderType === "apparel" ? "Apparel Workshop (In-house)" : "Awaiting SinaLite Transmission")}
+                      {!isPaidOrder(selectedOrder) 
+                        ? "Unpaid (Awaiting Payment)" 
+                        : getOrderType(selectedOrder) === "apparel" 
+                          ? "👕 Apparel Workshop (In-house)" 
+                          : getOrderType(selectedOrder) === "custom_print"
+                            ? "🖨️ Custom Print (In-house)"
+                            : "⚡ SinaLite Wholesale Print"}
                     </span>
                   </div>
                 )}
               </div>
 
-              {/* SinaLite Submission Box - Only for Paid Orders */}
-              {isPaidOrder(selectedOrder) && !selectedOrder.sinaliteOrderId && selectedOrder.orderType !== "apparel" && (
+              {/* SinaLite Submission Box - ONLY for Paid SinaLite Wholesale Print Orders */}
+              {isSinaliteEligibleOrder(selectedOrder) && (
                 <div style={{ padding: "1rem", backgroundColor: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: "8px", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
                   <span style={{ fontSize: "0.8rem", fontWeight: 700, color: "#1E40AF" }}>
                     ⚡ SinaLite Order Dispatch
@@ -1172,6 +1267,30 @@ function AdminOrdersContent() {
                   >
                     {submittingSinalite ? "Submitting..." : "Send Job to SinaLite API Now"}
                   </button>
+                </div>
+              )}
+
+              {/* In-House Production Notice for Apparel Orders */}
+              {isPaidOrder(selectedOrder) && getOrderType(selectedOrder) === "apparel" && (
+                <div style={{ padding: "1rem", backgroundColor: "#FEF3C7", border: "1px solid #FCD34D", borderRadius: "8px", display: "flex", flexDirection: "column", gap: "0.4rem" }}>
+                  <span style={{ fontSize: "0.8rem", fontWeight: 800, color: "#92400E", display: "flex", alignItems: "center", gap: "0.35rem" }}>
+                    👕 Apparel Workshop Fulfillment (In-House)
+                  </span>
+                  <p style={{ fontSize: "0.75rem", color: "#78350F", margin: 0 }}>
+                    This order contains apparel garments and is fulfilled directly in-house (DTF / Embroidery). It does <strong>not</strong> submit to SinaLite. Update status below as garments progress through production.
+                  </p>
+                </div>
+              )}
+
+              {/* In-House Production Notice for Custom Print Orders */}
+              {isPaidOrder(selectedOrder) && getOrderType(selectedOrder) === "custom_print" && (
+                <div style={{ padding: "1rem", backgroundColor: "#EDE9FE", border: "1px solid #DDD6FE", borderRadius: "8px", display: "flex", flexDirection: "column", gap: "0.4rem" }}>
+                  <span style={{ fontSize: "0.8rem", fontWeight: 800, color: "#5B21B6", display: "flex", alignItems: "center", gap: "0.35rem" }}>
+                    🖨️ Custom Print Production (In-House)
+                  </span>
+                  <p style={{ fontSize: "0.75rem", color: "#4C1D95", margin: 0 }}>
+                    This order is printed and finished in-house using your workshop presses. It does <strong>not</strong> submit to SinaLite. Update status below as print sheets progress.
+                  </p>
                 </div>
               )}
 
@@ -1277,7 +1396,7 @@ function AdminOrdersContent() {
                   </h3>
 
                   {/* Option to change shipping only for SinaLite print orders not yet submitted */}
-                  {isPaidOrder(selectedOrder) && !selectedOrder.sinaliteOrderId && selectedOrder.orderType !== "apparel" && !selectedOrder.isPickup && (
+                  {isSinaliteEligibleOrder(selectedOrder) && !selectedOrder.isPickup && (
                     <button
                       type="button"
                       onClick={() => {

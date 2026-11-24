@@ -235,6 +235,25 @@ export default function CartPage() {
   };
 
   // Math totals
+  const pickupOnlyItems = cart.filter(i => i.fulfillmentOption === "pickup_only");
+  const shippingOnlyItems = cart.filter(i => i.fulfillmentOption === "shipping_only");
+  const hasPickupOnly = pickupOnlyItems.length > 0;
+  const hasShippingOnly = shippingOnlyItems.length > 0;
+  const hasFulfillmentConflict = hasPickupOnly && hasShippingOnly;
+
+  // Auto-sync fulfillment method if restricted by cart items
+  useEffect(() => {
+    if (hasPickupOnly && !hasShippingOnly && fulfillmentMethod !== "pickup") {
+      setFulfillmentMethod("pickup");
+      setSelectedRate({ serviceName: "Store Pickup (Free)", price: 0 });
+      setRatesError("");
+    } else if (hasShippingOnly && !hasPickupOnly && fulfillmentMethod !== "shipping") {
+      setFulfillmentMethod("shipping");
+      setSelectedRate(shippingRates.length > 0 ? shippingRates[0] : null);
+      setRatesError("");
+    }
+  }, [hasPickupOnly, hasShippingOnly, fulfillmentMethod, shippingRates]);
+
   const isPickup = fulfillmentMethod === "pickup";
   const subtotal = cart.reduce((acc, item) => acc + (parseFloat(item.price) * item.quantity), 0);
   const discountAmount = appliedPromo ? parseFloat(appliedPromo.discountAmount || 0) : 0;
@@ -248,6 +267,21 @@ export default function CartPage() {
   const grandTotal = discountedSubtotal + shipping + tax;
 
   const handleCheckout = async () => {
+    if (hasFulfillmentConflict) {
+      setCheckoutError("Cart contains items that can only be picked up and items that can only be delivered. Please order them separately.");
+      return;
+    }
+
+    if (hasPickupOnly && !isPickup) {
+      setCheckoutError("One or more items in your cart are marked for In-Store Pickup only. Please select Store Pickup.");
+      return;
+    }
+
+    if (hasShippingOnly && isPickup) {
+      setCheckoutError("One or more items in your cart are marked for Courier Delivery only. Please select Courier Shipping.");
+      return;
+    }
+
     if (cart.some(item => !item.artworkFiles || item.artworkFiles.length === 0)) {
       setCheckoutError("Please upload at least one artwork file (PDF/Image) for all items before checking out.");
       return;
@@ -533,10 +567,30 @@ export default function CartPage() {
               </h2>
 
               {/* Fulfillment Method Selector */}
+              {hasFulfillmentConflict && (
+                <div style={{ padding: "0.85rem 1rem", backgroundColor: "#FEF2F2", border: "1px solid #FCA5A5", borderRadius: "8px", color: "#B91C1C", fontSize: "0.85rem", fontWeight: 600, marginBottom: "1rem" }}>
+                  ⚠️ Conflict: Your cart contains items available only for in-store pickup ({pickupOnlyItems.map(i => i.name).join(", ")}) and items available only for courier shipping ({shippingOnlyItems.map(i => i.name).join(", ")}). Please remove one or place separate orders.
+                </div>
+              )}
+
+              {hasPickupOnly && !hasFulfillmentConflict && (
+                <div style={{ padding: "0.75rem 1rem", backgroundColor: "#F0FDF4", border: "1px solid #BBF7D0", borderRadius: "8px", color: "#166534", fontSize: "0.82rem", fontWeight: 600, marginBottom: "1rem" }}>
+                  🏬 In-Store Pickup Required: "{pickupOnlyItems.map(i => i.name).join(", ")}" is marked for In-Store Pickup only. Courier delivery is disabled.
+                </div>
+              )}
+
+              {hasShippingOnly && !hasFulfillmentConflict && (
+                <div style={{ padding: "0.75rem 1rem", backgroundColor: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: "8px", color: "#1E40AF", fontSize: "0.82rem", fontWeight: 600, marginBottom: "1rem" }}>
+                  🚚 Courier Delivery Required: "{shippingOnlyItems.map(i => i.name).join(", ")}" is marked for Courier Shipping only. Store pickup is disabled.
+                </div>
+              )}
+
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem", marginBottom: "1.5rem" }}>
                 <button
                   type="button"
+                  disabled={hasPickupOnly}
                   onClick={() => {
+                    if (hasPickupOnly) return;
                     setFulfillmentMethod("shipping");
                     setSelectedRate(shippingRates.length > 0 ? shippingRates[0] : null);
                     setRatesError("");
@@ -554,16 +608,20 @@ export default function CartPage() {
                     alignItems: "center",
                     justifyContent: "center",
                     gap: "0.5rem",
-                    cursor: "pointer",
+                    cursor: hasPickupOnly ? "not-allowed" : "pointer",
+                    opacity: hasPickupOnly ? 0.45 : 1,
                     transition: "all 0.15s ease"
                   }}
+                  title={hasPickupOnly ? "Disabled because items in your cart require in-store pickup" : "Select Courier Shipping"}
                 >
                   🚚 Courier Shipping
                 </button>
 
                 <button
                   type="button"
+                  disabled={hasShippingOnly}
                   onClick={() => {
+                    if (hasShippingOnly) return;
                     setFulfillmentMethod("pickup");
                     setSelectedRate({ serviceName: "Store Pickup (Free)", price: 0 });
                     setRatesError("");
@@ -581,9 +639,11 @@ export default function CartPage() {
                     alignItems: "center",
                     justifyContent: "center",
                     gap: "0.5rem",
-                    cursor: "pointer",
+                    cursor: hasShippingOnly ? "not-allowed" : "pointer",
+                    opacity: hasShippingOnly ? 0.45 : 1,
                     transition: "all 0.15s ease"
                   }}
+                  title={hasShippingOnly ? "Disabled because items in your cart require courier delivery" : "Select Store Pickup"}
                 >
                   🏬 Store Pickup (Free)
                 </button>

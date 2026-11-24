@@ -104,6 +104,7 @@ export default function AdminApparelProductEditPage({ params: paramsPromise }) {
   const [tieredPricing, setTieredPricing] = useState(DEFAULT_TIERED_PRICING);
   const [minimumOrderQuantity, setMinimumOrderQuantity] = useState(12);
   const [images, setImages] = useState([]);
+  const [fulfillmentOption, setFulfillmentOption] = useState("both"); // "both" | "shipping_only" | "pickup_only"
 
   // Apparel specific states
   const [fit, setFit] = useState("Semi-fitted");
@@ -195,6 +196,7 @@ export default function AdminApparelProductEditPage({ params: paramsPromise }) {
             setTieredPricing(DEFAULT_TIERED_PRICING);
           }
           setMinimumOrderQuantity(data.minimumOrderQuantity || 12);
+          setFulfillmentOption(data.fulfillmentOption || "both");
           setImages(data.images || []);
           
           // Fit & Sizes
@@ -635,6 +637,7 @@ export default function AdminApparelProductEditPage({ params: paramsPromise }) {
 
         useCustomMarkup,
         markupPercent: parseFloat(markupPercent) || 0,
+        fulfillmentOption: fulfillmentOption || "both",
         garmentViews,
         needsAttention,
         updatedAt: new Date(),
@@ -1345,6 +1348,22 @@ export default function AdminApparelProductEditPage({ params: paramsPromise }) {
                   </option>
                 ))}
               </select>
+            </div>
+
+            <div>
+              <label className="label">Fulfillment Eligibility</label>
+              <select
+                className="input"
+                value={fulfillmentOption}
+                onChange={(e) => setFulfillmentOption(e.target.value)}
+              >
+                <option value="both">📦 Both Courier Delivery & In-Store Pickup</option>
+                <option value="shipping_only">🚚 Courier Delivery Only</option>
+                <option value="pickup_only">🏬 In-Store Pickup Only</option>
+              </select>
+              <span style={{ fontSize: "0.72rem", color: "hsl(var(--muted-hsl))", marginTop: "0.25rem", display: "block" }}>
+                Restricts customer fulfillment options at checkout for this product.
+              </span>
             </div>
 
             <div>
