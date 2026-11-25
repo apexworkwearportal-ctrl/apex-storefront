@@ -23,28 +23,52 @@ export async function POST(req) {
 
     // Categorize cart items into SinaLite, In-House Custom Print, and Apparel
     const isApparelItem = (i) => Boolean(
-      i.isApparel ||
+      i.isApparel === true ||
+      i.isApparel === "true" ||
       i.category === "apparel" ||
       i.categoryId === "apparel" ||
       i.apparelViews ||
       i.garmentViews ||
       i.selectedSizes ||
-      i.embroiderySetupFee > 0 ||
+      Number(i.embroiderySetupFee) > 0 ||
       i.isEmbroidery
     );
 
-    const isCustomPrintItem = (i) => !isApparelItem(i) && Boolean(
-      i.isCustom ||
-      isNaN(parseInt(i.productId)) ||
+    const isExplicitCustomItem = (i) => !isApparelItem(i) && Boolean(
+      i.isCustom === true ||
+      i.isCustom === "true" ||
+      i.sidesPages ||
       i.customPrintSizes ||
-      i.sidesPages
+      /[^0-9]/.test(String(i.productId || "").trim()) ||
+      String(i.productId || "").trim().length > 7
     );
 
-    const isSinaliteItem = (i) => !isApparelItem(i) && !isCustomPrintItem(i) && !isNaN(parseInt(i.productId));
+    // Asynchronously resolve product types (including checking Firestore doc if isCustom wasn't passed)
+    const categorizedItems = await Promise.all(items.map(async (i) => {
+      if (isApparelItem(i)) {
+        return { item: i, type: "apparel" };
+      }
+      if (isExplicitCustomItem(i)) {
+        return { item: i, type: "custom_print" };
+      }
+      if (adminDb && i.productId) {
+        try {
+          const docSnap = await adminDb.collection("products").doc(String(i.productId)).get();
+          if (docSnap.exists) {
+            const data = docSnap.data();
+            if (data.isCustom) return { item: { ...i, isCustom: true }, type: "custom_print" };
+            if (data.isApparel) return { item: { ...i, isApparel: true }, type: "apparel" };
+          }
+        } catch (dbErr) {
+          console.warn("Could not check product doc in shipping:", dbErr.message);
+        }
+      }
+      return { item: i, type: "sinalite" };
+    }));
 
-    const sinaliteItems = items.filter(isSinaliteItem);
-    const customPrintItems = items.filter(isCustomPrintItem);
-    const apparelItems = items.filter(isApparelItem);
+    const sinaliteItems = categorizedItems.filter(c => c.type === "sinalite").map(c => c.item);
+    const customPrintItems = categorizedItems.filter(c => c.type === "custom_print").map(c => c.item);
+    const apparelItems = categorizedItems.filter(c => c.type === "apparel").map(c => c.item);
 
     let ratesList = [];
 

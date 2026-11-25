@@ -136,7 +136,16 @@ export default function CartPage() {
         body: JSON.stringify({
           items: cart.map(i => ({
             productId: i.productId,
-            selectedOptionMap: i.selectedOptionMap,
+            name: i.name,
+            quantity: i.quantity || 1,
+            isCustom: Boolean(i.isCustom),
+            isApparel: Boolean(i.isApparel),
+            category: i.category || i.categoryId || "",
+            categoryId: i.categoryId || "",
+            selectedOptionMap: i.selectedOptionMap || {},
+            options: i.selectedOptionMap || i.options || {},
+            sidesPages: i.sidesPages || null,
+            customPrintSizes: i.customPrintSizes || null
           })),
           shippingAddress: {
             ShipFName: firstName,

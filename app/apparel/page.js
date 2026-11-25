@@ -308,12 +308,24 @@ function ApparelCatalogContent() {
       </div>
 
       {/* Main Container */}
-      <div className="max-w-[1300px] mx-auto px-3 sm:px-6 py-5 sm:py-8 md:py-10 w-full flex-1">
+      <div className="max-w-[1300px] mx-auto px-4 sm:px-6 py-6 sm:py-10 w-full flex-1">
         {/* Top Filter Bar */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3 sm:mb-6 p-3 sm:p-4 rounded-xl sm:rounded-2xl bg-white border border-slate-200 shadow-xs">
+        <div style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: "1rem",
+          flexWrap: "wrap",
+          marginBottom: "1.75rem",
+          padding: "1rem 1.25rem",
+          borderRadius: "14px",
+          background: "#FFFFFF",
+          border: "1px solid #E2E8F0",
+          boxShadow: "0 1px 3px rgba(0,0,0,0.04)"
+        }}>
           {/* Search */}
-          <div className="relative w-full sm:flex-1 min-w-0">
-            <Search size={18} style={{ position: "absolute", left: "0.85rem", top: "50%", transform: "translateY(-50%)", color: "#94A3B8" }} />
+          <div style={{ position: "relative", minWidth: "260px", flex: "1 1 300px" }}>
+            <Search size={18} style={{ position: "absolute", left: "1rem", top: "50%", transform: "translateY(-50%)", color: "#94A3B8" }} />
             <input
               type="text"
               value={searchQuery}
@@ -321,7 +333,7 @@ function ApparelCatalogContent() {
               placeholder="Search apparel by name, material, SKU..."
               style={{
                 width: "100%",
-                padding: "0.6rem 0.85rem 0.6rem 2.5rem",
+                padding: "0.65rem 1rem 0.65rem 2.65rem",
                 borderRadius: "10px",
                 border: "1px solid #CBD5E1",
                 fontSize: "0.875rem",
@@ -340,7 +352,7 @@ function ApparelCatalogContent() {
           </div>
 
           {/* Action buttons (Mobile filter button & Sort) */}
-          <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end">
+          <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap", justifyContent: "flex-end" }} className="w-full sm:w-auto">
             {/* Mobile Category Filter Button */}
             <button
               onClick={() => setMobileFilterOpen(true)}
@@ -349,8 +361,8 @@ function ApparelCatalogContent() {
                 display: "inline-flex",
                 alignItems: "center",
                 gap: "0.4rem",
-                padding: "0.6rem 0.85rem",
-                fontSize: "0.8rem",
+                padding: "0.65rem 1rem",
+                fontSize: "0.85rem",
                 borderRadius: "10px",
                 fontWeight: 600,
                 whiteSpace: "nowrap"
@@ -361,17 +373,16 @@ function ApparelCatalogContent() {
             </button>
 
             {/* Sort selector */}
-            <div className="flex items-center gap-1.5 flex-1 sm:flex-none justify-end">
-              <ArrowUpDown size={15} style={{ color: "#64748B", flexShrink: 0 }} />
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }} className="flex-1 sm:flex-none justify-end">
+              <ArrowUpDown size={16} style={{ color: "#64748B", flexShrink: 0 }} />
               <select
                 value={sortBy}
                 onChange={(e) => handleSortChange(e.target.value)}
                 style={{
-                  width: "100%",
-                  padding: "0.6rem 0.75rem",
+                  padding: "0.65rem 0.85rem",
                   borderRadius: "10px",
                   border: "1px solid #CBD5E1",
-                  fontSize: "0.8rem",
+                  fontSize: "0.85rem",
                   fontWeight: 600,
                   color: "#0F172A",
                   background: "#FFFFFF",
@@ -576,7 +587,11 @@ function ApparelCatalogContent() {
                 </div>
 
                 {/* Product Cards Grid */}
-                <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5 sm:gap-4 md:gap-5">
+                <div style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))",
+                  gap: "1.5rem"
+                }}>
                   {paginatedProducts.map((product) => {
                     const views = product.garmentViews || product.apparelViews || {};
                     const frontImg = views.front?.image || product.thumbnail || product.imageUrl || "/images/apparel-placeholder.png";
@@ -602,7 +617,7 @@ function ApparelCatalogContent() {
                         <div
                           style={{
                             background: "#FFFFFF",
-                            borderRadius: "12px",
+                            borderRadius: "14px",
                             border: "1px solid #E2E8F0",
                             overflow: "hidden",
                             display: "flex",
@@ -613,8 +628,8 @@ function ApparelCatalogContent() {
                             cursor: "pointer"
                           }}
                           onMouseEnter={(e) => {
-                            e.currentTarget.style.transform = "translateY(-3px)";
-                            e.currentTarget.style.boxShadow = "0 10px 20px -8px rgba(0,0,0,0.12)";
+                            e.currentTarget.style.transform = "translateY(-4px)";
+                            e.currentTarget.style.boxShadow = "0 12px 24px -10px rgba(0,0,0,0.12)";
                             e.currentTarget.style.borderColor = "#CBD5E1";
                           }}
                           onMouseLeave={(e) => {
@@ -643,13 +658,13 @@ function ApparelCatalogContent() {
                                   width: "100%",
                                   height: "100%",
                                   objectFit: "contain",
-                                  padding: "clamp(0.4rem, 2vw, 1rem)",
+                                  padding: "1rem",
                                   transition: "transform 0.3s ease"
                                 }}
                               />
                             ) : (
                               <div style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "#CBD5E1" }}>
-                                <Shirt size={40} />
+                                <Shirt size={48} />
                               </div>
                             )}
 
@@ -657,14 +672,14 @@ function ApparelCatalogContent() {
                             {viewCount > 1 && (
                               <span style={{
                                 position: "absolute",
-                                bottom: "0.5rem",
-                                left: "0.5rem",
+                                bottom: "0.65rem",
+                                left: "0.65rem",
                                 background: "rgba(15,23,42,0.75)",
                                 backdropFilter: "blur(4px)",
                                 color: "#FFFFFF",
-                                fontSize: "0.65rem",
+                                fontSize: "0.7rem",
                                 fontWeight: 700,
-                                padding: "0.15rem 0.4rem",
+                                padding: "0.2rem 0.5rem",
                                 borderRadius: "4px"
                               }}>
                                 {viewCount} Angles
@@ -675,20 +690,16 @@ function ApparelCatalogContent() {
                             {product.category && (
                               <span style={{
                                 position: "absolute",
-                                top: "0.5rem",
-                                left: "0.5rem",
+                                top: "0.65rem",
+                                left: "0.65rem",
                                 background: "rgba(255,255,255,0.92)",
                                 backdropFilter: "blur(4px)",
                                 color: "#475569",
-                                fontSize: "0.65rem",
+                                fontSize: "0.7rem",
                                 fontWeight: 700,
-                                padding: "0.15rem 0.45rem",
+                                padding: "0.2rem 0.55rem",
                                 borderRadius: "4px",
-                                border: "1px solid rgba(226,232,240,0.8)",
-                                maxWidth: "70%",
-                                whiteSpace: "nowrap",
-                                overflow: "hidden",
-                                textOverflow: "ellipsis"
+                                border: "1px solid rgba(226,232,240,0.8)"
                               }}>
                                 {formatCategoryName(product.category)}
                               </span>
@@ -698,66 +709,99 @@ function ApparelCatalogContent() {
                             {hasSale && (
                               <span style={{
                                 position: "absolute",
-                                top: "0.5rem",
-                                right: "0.5rem",
+                                top: "0.65rem",
+                                right: "0.65rem",
                                 background: "#DC2626",
                                 color: "#FFFFFF",
-                                fontSize: "0.65rem",
+                                fontSize: "0.72rem",
                                 fontWeight: 800,
-                                padding: "0.15rem 0.45rem",
+                                padding: "0.2rem 0.55rem",
                                 borderRadius: "4px",
                                 boxShadow: "0 2px 4px rgba(220, 38, 38, 0.3)",
                                 letterSpacing: "0.02em"
                               }}>
-                                -{saleDiscountPercent}%
+                                -{saleDiscountPercent}% OFF
                               </span>
                             )}
                           </div>
 
                           {/* Info Body */}
-                          <div className="p-2.5 sm:p-4 flex flex-col flex-1 justify-between">
+                          <div style={{ padding: "1.15rem", display: "flex", flexDirection: "column", flex: 1, justifyContent: "space-between" }}>
                             <div>
-                              <h3 className="text-xs sm:text-sm font-bold text-slate-900 mb-1 leading-snug line-clamp-2">
+                              <h3 style={{
+                                fontSize: "0.98rem",
+                                fontWeight: 800,
+                                color: "#0F172A",
+                                marginBottom: "0.35rem",
+                                lineHeight: 1.35,
+                                display: "-webkit-box",
+                                WebkitLineClamp: 2,
+                                WebkitBoxOrient: "vertical",
+                                overflow: "hidden"
+                              }}>
                                 {product.name}
                               </h3>
 
                               {product.sku && (
-                                <div className="text-[10px] sm:text-xs text-slate-400 mb-1 hidden sm:block">
+                                <div style={{ fontSize: "0.75rem", color: "#94A3B8", marginBottom: "0.5rem" }}>
                                   SKU: {product.sku}
                                 </div>
                               )}
 
                               {product.description && (
-                                <p className="text-xs text-slate-500 line-clamp-2 mb-2 hidden md:block">
+                                <p style={{
+                                  fontSize: "0.8rem",
+                                  color: "#64748B",
+                                  lineHeight: 1.45,
+                                  marginBottom: "0.75rem",
+                                  display: "-webkit-box",
+                                  WebkitLineClamp: 2,
+                                  WebkitBoxOrient: "vertical",
+                                  overflow: "hidden"
+                                }}>
                                   {product.description}
                                 </p>
                               )}
                             </div>
 
                             {/* Footer info (MOQ & Price) */}
-                            <div className="flex flex-col sm:flex-row sm:items-end justify-between pt-2 border-t border-slate-100 gap-1 sm:gap-2 mt-2">
+                            <div style={{
+                              display: "flex",
+                              alignItems: "flex-end",
+                              justifyContent: "space-between",
+                              paddingTop: "0.75rem",
+                              borderTop: "1px solid #F1F5F9",
+                              marginTop: "0.5rem"
+                            }}>
                               <div>
-                                <span className={`text-[10px] sm:text-xs block uppercase font-bold ${hasSale ? "text-red-600" : "text-slate-500"}`}>
-                                  {hasSale ? "Sale" : "From"}
+                                <span style={{ fontSize: "0.7rem", color: hasSale ? "#DC2626" : "#64748B", display: "block", textTransform: "uppercase", fontWeight: 700 }}>
+                                  {hasSale ? "Sale Price" : "Starting at"}
                                 </span>
-                                <div className="flex items-baseline gap-1 flex-wrap">
+                                <div style={{ display: "flex", alignItems: "baseline", gap: "0.35rem", flexWrap: "wrap" }}>
                                   {hasSale && (
-                                    <span className="text-[11px] sm:text-xs line-through text-slate-400 font-semibold">
+                                    <span style={{ fontSize: "0.85rem", textDecoration: "line-through", color: "#94A3B8", fontWeight: 600 }}>
                                       ${displayPrice.toFixed(2)}
                                     </span>
                                   )}
-                                  <span className={`text-xs sm:text-base md:text-lg font-black ${hasSale ? "text-red-600" : "text-blue-600"}`}>
+                                  <span style={{ fontSize: "1.15rem", fontWeight: 900, color: hasSale ? "#DC2626" : "#2563EB" }}>
                                     ${(hasSale ? salePrice : displayPrice).toFixed(2)}
                                   </span>
-                                  <span className="text-[10px] text-slate-400">
+                                  <span style={{ fontSize: "0.75rem", color: "#94A3B8" }}>
                                     /ea
                                   </span>
                                 </div>
                               </div>
 
-                              <div className="self-start sm:self-end">
-                                <span className="text-[10px] sm:text-xs font-semibold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded whitespace-nowrap">
-                                  Min: {product.minimumOrderQuantity || product.moq || 12}
+                              <div style={{ textAlign: "right" }}>
+                                <span style={{
+                                  fontSize: "0.72rem",
+                                  fontWeight: 700,
+                                  color: "#475569",
+                                  background: "#F1F5F9",
+                                  padding: "0.25rem 0.5rem",
+                                  borderRadius: "6px"
+                                }}>
+                                  Min: {product.minimumOrderQuantity || product.moq || 12} pcs
                                 </span>
                               </div>
                             </div>
