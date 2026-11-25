@@ -57,17 +57,46 @@ export default function ApparelDetailPage({ params: paramsPromise }) {
         const docRef = doc(db, "apparel_products", productId);
         const docSnap = await getDoc(docRef);
 
+        let rawProduct = null;
         if (!docSnap.exists()) {
           // Check fallback in custom products if needed
           const fallbackRef = doc(db, "products", productId);
           const fallbackSnap = await getDoc(fallbackRef);
           if (fallbackSnap.exists() && (fallbackSnap.data().isApparel || fallbackSnap.data().apparelViews || fallbackSnap.data().garmentViews)) {
-            setProduct({ id: fallbackSnap.id, ...fallbackSnap.data() });
+            rawProduct = { id: fallbackSnap.id, ...fallbackSnap.data() };
           } else {
             setError("Apparel product not found.");
           }
         } else {
-          setProduct({ id: docSnap.id, ...docSnap.data() });
+          rawProduct = { id: docSnap.id, ...docSnap.data() };
+        }
+
+        if (rawProduct) {
+          // Resolve fulfillment option: inherit from category if not explicitly overridden
+          let effectiveFulfillment = rawProduct.fulfillmentOption;
+          if (!effectiveFulfillment || effectiveFulfillment === "inherit") {
+            const catId = rawProduct.category || rawProduct.categoryId;
+            if (catId) {
+              try {
+                const appCatSnap = await getDoc(doc(db, "apparel_categories", catId));
+                if (appCatSnap.exists() && appCatSnap.data().fulfillmentOption) {
+                  effectiveFulfillment = appCatSnap.data().fulfillmentOption;
+                } else {
+                  const regCatSnap = await getDoc(doc(db, "categories", catId));
+                  if (regCatSnap.exists() && regCatSnap.data().fulfillmentOption) {
+                    effectiveFulfillment = regCatSnap.data().fulfillmentOption;
+                  }
+                }
+              } catch (cErr) {
+                console.warn("Could not fetch apparel category fulfillment:", cErr);
+              }
+            }
+          }
+          if (!effectiveFulfillment || effectiveFulfillment === "inherit") {
+            effectiveFulfillment = "shipping_only";
+          }
+
+          setProduct({ ...rawProduct, fulfillmentOption: effectiveFulfillment });
         }
       } catch (err) {
         console.error("Error fetching apparel product:", err);

@@ -104,7 +104,7 @@ export default function AdminApparelProductEditPage({ params: paramsPromise }) {
   const [tieredPricing, setTieredPricing] = useState(DEFAULT_TIERED_PRICING);
   const [minimumOrderQuantity, setMinimumOrderQuantity] = useState(12);
   const [images, setImages] = useState([]);
-  const [fulfillmentOption, setFulfillmentOption] = useState("both"); // "both" | "shipping_only" | "pickup_only"
+  const [fulfillmentOption, setFulfillmentOption] = useState("inherit"); // "inherit" | "both" | "shipping_only" | "pickup_only"
 
   // Apparel specific states
   const [fit, setFit] = useState("Semi-fitted");
@@ -196,7 +196,7 @@ export default function AdminApparelProductEditPage({ params: paramsPromise }) {
             setTieredPricing(DEFAULT_TIERED_PRICING);
           }
           setMinimumOrderQuantity(data.minimumOrderQuantity || 12);
-          setFulfillmentOption(data.fulfillmentOption || "both");
+          setFulfillmentOption(data.fulfillmentOption || "inherit");
           setImages(data.images || []);
           
           // Fit & Sizes
@@ -1357,6 +1357,7 @@ export default function AdminApparelProductEditPage({ params: paramsPromise }) {
                 value={fulfillmentOption}
                 onChange={(e) => setFulfillmentOption(e.target.value)}
               >
+                <option value="inherit">🔄 Inherit from Category (Recommended)</option>
                 <option value="both">📦 Both Courier Delivery & In-Store Pickup</option>
                 <option value="shipping_only">🚚 Courier Delivery Only</option>
                 <option value="pickup_only">🏬 In-Store Pickup Only</option>

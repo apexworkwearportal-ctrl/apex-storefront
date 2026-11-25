@@ -29,7 +29,7 @@ export default function AdminNewProductPage() {
   const [categoryId, setCategoryId] = useState("");
   const [basePrice, setBasePrice] = useState("10.00");
   const [images, setImages] = useState([]);
-  const [fulfillmentOption, setFulfillmentOption] = useState("both"); // "both" | "shipping_only" | "pickup_only"
+  const [fulfillmentOption, setFulfillmentOption] = useState("inherit"); // "inherit" | "both" | "shipping_only" | "pickup_only"
 
   // Auto-added Custom Print Variants
   const [customPrintSizes, setCustomPrintSizes] = useState([
@@ -545,6 +545,7 @@ export default function AdminNewProductPage() {
                   value={fulfillmentOption}
                   onChange={(e) => setFulfillmentOption(e.target.value)}
                 >
+                  <option value="inherit">🔄 Inherit from Category (Recommended)</option>
                   <option value="both">📦 Both Courier Delivery & In-Store Pickup</option>
                   <option value="shipping_only">🚚 Courier Delivery Only</option>
                   <option value="pickup_only">🏬 In-Store Pickup Only</option>

@@ -38,7 +38,7 @@ export default function AdminProductEditPage({ params: paramsPromise }) {
   const [name, setName] = useState("");
   const [sku, setSku] = useState("");
   const [categoryId, setCategoryId] = useState("");
-  const [fulfillmentOption, setFulfillmentOption] = useState("both"); // "both" | "shipping_only" | "pickup_only"
+  const [fulfillmentOption, setFulfillmentOption] = useState("inherit"); // "inherit" | "both" | "shipping_only" | "pickup_only"
   const [optionGroups, setOptionGroups] = useState([]);
   const [optionGroupsCount, setOptionGroupsCount] = useState(0);
 
@@ -135,7 +135,7 @@ export default function AdminProductEditPage({ params: paramsPromise }) {
           setUseCustomMarkup(data.useCustomMarkup || false);
           setMarkupPercent(data.markupPercent !== undefined ? data.markupPercent : 35);
           setSaleDiscountPercent(data.saleDiscountPercent !== undefined && data.saleDiscountPercent !== null ? String(data.saleDiscountPercent) : "");
-          setFulfillmentOption(data.fulfillmentOption || "both");
+          setFulfillmentOption(data.fulfillmentOption || "inherit");
           
           if (data.isCustom) {
             setName(data.name || "");
@@ -1534,6 +1534,7 @@ export default function AdminProductEditPage({ params: paramsPromise }) {
                   value={fulfillmentOption}
                   onChange={(e) => setFulfillmentOption(e.target.value)}
                 >
+                  <option value="inherit">🔄 Inherit from Category (Recommended)</option>
                   <option value="both">📦 Both Courier Delivery & In-Store Pickup</option>
                   <option value="shipping_only">🚚 Courier Delivery Only</option>
                   <option value="pickup_only">🏬 In-Store Pickup Only</option>

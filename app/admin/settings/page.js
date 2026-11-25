@@ -700,6 +700,9 @@ export default function AdminSettingsPage() {
       {/* Custom Print Pricing Engine Manager */}
       <CustomPrintPricingManager />
 
+      {/* Custom In-House Print Shipping Classes Manager */}
+      <CustomPrintShippingManager />
+
       {/* Apparel Shipping Manager */}
       <ApparelShippingManager />
     </div>
@@ -1158,6 +1161,176 @@ function ApparelShippingManager() {
           style={{ padding: "0.5rem 1.25rem", fontSize: "0.85rem", fontWeight: 700, backgroundColor: "#10B981", color: "white" }}
         >
           {saving ? "Saving Classes..." : "Save Apparel Shipping Classes"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function CustomPrintShippingManager() {
+  const [classes, setClasses] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/admin/custom-shipping")
+      .then(r => r.json())
+      .then(data => {
+        if (Array.isArray(data.classes)) setClasses(data.classes);
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, []);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch("/api/admin/custom-shipping", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ classes })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert("Custom print shipping classes saved successfully!");
+      } else {
+        alert("Error saving shipping classes: " + data.error);
+      }
+    } catch (err) {
+      alert("Failed to save shipping classes: " + err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const addClass = () => {
+    setClasses(prev => [
+      ...prev,
+      {
+        id: `class-custom-${Date.now()}`,
+        name: "New Custom Print Shipping Class",
+        basePrice: 14.99,
+        perItemPrice: 2.00,
+        deliveryDays: "3-5 days",
+        active: true
+      }
+    ]);
+  };
+
+  const updateClass = (id, field, value) => {
+    setClasses(prev => prev.map(c => c.id === id ? { ...c, [field]: value } : c));
+  };
+
+  const deleteClass = (id) => {
+    setClasses(prev => prev.filter(c => c.id !== id));
+  };
+
+  if (loading) return null;
+
+  return (
+    <div className="card" style={{ padding: "1.75rem", backgroundColor: "#FFFFFF", border: "1px solid #E2E8F0", borderRadius: "12px", display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #E2E8F0", paddingBottom: "0.85rem" }}>
+        <div>
+          <h3 style={{ fontSize: "1.1rem", fontWeight: 800, color: "#0F172A", margin: 0, display: "flex", alignItems: "center", gap: "0.5rem" }}>
+            <span>🖨️</span> Custom Products Shipping Classes (In-House Print)
+          </h3>
+          <p style={{ fontSize: "0.8rem", color: "#64748B", margin: 0, marginTop: "0.2rem" }}>
+            Shown to customers on frontend checkout when ordering custom in-house print products only (no SinaLite products in cart). If SinaLite products are also in the cart, SinaLite API live rates are used.
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={addClass}
+          className="btn btn-outline"
+          style={{ padding: "0.45rem 0.85rem", fontSize: "0.8rem", fontWeight: 700 }}
+        >
+          + Add Shipping Class
+        </button>
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+        {classes.map((cls) => (
+          <div
+            key={cls.id}
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1.5fr 1fr 1fr 1.2fr auto",
+              gap: "0.75rem",
+              alignItems: "center",
+              padding: "0.85rem",
+              backgroundColor: "#F8FAFC",
+              border: "1px solid #E2E8F0",
+              borderRadius: "8px"
+            }}
+          >
+            <div>
+              <label style={{ fontSize: "0.7rem", fontWeight: 700, color: "#64748B" }}>Class Title</label>
+              <input
+                type="text"
+                className="input"
+                value={cls.name}
+                onChange={(e) => updateClass(cls.id, "name", e.target.value)}
+                style={{ fontSize: "0.85rem", width: "100%" }}
+              />
+            </div>
+
+            <div>
+              <label style={{ fontSize: "0.7rem", fontWeight: 700, color: "#64748B" }}>Base Rate ($)</label>
+              <input
+                type="number"
+                step="0.01"
+                className="input"
+                value={cls.basePrice}
+                onChange={(e) => updateClass(cls.id, "basePrice", parseFloat(e.target.value) || 0)}
+                style={{ fontSize: "0.85rem", width: "100%" }}
+              />
+            </div>
+
+            <div>
+              <label style={{ fontSize: "0.7rem", fontWeight: 700, color: "#64748B" }}>Per Addl Item ($)</label>
+              <input
+                type="number"
+                step="0.01"
+                className="input"
+                value={cls.perItemPrice}
+                onChange={(e) => updateClass(cls.id, "perItemPrice", parseFloat(e.target.value) || 0)}
+                style={{ fontSize: "0.85rem", width: "100%" }}
+              />
+            </div>
+
+            <div>
+              <label style={{ fontSize: "0.7rem", fontWeight: 700, color: "#64748B" }}>Delivery Estimate</label>
+              <input
+                type="text"
+                className="input"
+                value={cls.deliveryDays}
+                onChange={(e) => updateClass(cls.id, "deliveryDays", e.target.value)}
+                style={{ fontSize: "0.85rem", width: "100%" }}
+              />
+            </div>
+
+            <button
+              type="button"
+              onClick={() => deleteClass(cls.id)}
+              style={{ background: "none", border: "none", color: "#EF4444", cursor: "pointer", padding: "6px", marginTop: "1rem" }}
+              title="Remove Shipping Class"
+            >
+              ✕
+            </button>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={saving}
+          className="btn btn-primary"
+          style={{ padding: "0.5rem 1.25rem", fontSize: "0.85rem", fontWeight: 700, backgroundColor: "#2563EB", color: "white" }}
+        >
+          {saving ? "Saving Classes..." : "Save Custom Print Shipping Classes"}
         </button>
       </div>
     </div>

@@ -21,24 +21,46 @@ export async function POST(req) {
 
     console.log(`Calculating shipping estimate to ZIP: ${shipZip}, State: ${shipState}, Country: ${shipCountry}`);
 
-    const customItems = items.filter(item => item.isCustom || isNaN(parseInt(item.productId)));
-    const printItemsFiltered = items
-      .filter(item => !item.isCustom && !isNaN(parseInt(item.productId)))
-      .map(item => ({
+    // Categorize cart items into SinaLite, In-House Custom Print, and Apparel
+    const isApparelItem = (i) => Boolean(
+      i.isApparel ||
+      i.category === "apparel" ||
+      i.categoryId === "apparel" ||
+      i.apparelViews ||
+      i.garmentViews ||
+      i.selectedSizes ||
+      i.embroiderySetupFee > 0 ||
+      i.isEmbroidery
+    );
+
+    const isCustomPrintItem = (i) => !isApparelItem(i) && Boolean(
+      i.isCustom ||
+      isNaN(parseInt(i.productId)) ||
+      i.customPrintSizes ||
+      i.sidesPages
+    );
+
+    const isSinaliteItem = (i) => !isApparelItem(i) && !isCustomPrintItem(i) && !isNaN(parseInt(i.productId));
+
+    const sinaliteItems = items.filter(isSinaliteItem);
+    const customPrintItems = items.filter(isCustomPrintItem);
+    const apparelItems = items.filter(isApparelItem);
+
+    let ratesList = [];
+
+    // Case A: Cart contains at least ONE SinaLite product -> Fetch Live Rates from SinaLite API
+    // (If mixed with custom/apparel, follow SinaLite shipping as requested; order will be split upon checkout)
+    if (sinaliteItems.length > 0) {
+      const printItemsFiltered = sinaliteItems.map(item => ({
         productId: parseInt(item.productId),
         options: item.selectedOptionMap || item.options || {}
       }));
 
-    let ratesList = [];
-
-    // Case A: Cart contains Print products (or Mixed Print + Apparel) -> Fetch Live Print Shipping from API
-    if (printItemsFiltered.length > 0) {
       const shippingInfo = {
         ShipState: shipState,
         ShipCountry: shipCountry,
         ShipZip: shipZip
       };
-
 
       const estimate = await getShippingEstimate(printItemsFiltered, shippingInfo);
 
@@ -67,35 +89,72 @@ export async function POST(req) {
         }, { status: 400 });
       }
     } else {
-      // Case B: Cart contains ONLY Custom Apparel products -> Load Admin Apparel Shipping Classes
-      const totalCustomQty = customItems.reduce((acc, item) => acc + (parseInt(item.quantity) || 1), 0);
+      // Case B: Cart contains NO SinaLite products -> In-House Shipping Classes ONLY
+      const totalCustomQty = customPrintItems.reduce((acc, item) => acc + (parseInt(item.quantity) || 1), 0);
+      const totalApparelQty = apparelItems.reduce((acc, item) => acc + (parseInt(item.quantity) || 1), 0);
+      const totalInHouseQty = totalCustomQty + totalApparelQty;
 
-      let customClasses = [];
+      // Determine which classes to load
+      let inHouseClasses = [];
+      const hasCustomPrint = customPrintItems.length > 0;
+      const hasApparel = apparelItems.length > 0;
+
       if (adminDb) {
         try {
-          const snap = await adminDb.collection("settings").doc("apparelShipping").get();
-          if (snap.exists && Array.isArray(snap.data().classes)) {
-            customClasses = snap.data().classes;
+          if (hasCustomPrint && !hasApparel) {
+            // Pure Custom Print
+            const snap = await adminDb.collection("settings").doc("customShipping").get();
+            if (snap.exists && Array.isArray(snap.data().classes) && snap.data().classes.length > 0) {
+              inHouseClasses = snap.data().classes.filter(c => c.active !== false);
+            }
+          } else if (hasApparel && !hasCustomPrint) {
+            // Pure Apparel
+            const snap = await adminDb.collection("settings").doc("apparelShipping").get();
+            if (snap.exists && Array.isArray(snap.data().classes) && snap.data().classes.length > 0) {
+              inHouseClasses = snap.data().classes.filter(c => c.active !== false);
+            }
+          } else {
+            // Mixed In-House Custom Print + Apparel
+            const [customSnap, apparelSnap] = await Promise.all([
+              adminDb.collection("settings").doc("customShipping").get().catch(() => null),
+              adminDb.collection("settings").doc("apparelShipping").get().catch(() => null)
+            ]);
+
+            const cClasses = customSnap?.exists && Array.isArray(customSnap.data().classes) ? customSnap.data().classes.filter(c => c.active !== false) : [];
+            const aClasses = apparelSnap?.exists && Array.isArray(apparelSnap.data().classes) ? apparelSnap.data().classes.filter(c => c.active !== false) : [];
+
+            inHouseClasses = cClasses.length > 0 ? cClasses : aClasses;
           }
         } catch (dbErr) {
-          console.warn("Error loading admin apparel shipping classes:", dbErr.message);
+          console.warn("Error loading in-house shipping classes:", dbErr.message);
         }
       }
 
-      if (customClasses.length > 0) {
-        ratesList = customClasses.map(cls => {
-          const base = parseFloat(cls.basePrice || 0);
-          const addl = parseFloat(cls.perItemPrice || 0);
-          const calcPrice = base + (addl * Math.max(0, totalCustomQty - 1));
-          return {
-            serviceName: cls.name || "Apparel Shipping",
-            price: parseFloat(calcPrice.toFixed(2)),
-            deliveryDays: cls.deliveryDays || "3-5"
-          };
-        });
-      } else {
-        return Response.json({ error: "Apparel shipping rates are not configured in Admin Settings." }, { status: 400 });
+      // Default fallbacks if none configured in Firestore
+      if (inHouseClasses.length === 0) {
+        if (hasCustomPrint) {
+          inHouseClasses = [
+            { id: "std-custom-print", name: "Standard In-House Print Shipping", basePrice: 14.99, perItemPrice: 2.00, deliveryDays: "4-6 days", active: true },
+            { id: "exp-custom-print", name: "Express In-House Print Shipping", basePrice: 24.99, perItemPrice: 3.50, deliveryDays: "2-3 days", active: true }
+          ];
+        } else {
+          inHouseClasses = [
+            { id: "std-apparel", name: "Standard Apparel Shipping", basePrice: 9.99, perItemPrice: 1.50, deliveryDays: "5-7 days", active: true },
+            { id: "exp-apparel", name: "Express Apparel Shipping", basePrice: 19.99, perItemPrice: 3.00, deliveryDays: "2-3 days", active: true }
+          ];
+        }
       }
+
+      ratesList = inHouseClasses.map(cls => {
+        const base = parseFloat(cls.basePrice || 0);
+        const addl = parseFloat(cls.perItemPrice || 0);
+        const calcPrice = base + (addl * Math.max(0, totalInHouseQty - 1));
+        return {
+          serviceName: cls.name || "In-House Shipping",
+          price: parseFloat(calcPrice.toFixed(2)),
+          deliveryDays: cls.deliveryDays || "3-5"
+        };
+      });
     }
 
     return Response.json(ratesList);

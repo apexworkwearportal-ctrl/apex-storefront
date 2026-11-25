@@ -327,7 +327,36 @@ export default function ProductDetailPage({ params: paramsPromise }) {
           return;
         }
 
-        setProduct(data);
+        // Resolve fulfillment option: if not explicitly overridden on product, inherit from Category
+        let effectiveFulfillment = data.fulfillmentOption;
+        if (!effectiveFulfillment || effectiveFulfillment === "inherit") {
+          const targetCatId = data.categoryId || data.category;
+          if (targetCatId) {
+            try {
+              const catSnap = await getDoc(doc(db, "categories", targetCatId));
+              if (catSnap.exists() && catSnap.data().fulfillmentOption) {
+                effectiveFulfillment = catSnap.data().fulfillmentOption;
+              } else {
+                const appCatSnap = await getDoc(doc(db, "apparel_categories", targetCatId));
+                if (appCatSnap.exists() && appCatSnap.data().fulfillmentOption) {
+                  effectiveFulfillment = appCatSnap.data().fulfillmentOption;
+                }
+              }
+            } catch (cErr) {
+              console.warn("Could not fetch category fulfillmentOption:", cErr);
+            }
+          }
+        }
+        if (!effectiveFulfillment || effectiveFulfillment === "inherit") {
+          effectiveFulfillment = "shipping_only";
+        }
+
+        const enrichedProduct = {
+          ...data,
+          fulfillmentOption: effectiveFulfillment
+        };
+
+        setProduct(enrichedProduct);
         setLoadingProduct(false);
 
         if (data.isCustom) {
