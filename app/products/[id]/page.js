@@ -255,6 +255,13 @@ export default function ProductDetailPage({ params: paramsPromise }) {
     const computedSalePrice = hasSale ? Math.round(resolvedPrice * (1 - resolvedSaleDiscount / 100) * 100) / 100 : null;
     const finalCartPrice = computedSalePrice !== null ? computedSalePrice : resolvedPrice;
 
+    const hasArtworkWarnings = Boolean(
+      proofDetails?.hasWarnings ||
+      proofDetails?.preflight?.hasWarnings ||
+      (proofDetails?.preflight?.issues && proofDetails.preflight.issues.length > 0) ||
+      artworkFiles.some(f => f.hasWarnings)
+    );
+
     const cartItem = {
       productId: product.isCustom ? productId : parseInt(productId),
       name: product.name || product.sinalite?.name,
@@ -268,8 +275,13 @@ export default function ProductDetailPage({ params: paramsPromise }) {
       saleDiscountPercent: hasSale ? resolvedSaleDiscount : null,
       unitPrice: effectivePriceData.unitPrice || null,
       quantity: 1, // 1 ordered job bundle
-      artworkFiles: artworkFiles,
+      artworkFiles: artworkFiles.map(af => ({
+        ...af,
+        hasWarnings: Boolean(af.hasWarnings || hasArtworkWarnings),
+        preflightIssues: af.preflightIssues || proofDetails?.preflight?.issues || []
+      })),
       proofDetails: proofDetails,
+      hasArtworkWarnings: hasArtworkWarnings,
       fulfillmentOption: product.fulfillmentOption || "shipping_only",
       isCustom: !!product.isCustom,
       isApparel: false
@@ -632,6 +644,19 @@ export default function ProductDetailPage({ params: paramsPromise }) {
       ...details,
       finishedSize: selectedSizeDimensions.sizeName
     });
+    // Attach warning status to artwork files
+    const hasAnyWarnings = Boolean(details.hasWarnings || details.preflight?.hasWarnings || (details.preflight?.issues && details.preflight.issues.length > 0));
+    setArtworkFiles(prev => prev.map(f => {
+      if (f.url === details.fileUrl || f.name === details.fileName || prev.length === 1) {
+        return {
+          ...f,
+          proofApproved: true,
+          hasWarnings: hasAnyWarnings,
+          preflightIssues: details.preflight?.issues || []
+        };
+      }
+      return f;
+    }));
     setProofModalOpen(false);
   };
 
@@ -1125,15 +1150,16 @@ export default function ProductDetailPage({ params: paramsPromise }) {
                   <span style={{
                     fontSize: "0.75rem",
                     fontWeight: 700,
-                    color: "hsl(var(--success-hsl))",
-                    backgroundColor: "hsl(var(--success-hsl) / 0.1)",
+                    color: proofDetails?.hasWarnings ? "#92400E" : "hsl(var(--success-hsl))",
+                    backgroundColor: proofDetails?.hasWarnings ? "#FEF3C7" : "hsl(var(--success-hsl) / 0.1)",
+                    border: proofDetails?.hasWarnings ? "1px solid #FCD34D" : "none",
                     padding: "0.25rem 0.5rem",
                     borderRadius: "var(--radius-sm)",
                     display: "flex",
                     alignItems: "center",
                     gap: "0.25rem"
                   }}>
-                    <FileCheck size={14} /> Proof Approved
+                    <FileCheck size={14} /> {proofDetails?.hasWarnings ? "Proof Approved (With Advisory)" : "Proof Approved"}
                   </span>
                 )}
               </div>
@@ -1147,7 +1173,8 @@ export default function ProductDetailPage({ params: paramsPromise }) {
                       alignItems: "center",
                       justifyContent: "space-between",
                       padding: "0.5rem 0.75rem",
-                      backgroundColor: "hsl(var(--secondary-hsl) / 0.3)",
+                      backgroundColor: f.hasWarnings ? "#FFFBEB" : "hsl(var(--secondary-hsl) / 0.3)",
+                      border: f.hasWarnings ? "1px solid #FDE68A" : "none",
                       borderRadius: "var(--radius-sm)",
                       fontSize: "0.85rem"
                     }}>
@@ -1155,6 +1182,11 @@ export default function ProductDetailPage({ params: paramsPromise }) {
                         <span style={{ fontWeight: 600, textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap" }}>
                           {f.name}
                         </span>
+                        {f.hasWarnings && (
+                          <span style={{ fontSize: "0.68rem", color: "#B45309", fontWeight: 700, backgroundColor: "#FEF3C7", padding: "0.1rem 0.35rem", borderRadius: "3px", border: "1px solid #FCD34D" }}>
+                            ⚠️ Warning
+                          </span>
+                        )}
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
                         <button

@@ -414,6 +414,34 @@ function AdminOrdersContent() {
     }
   };
 
+  const handleMarkAsInHouse = async (orderId) => {
+    if (!orderId) return;
+    const confirmInHouse = window.confirm(
+      "Route this order to In-House workshop production?\n\n- The order status will show 'Submitted' to the customer.\n- The 'Send to SinaLite' button will disappear on the admin dashboard."
+    );
+    if (!confirmInHouse) return;
+
+    try {
+      const orderRef = doc(db, "orders", orderId);
+      const updatePayload = {
+        isInHouse: true,
+        isProducedInHouse: true,
+        productionType: "in_house",
+        status: "submitted",
+        inHouseAssignedAt: new Date().toISOString()
+      };
+      await updateDoc(orderRef, updatePayload);
+      setOrders(prev => prev.map(o => o.id === orderId ? { ...o, ...updatePayload } : o));
+      if (selectedOrder?.id === orderId) {
+        setSelectedOrder(prev => ({ ...prev, ...updatePayload }));
+      }
+      alert("Order routed to In-House production! Customer status is 'Submitted', and SinaLite dispatch is bypassed.");
+    } catch (err) {
+      console.error("Error marking order as in-house:", err);
+      alert(`Failed to update order: ${err.message}`);
+    }
+  };
+
   const handleApproveProof = async (orderId) => {
     if (!orderId) return;
     setApprovingProof(true);
@@ -682,6 +710,7 @@ function AdminOrdersContent() {
   const isSinaliteEligibleOrder = (o) => {
     if (!o || !isPaidOrder(o)) return false;
     if (o.sinaliteOrderId) return false;
+    if (o.isInHouse || o.isProducedInHouse || o.productionType === "in_house") return false;
     if (isCompletedOrInactive(o)) return false;
     const type = getOrderType(o);
     return type === "print";
@@ -941,6 +970,23 @@ function AdminOrdersContent() {
                                   </span>
                                 );
                               }
+                              if (order.isInHouse || order.isProducedInHouse) {
+                                return (
+                                  <span style={{
+                                    fontSize: "0.65rem",
+                                    fontWeight: 800,
+                                    backgroundColor: "#EDE9FE",
+                                    color: "#5B21B6",
+                                    border: "1px solid #DDD6FE",
+                                    padding: "0.15rem 0.45rem",
+                                    borderRadius: "4px",
+                                    display: "inline-flex",
+                                    alignItems: "center"
+                                  }}>
+                                    🏭 IN-HOUSE PRINT
+                                  </span>
+                                );
+                              }
                               return (
                                 <span style={{
                                   fontSize: "0.65rem",
@@ -1021,25 +1067,43 @@ function AdminOrdersContent() {
                             {isProofApproved ? "Proof Approved" : "Inspect Proof"} <ExternalLink size={11} />
                           </a>
                         ) : hasArtwork ? (
-                          <button
-                            type="button"
-                            onClick={() => setSelectedOrder(order)}
-                            style={{
-                              fontSize: "0.7rem",
-                              fontWeight: 700,
-                              padding: "0.25rem 0.55rem",
-                              borderRadius: "4px",
-                              backgroundColor: "hsl(var(--primary-hsl) / 0.1)",
-                              color: "hsl(var(--primary-hsl))",
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: "0.25rem",
-                              border: "none",
-                              cursor: "pointer"
-                            }}
-                          >
-                            <FileText size={12} /> Customer Artwork
-                          </button>
+                          <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem", alignItems: "flex-start" }}>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedOrder(order)}
+                              style={{
+                                fontSize: "0.7rem",
+                                fontWeight: 700,
+                                padding: "0.25rem 0.55rem",
+                                borderRadius: "4px",
+                                backgroundColor: "hsl(var(--primary-hsl) / 0.1)",
+                                color: "hsl(var(--primary-hsl))",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "0.25rem",
+                                border: "none",
+                                cursor: "pointer"
+                              }}
+                            >
+                              <FileText size={12} /> Customer Artwork
+                            </button>
+                            {order.items?.some(i => i.hasArtworkWarnings || i.proofDetails?.hasWarnings || i.artworkFiles?.some(f => f.hasWarnings)) && (
+                              <span style={{
+                                fontSize: "0.62rem",
+                                fontWeight: 800,
+                                backgroundColor: "#FEF3C7",
+                                color: "#B45309",
+                                border: "1px solid #FCD34D",
+                                padding: "0.1rem 0.35rem",
+                                borderRadius: "3px",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "0.2rem"
+                              }} title="Artwork was approved with preflight advisory notices (e.g. low DPI or dimensions)">
+                                ⚠️ Artwork Warning
+                              </span>
+                            )}
+                          </div>
                         ) : (
                           <span style={{ fontSize: "0.75rem", color: "hsl(var(--muted-hsl))" }}>No Artwork</span>
                         )}
@@ -1240,11 +1304,13 @@ function AdminOrdersContent() {
                     <span style={{ fontWeight: 700, fontSize: "0.8rem", color: !isPaidOrder(selectedOrder) ? "#D97706" : "#2563EB" }}>
                       {!isPaidOrder(selectedOrder) 
                         ? "Unpaid (Awaiting Payment)" 
-                        : getOrderType(selectedOrder) === "apparel" 
-                          ? "👕 Apparel Workshop (In-house)" 
-                          : getOrderType(selectedOrder) === "custom_print"
-                            ? "🖨️ Custom Print (In-house)"
-                            : "⚡ SinaLite Wholesale Print"}
+                        : (selectedOrder.isInHouse || selectedOrder.isProducedInHouse)
+                          ? "🏭 In-House Print Workshop"
+                          : getOrderType(selectedOrder) === "apparel" 
+                            ? "👕 Apparel Workshop (In-house)" 
+                            : getOrderType(selectedOrder) === "custom_print"
+                              ? "🖨️ Custom Print (In-house)"
+                              : "⚡ SinaLite Wholesale Print"}
                     </span>
                   </div>
                 )}
@@ -1252,21 +1318,58 @@ function AdminOrdersContent() {
 
               {/* SinaLite Submission Box - ONLY for Paid SinaLite Wholesale Print Orders */}
               {isSinaliteEligibleOrder(selectedOrder) && (
-                <div style={{ padding: "1rem", backgroundColor: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: "8px", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                  <span style={{ fontSize: "0.8rem", fontWeight: 700, color: "#1E40AF" }}>
-                    ⚡ SinaLite Order Dispatch
+                <div style={{ padding: "1rem", backgroundColor: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: "8px", display: "flex", flexDirection: "column", gap: "0.6rem" }}>
+                  <div>
+                    <span style={{ fontSize: "0.8rem", fontWeight: 700, color: "#1E40AF" }}>
+                      ⚡ Order Dispatch Options
+                    </span>
+                    <p style={{ fontSize: "0.75rem", color: "#1E3A8A", margin: "0.2rem 0 0 0" }}>
+                      Transmits print jobs and artwork to SinaLite wholesale fulfillment production queue, or route to in-house workshop production.
+                    </p>
+                  </div>
+                  <div style={{ display: "flex", gap: "0.6rem", flexWrap: "wrap", alignItems: "center" }}>
+                    <button
+                      onClick={() => handleManualSubmitSinalite(selectedOrder.id)}
+                      disabled={submittingSinalite}
+                      className="btn btn-primary"
+                      style={{ padding: "0.45rem 1rem", fontSize: "0.8rem", backgroundColor: "#2563EB", color: "white" }}
+                    >
+                      {submittingSinalite ? "Submitting..." : "Send Job to SinaLite API Now"}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleMarkAsInHouse(selectedOrder.id)}
+                      className="btn"
+                      style={{
+                        padding: "0.45rem 1rem",
+                        fontSize: "0.8rem",
+                        fontWeight: 700,
+                        backgroundColor: "#7C3AED",
+                        color: "#FFFFFF",
+                        border: "none",
+                        borderRadius: "6px",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "0.35rem",
+                        cursor: "pointer"
+                      }}
+                    >
+                      🏭 In-House
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* In-House Production Notice for Orders Routed In-House */}
+              {isPaidOrder(selectedOrder) && (selectedOrder.isInHouse || selectedOrder.isProducedInHouse) && (
+                <div style={{ padding: "1rem", backgroundColor: "#EDE9FE", border: "1px solid #DDD6FE", borderRadius: "8px", display: "flex", flexDirection: "column", gap: "0.4rem" }}>
+                  <span style={{ fontSize: "0.8rem", fontWeight: 800, color: "#5B21B6", display: "flex", alignItems: "center", gap: "0.35rem" }}>
+                    🏭 In-House Production Active
                   </span>
-                  <p style={{ fontSize: "0.75rem", color: "#1E3A8A", margin: 0 }}>
-                    Transmits print jobs and artwork to SinaLite wholesale fulfillment production queue.
+                  <p style={{ fontSize: "0.75rem", color: "#4C1D95", margin: 0 }}>
+                    This order is being produced directly in-house in your workshop (SinaLite bypassed). Customer order status shows: <strong>Submitted</strong>. Update status below as work progresses.
                   </p>
-                  <button
-                    onClick={() => handleManualSubmitSinalite(selectedOrder.id)}
-                    disabled={submittingSinalite}
-                    className="btn btn-primary"
-                    style={{ marginTop: "0.25rem", padding: "0.45rem 1rem", fontSize: "0.8rem", alignSelf: "flex-start", backgroundColor: "#2563EB", color: "white" }}
-                  >
-                    {submittingSinalite ? "Submitting..." : "Send Job to SinaLite API Now"}
-                  </button>
                 </div>
               )}
 
@@ -1799,109 +1902,157 @@ function AdminOrdersContent() {
 
                         {/* Files list */}
                         {item.artworkFiles && item.artworkFiles.length > 0 ? (
-                          <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
-                            {item.artworkFiles.map((file, fIdx) => (
-                              <div
-                                key={fIdx}
-                                style={{
-                                  display: "flex",
-                                  justifyContent: "space-between",
-                                  alignItems: "center",
-                                  padding: "0.35rem 0.55rem",
-                                  backgroundColor: "#FFFFFF",
-                                  borderRadius: "4px",
-                                  border: "1px solid hsl(var(--border-hsl))",
-                                  fontSize: "0.75rem"
-                                }}
-                              >
-                                <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", minWidth: 0 }}>
-                                  <span style={{
-                                    fontSize: "0.65rem",
-                                    fontWeight: 800,
-                                    textTransform: "uppercase",
-                                    padding: "0.1rem 0.35rem",
-                                    backgroundColor: file.side === "back" ? "#E0E7FF" : "#DCFCE7",
-                                    color: file.side === "back" ? "#3730A3" : "#166534",
-                                    borderRadius: "3px"
-                                  }}>
-                                    {file.side || (fIdx === 0 ? "front" : "back")}
-                                  </span>
-                                  <a
-                                    href={file.url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    style={{
-                                      color: "hsl(var(--primary-hsl))",
-                                      textDecoration: "underline",
-                                      fontWeight: 600,
-                                      overflow: "hidden",
-                                      textOverflow: "ellipsis",
-                                      whiteSpace: "nowrap",
-                                      maxWidth: "180px"
-                                    }}
-                                    title={file.name}
-                                  >
-                                    {file.name || `Artwork File ${fIdx + 1}`}
-                                  </a>
-                                  {file.uploadedBy === "admin" && (
-                                    <span style={{ fontSize: "0.65rem", color: "#D97706", fontWeight: 700 }}>
-                                      (Admin)
-                                    </span>
+                          <div style={{ display: "flex", flexDirection: "column", gap: "0.45rem" }}>
+                            {item.artworkFiles.map((file, fIdx) => {
+                              const hasWarning = Boolean(
+                                file.hasWarnings ||
+                                (file.preflightIssues && file.preflightIssues.length > 0) ||
+                                item.hasArtworkWarnings ||
+                                item.proofDetails?.hasWarnings ||
+                                (item.proofDetails?.preflight?.issues && item.proofDetails.preflight.issues.length > 0)
+                              );
+                              const warningIssues = file.preflightIssues?.length
+                                ? file.preflightIssues
+                                : (item.proofDetails?.preflight?.issues || []);
+
+                              return (
+                                <div
+                                  key={fIdx}
+                                  style={{
+                                    display: "flex",
+                                    flexDirection: "column",
+                                    gap: "0.3rem",
+                                    padding: "0.45rem 0.65rem",
+                                    backgroundColor: hasWarning ? "#FFFBEB" : "#FFFFFF",
+                                    borderRadius: "4px",
+                                    border: hasWarning ? "1px solid #FCD34D" : "1px solid hsl(var(--border-hsl))",
+                                    fontSize: "0.75rem"
+                                  }}
+                                >
+                                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                    <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", minWidth: 0, flexWrap: "wrap" }}>
+                                      <span style={{
+                                        fontSize: "0.65rem",
+                                        fontWeight: 800,
+                                        textTransform: "uppercase",
+                                        padding: "0.1rem 0.35rem",
+                                        backgroundColor: file.side === "back" ? "#E0E7FF" : "#DCFCE7",
+                                        color: file.side === "back" ? "#3730A3" : "#166534",
+                                        borderRadius: "3px"
+                                      }}>
+                                        {file.side || (fIdx === 0 ? "front" : "back")}
+                                      </span>
+                                      <a
+                                        href={file.url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        style={{
+                                          color: "hsl(var(--primary-hsl))",
+                                          textDecoration: "underline",
+                                          fontWeight: 600,
+                                          overflow: "hidden",
+                                          textOverflow: "ellipsis",
+                                          whiteSpace: "nowrap",
+                                          maxWidth: "180px"
+                                        }}
+                                        title={file.name}
+                                      >
+                                        {file.name || `Artwork File ${fIdx + 1}`}
+                                      </a>
+                                      {file.uploadedBy === "admin" && (
+                                        <span style={{ fontSize: "0.65rem", color: "#D97706", fontWeight: 700 }}>
+                                          (Admin)
+                                        </span>
+                                      )}
+                                      {hasWarning && (
+                                        <span style={{
+                                          fontSize: "0.65rem",
+                                          fontWeight: 800,
+                                          backgroundColor: "#FEF3C7",
+                                          color: "#B45309",
+                                          border: "1px solid #F59E0B",
+                                          padding: "0.1rem 0.35rem",
+                                          borderRadius: "3px",
+                                          display: "inline-flex",
+                                          alignItems: "center",
+                                          gap: "0.2rem"
+                                        }}>
+                                          ⚠️ Warning
+                                        </span>
+                                      )}
+                                    </div>
+
+                                    <div style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
+                                      {/* Replace specific file input */}
+                                      <label style={{
+                                        padding: "0.2rem 0.45rem",
+                                        fontSize: "0.68rem",
+                                        fontWeight: 700,
+                                        color: "hsl(var(--accent-hsl))",
+                                        backgroundColor: "hsl(var(--accent-hsl) / 0.1)",
+                                        borderRadius: "3px",
+                                        cursor: "pointer",
+                                        margin: 0,
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        gap: "0.2rem"
+                                      }}>
+                                        <Edit2 size={10} /> Replace
+                                        <input
+                                          type="file"
+                                          accept="image/*,application/pdf"
+                                          onChange={(e) => {
+                                            const fileObj = e.target.files?.[0];
+                                            if (fileObj) {
+                                              handleAdminArtworkReplace(selectedOrder.id, idx, fIdx, fileObj);
+                                            }
+                                            e.target.value = "";
+                                          }}
+                                          style={{ display: "none" }}
+                                        />
+                                      </label>
+
+                                      {/* Delete file */}
+                                      <button
+                                        type="button"
+                                        onClick={() => handleAdminRemoveArtworkFile(selectedOrder.id, idx, fIdx)}
+                                        disabled={uploadingArtworkIdx !== null}
+                                        style={{
+                                          background: "none",
+                                          border: "none",
+                                          color: "#EF4444",
+                                          cursor: "pointer",
+                                          padding: "0.2rem",
+                                          display: "flex",
+                                          alignItems: "center"
+                                        }}
+                                        title="Delete file"
+                                      >
+                                        <Trash2 size={13} />
+                                      </button>
+                                    </div>
+                                  </div>
+
+                                  {/* Warning details for admin inspection */}
+                                  {hasWarning && warningIssues.length > 0 && (
+                                    <div style={{
+                                      fontSize: "0.68rem",
+                                      color: "#78350F",
+                                      backgroundColor: "rgba(254, 243, 199, 0.6)",
+                                      borderRadius: "3px",
+                                      padding: "0.25rem 0.45rem",
+                                      lineHeight: 1.35
+                                    }}>
+                                      {warningIssues.map((iss, iIdx) => (
+                                        <div key={iIdx}>
+                                          <strong>⚠️ {iss.title || "Preflight Notice"}:</strong> {iss.message || "Quality notice"}
+                                        </div>
+                                      ))}
+                                    </div>
                                   )}
                                 </div>
-
-                                <div style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
-                                  {/* Replace specific file input */}
-                                  <label style={{
-                                    padding: "0.2rem 0.45rem",
-                                    fontSize: "0.68rem",
-                                    fontWeight: 700,
-                                    color: "hsl(var(--accent-hsl))",
-                                    backgroundColor: "hsl(var(--accent-hsl) / 0.1)",
-                                    borderRadius: "3px",
-                                    cursor: "pointer",
-                                    margin: 0,
-                                    display: "inline-flex",
-                                    alignItems: "center",
-                                    gap: "0.2rem"
-                                  }}>
-                                    <Edit2 size={10} /> Replace
-                                    <input
-                                      type="file"
-                                      accept=".pdf,.ai,.eps,.psd,.tiff,.tif,.png,.jpg,.jpeg"
-                                      disabled={uploadingArtworkIdx !== null}
-                                      onChange={(e) => {
-                                        const f = e.target.files?.[0];
-                                        if (f) {
-                                          handleAdminArtworkUpload(selectedOrder.id, idx, f, file.side || (fIdx === 0 ? "front" : "back"));
-                                        }
-                                        e.target.value = "";
-                                      }}
-                                      style={{ display: "none" }}
-                                    />
-                                  </label>
-
-                                  {/* Delete file */}
-                                  <button
-                                    type="button"
-                                    onClick={() => handleAdminRemoveArtworkFile(selectedOrder.id, idx, fIdx)}
-                                    disabled={uploadingArtworkIdx !== null}
-                                    style={{
-                                      background: "none",
-                                      border: "none",
-                                      color: "#EF4444",
-                                      cursor: "pointer",
-                                      padding: "0.2rem",
-                                      display: "flex",
-                                      alignItems: "center"
-                                    }}
-                                    title="Delete file"
-                                  >
-                                    <Trash2 size={13} />
-                                  </button>
-                                </div>
-                              </div>
-                            ))}
+                              );
+                            })}
                           </div>
                         ) : (
                           <div style={{ fontSize: "0.75rem", color: "hsl(var(--muted-hsl))", fontStyle: "italic" }}>

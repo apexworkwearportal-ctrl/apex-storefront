@@ -134,7 +134,9 @@ export async function POST(req) {
         const cleanImages = (i.images || []).filter(img => typeof img === "string" && !img.startsWith("data:image/"));
         const cleanArtworkFiles = (i.artworkFiles || []).map(af => ({
           ...af,
-          url: (typeof af.url === "string" && !af.url.startsWith("data:image/")) ? af.url : (af.thumbnail || "")
+          url: (typeof af.url === "string" && !af.url.startsWith("data:image/")) ? af.url : (af.thumbnail || ""),
+          hasWarnings: Boolean(af.hasWarnings || i.hasArtworkWarnings || i.proofDetails?.hasWarnings),
+          preflightIssues: af.preflightIssues || i.proofDetails?.preflight?.issues || []
         }));
         const rawArtworkUrl = i.artworkUrl || (cleanArtworkFiles[0] ? cleanArtworkFiles[0].url : null);
         const cleanArtworkUrl = (typeof rawArtworkUrl === "string" && !rawArtworkUrl.startsWith("data:image/")) ? rawArtworkUrl : (cleanImages[0] || null);
@@ -153,6 +155,8 @@ export async function POST(req) {
           embroiderySetupFee: parseFloat(i.embroiderySetupFee || 0),
           isEmbroidery: Boolean(i.isEmbroidery),
           artworkFiles: cleanArtworkFiles,
+          proofDetails: i.proofDetails || null,
+          hasArtworkWarnings: Boolean(i.hasArtworkWarnings || i.proofDetails?.hasWarnings || cleanArtworkFiles.some(af => af.hasWarnings)),
           artworkUrl: cleanArtworkUrl,
           mockupLayers: i.mockupLayers || null,
           garmentViews: i.garmentViews || i.apparelViews || null,

@@ -74,7 +74,6 @@ export default function PrintProofModal({
   onApprove
 }) {
   const [approved, setApproved] = useState(false);
-  const [overrideWarning, setOverrideWarning] = useState(false);
   const [iframeError, setIframeError] = useState(false);
   const [iframeLoaded, setIframeLoaded] = useState(false);
   const [imageDimensions, setImageDimensions] = useState({ width: 0, height: 0 });
@@ -133,7 +132,6 @@ export default function PrintProofModal({
 
   useEffect(() => {
     setApproved(false);
-    setOverrideWarning(false);
     setIframeError(false);
     setIframeLoaded(false);
     setImageDimensions({ width: 0, height: 0 });
@@ -328,16 +326,19 @@ export default function PrintProofModal({
 
   const handleConfirm = () => {
     if (!approved) return;
+    const hasAnyWarnings = Boolean(preflight?.hasWarnings || preflight?.hasErrors || (preflight?.issues && preflight.issues.length > 0));
     const approvalData = {
       fileUrl: activeUrl,
       fileName: activeFileName,
       approvedAt: new Date().toISOString(),
       finishedSize: `${resolvedWidth}" × ${resolvedHeight}"`,
+      hasWarnings: hasAnyWarnings,
+      warningsCount: preflight?.issues?.length || 0,
       preflight: {
         pixelDimensions: imageDimensions.width > 0 ? `${imageDimensions.width} × ${imageDimensions.height}` : null,
         effectiveDpi: preflight?.effectiveDpi || null,
-        hasWarnings: preflight?.hasWarnings || false,
-        hasErrors: preflight?.hasErrors || false,
+        hasWarnings: hasAnyWarnings,
+        hasErrors: false,
         issues: preflight?.issues || []
       }
     };
@@ -703,114 +704,64 @@ export default function PrintProofModal({
             )}
 
             {/* Preflight Quality & Dimension Check Panel */}
-            {isImage && imageDimensions.width > 0 && (
-              <div style={{ marginTop: "1rem" }}>
-                {preflight.hasErrors ? (
-                  <div style={{
-                    padding: "1rem 1.25rem",
-                    backgroundColor: "#FEF2F2",
-                    border: "2px solid #EF4444",
-                    borderRadius: "var(--radius-md)",
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "0.6rem"
-                  }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", color: "#B91C1C" }}>
-                      <AlertOctagon size={20} style={{ flexShrink: 0 }} />
-                      <h4 style={{ margin: 0, fontWeight: 900, fontSize: "0.95rem" }}>
-                        Action Required: Artwork Quality / Dimension Mismatch
-                      </h4>
-                    </div>
-
-                    <p style={{ margin: 0, fontSize: "0.82rem", color: "#7F1D1D", lineHeight: 1.5 }}>
-                      We detected critical print specification issues with your file. If printed as-is, your order may look blurry, stretched, or have clipped edges.
-                    </p>
-
-                    <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginTop: "0.25rem" }}>
-                      {preflight.issues.map((issue, idx) => (
-                        <div key={idx} style={{
-                          padding: "0.65rem 0.85rem",
-                          backgroundColor: "#FFFFFF",
-                          border: `1px solid ${issue.type === "error" ? "#FCA5A5" : "#FDE68A"}`,
-                          borderRadius: "var(--radius-sm)",
-                          fontSize: "0.8rem"
-                        }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontWeight: 800, color: issue.type === "error" ? "#B91C1C" : "#92400E", marginBottom: "0.2rem" }}>
-                            {issue.type === "error" ? <AlertOctagon size={14} /> : <AlertTriangle size={14} />}
-                            {issue.title}
-                          </div>
-                          <p style={{ margin: "0 0 0.25rem 0", color: "#374151", lineHeight: 1.45 }}>{issue.message}</p>
-                          <p style={{ margin: 0, fontWeight: 600, color: "#1D4ED8" }}>💡 {issue.recommendation}</p>
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Override warning check if user still insists on approving */}
-                    <div style={{
-                      marginTop: "0.5rem",
-                      padding: "0.75rem",
-                      backgroundColor: "#FFFBEB",
-                      border: "1px dashed #F59E0B",
-                      borderRadius: "var(--radius-sm)"
-                    }}>
-                      <label style={{ display: "flex", alignItems: "flex-start", gap: "0.5rem", cursor: "pointer", fontSize: "0.8rem", color: "#78350F" }}>
-                        <input
-                          type="checkbox"
-                          checked={overrideWarning}
-                          onChange={(e) => {
-                            setOverrideWarning(e.target.checked);
-                            if (!e.target.checked) setApproved(false);
-                          }}
-                          style={{ marginTop: "2px", accentColor: "#DC2626" }}
-                        />
-                        <span>
-                          <strong>I understand the risk:</strong> I acknowledge the low resolution / dimension mismatch and accept that the print may be pixelated, cropped, or have unprinted borders.
-                        </span>
-                      </label>
-                    </div>
+            <div style={{ marginTop: "1rem" }}>
+              {preflight.issues && preflight.issues.length > 0 ? (
+                <div style={{
+                  padding: "0.85rem 1.15rem",
+                  backgroundColor: "#FFFBEB",
+                  border: "1.5px solid #F59E0B",
+                  borderRadius: "var(--radius-md)",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "0.5rem"
+                }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", color: "#92400E" }}>
+                    <AlertTriangle size={18} style={{ flexShrink: 0, color: "#D97706" }} />
+                    <h4 style={{ margin: 0, fontWeight: 800, fontSize: "0.9rem" }}>
+                      Artwork Preflight Advisory
+                    </h4>
                   </div>
-                ) : preflight.hasWarnings ? (
-                  <div style={{
-                    padding: "0.85rem 1.15rem",
-                    backgroundColor: "#FFFBEB",
-                    border: "1.5px solid #F59E0B",
-                    borderRadius: "var(--radius-md)",
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "0.4rem"
-                  }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", color: "#92400E" }}>
-                      <AlertTriangle size={18} style={{ flexShrink: 0 }} />
-                      <h4 style={{ margin: 0, fontWeight: 800, fontSize: "0.9rem" }}>
-                        Print Quality Advisory
-                      </h4>
-                    </div>
+                  <p style={{ margin: 0, fontSize: "0.8rem", color: "#78350F", lineHeight: 1.45 }}>
+                    Please review the print notices below before approving. You may proceed and approve with this file, or close this window to upload a revised file.
+                  </p>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem", marginTop: "0.2rem" }}>
                     {preflight.issues.map((issue, idx) => (
-                      <p key={idx} style={{ margin: 0, fontSize: "0.8rem", color: "#78350F", lineHeight: 1.45 }}>
-                        {issue.message} <strong>Tip:</strong> {issue.recommendation}
-                      </p>
+                      <div key={idx} style={{
+                        padding: "0.5rem 0.75rem",
+                        backgroundColor: "#FFFFFF",
+                        border: "1px solid #FDE68A",
+                        borderRadius: "var(--radius-sm)",
+                        fontSize: "0.78rem"
+                      }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "0.35rem", fontWeight: 800, color: "#92400E", marginBottom: "0.15rem" }}>
+                          <AlertTriangle size={13} style={{ color: "#D97706" }} />
+                          {issue.title}
+                        </div>
+                        <p style={{ margin: "0 0 0.2rem 0", color: "#4B5563", lineHeight: 1.4 }}>{issue.message}</p>
+                        <p style={{ margin: 0, fontWeight: 600, color: "#1D4ED8" }}>💡 {issue.recommendation}</p>
+                      </div>
                     ))}
                   </div>
-                ) : (
-                  <div style={{
-                    padding: "0.75rem 1rem",
-                    backgroundColor: "#F0FDF4",
-                    border: "1px solid #86EFAC",
-                    borderRadius: "var(--radius-md)",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "0.6rem",
-                    fontSize: "0.82rem",
-                    color: "#166534"
-                  }}>
-                    <CheckCircle2 size={18} style={{ color: "#16A34A", flexShrink: 0 }} />
-                    <span>
-                      <strong>Artwork Verified:</strong> Dimensions &amp; aspect ratio match the required size ({imageDimensions.width} × {imageDimensions.height} px, ~{preflight.effectiveDpi} DPI). High resolution suitable for 300 DPI print.
-                    </span>
-                  </div>
-                )}
-              </div>
-            )}
+                </div>
+              ) : (imageDimensions.width > 0 || isPdf) ? (
+                <div style={{
+                  padding: "0.75rem 1rem",
+                  backgroundColor: "#F0FDF4",
+                  border: "1px solid #86EFAC",
+                  borderRadius: "var(--radius-md)",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.6rem",
+                  fontSize: "0.82rem",
+                  color: "#166534"
+                }}>
+                  <CheckCircle2 size={18} style={{ color: "#16A34A", flexShrink: 0 }} />
+                  <span>
+                    <strong>Artwork Verified:</strong> Dimensions &amp; aspect ratio match the required size. Suitable for commercial print.
+                  </span>
+                </div>
+              ) : null}
+            </div>
 
             {/* Artwork specs */}
             <div style={{ marginTop: "1.1rem", padding: "0.85rem 1rem", backgroundColor: "hsl(var(--secondary-hsl) / 0.3)", borderRadius: "var(--radius-sm)", fontSize: "0.85rem" }}>
@@ -822,34 +773,32 @@ export default function PrintProofModal({
 
             {/* Approval checkbox */}
             <div style={{
-              marginTop: "1.4rem",
+              marginTop: "1.25rem",
               padding: "1rem",
-              border: `2px solid ${preflight.hasErrors && !overrideWarning ? "rgba(239, 68, 68, 0.4)" : "hsl(var(--accent-hsl) / 0.4)"}`,
-              backgroundColor: preflight.hasErrors && !overrideWarning ? "#FEF2F2" : "hsl(var(--accent-hsl) / 0.05)",
-              borderRadius: "var(--radius-md)",
-              opacity: preflight.hasErrors && !overrideWarning ? 0.65 : 1
+              border: "2px solid hsl(var(--accent-hsl) / 0.4)",
+              backgroundColor: "hsl(var(--accent-hsl) / 0.05)",
+              borderRadius: "var(--radius-md)"
             }}>
-              <label style={{ display: "flex", alignItems: "flex-start", gap: "0.75rem", cursor: preflight.hasErrors && !overrideWarning ? "not-allowed" : "pointer" }}>
+              <label style={{ display: "flex", alignItems: "flex-start", gap: "0.75rem", cursor: "pointer" }}>
                 <input
                   type="checkbox"
                   checked={approved}
-                  disabled={preflight.hasErrors && !overrideWarning}
                   onChange={(e) => setApproved(e.target.checked)}
-                  style={{ width: "20px", height: "20px", marginTop: "0.15rem", accentColor: "hsl(var(--accent-hsl))" }}
+                  style={{ width: "20px", height: "20px", marginTop: "0.15rem", accentColor: "hsl(var(--accent-hsl))", cursor: "pointer" }}
                 />
                 <div style={{ fontSize: "0.9rem", lineHeight: "1.5" }}>
                   <span style={{ fontWeight: 800, color: "hsl(var(--primary-hsl))" }}>
                     I have inspected and approve this print proof for production.
                   </span>
                   <p style={{ color: "hsl(var(--muted-hsl))", fontSize: "0.8rem", marginTop: "0.2rem" }}>
-                    {preflight.hasErrors && !overrideWarning ? (
-                      <span style={{ color: "#B91C1C", fontWeight: 700 }}>
-                        ⚠️ Please change your file or check the risk acknowledgment checkbox above before approving.
+                    {preflight.issues && preflight.issues.length > 0 ? (
+                      <span style={{ color: "#92400E", fontWeight: 600 }}>
+                        I acknowledge the print advisory notices above and confirm I want this artwork printed as shown.
                       </span>
                     ) : (
                       <>
                         By checking this box, you confirm all text, logos, and bleed edges inside the cut &amp; safe lines are aligned correctly.
-                        {isPdf && " For PDFs, please open the file to verify before approving."}
+                        {isPdf && " For PDFs, please verify alignment before approving."}
                       </>
                     )}
                   </p>
